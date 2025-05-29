@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue May 27, 9:35:00 2025
+Created on Tue May 27, 15:30:00 2025
 
 @author: Gregory A. Greene
 """
@@ -10,6 +10,8 @@ import os
 import pandas as pd
 import numpy as np
 from datetime import datetime as dt
+import helper
+
 
 # GENERAL LIST OF CONIFER SPECIES IN BC
 conifer_list = [
@@ -26,6 +28,7 @@ conifer_list = [
     'UNK', 'XC', 'ZC'
 ]
 
+
 # VARIABLES FOR BIOMASS MODELING
 tree_component_list = ['wood', 'bark', 'branches', 'foliage']
 tree_component_index_dict = {
@@ -34,6 +37,7 @@ tree_component_index_dict = {
     'branches': 2,
     'foliage': 3
 }
+
 tree_conifer_decay_class_dict = {
     1: [1, 1, 1, 1],
     2: [1, 1, 1, 1],
@@ -45,6 +49,7 @@ tree_conifer_decay_class_dict = {
     8: [0.33, 0.05, 0, 0],
     9: [0.05, 0, 0, 0]
 }
+
 tree_broadleaf_decay_class_dict = {
     1: [1, 1, 1, 1],
     2: [1, 1, 1, 1],
@@ -53,17 +58,6 @@ tree_broadleaf_decay_class_dict = {
     5: [0.66, 0.25, 0, 0],
     6: [0.05, 0, 0, 0]
 }
-
-
-def _get_df(csv_path: str) -> pd.DataFrame:
-    return pd.read_csv(csv_path, header=0, index_col=False)
-
-
-def _export_csv(df: pd.DataFrame, csv_path: str) -> None:
-    if os.path.exists(csv_path):
-        os.remove(csv_path)
-    df.to_csv(csv_path, sep=',', index=False)
-    return
 
 
 def _get_temesgen_tree_height(model: int,
@@ -354,14 +348,10 @@ def _calc_tree_crown_fuels(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) 
 
     For each conifer species present, computes:
 
-    Crown fuel load (CFL) using Cruz et al. (2003) equations based on basal area and density.
-        - Equations per Cruz et al. 2003 - Assessing canopy fuel stratum characteristics in
-          crown fire prone fuel types of western North America.
-
     Crown fuel load (CFL) using Canadian National Biomass Equations (CNBE)
         - Equations per Ung et al. (2008) and Lambert et al. (2005), using DBH and height.
 
-    Canopy bulk density (CBD) for Cruz and CNBE approaches, calculated as CFL divided by crown depth.
+    Canopy bulk density (CBD), calculated as CFL divided by crown depth.
 
     Initializes output columns to zero and only processes live trees with valid DBH, height, and density.
     Results are stored in new columns for each tree.
@@ -377,109 +367,97 @@ def _calc_tree_crown_fuels(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) 
         np.nan
     )
     # Initialize columns
-    for col in [
-        'tree_cfl_cruz_cnfr', 'tree_cbd_cruz_cnfr',
-        'tree_cfl_cnbe_cnfr', 'tree_cbd_cnbe_cnfr',
-        'tree_wood_cnbe', 'tree_bark_cnbe', 'tree_branches_cnbe', 'tree_foliage_cnbe'
-    ]:
+    for col in ['tree_cfl_cnbe', 'tree_cbd_cnbe']:
         tree_df[col] = 0
 
     # Only process conifer species present in the DataFrame
-    spp_set = set(tree_df['tree_species'].dropna()) & set(conifer_list)
+    spp_set = set(tree_df['tree_species'].dropna())
     for spp in spp_set:
+        # Generate a mask for the current species
         spp_mask = (tree_df['tree_species'] == spp) & \
                    (tree_df['tree_status'] == 'L') & \
                    (tree_df['tree_dbh'] > 0) & \
                    (tree_df['tree_ht'] > 0)
 
-        spp_cnfr_mask = spp_mask & (tree_df['tree_type'] == 'conifer')
-
-        # CRUZ (U.S. FIA-based) MODEL
-        # Calculate CFL and CBD for conifers only
-        if spp in conifer_list:
-            # Calculate CFL (Cruz)
-            tree_df.loc[spp_cnfr_mask, 'tree_cfl_cruz_cnfr'] = np.exp(
-                tree_params_df.loc[spp, 'CFL_Cruz_B0'] +
-                tree_params_df.loc[spp, 'CFL_Cruz_B1'] * np.log(tree_df.loc[spp_cnfr_mask, 'tree_ba_cnfr_live_wtd']) +
-                tree_params_df.loc[spp, 'CFL_Cruz_B2'] * np.log(tree_df.loc[spp_mask, 'tree_dens_cnfr_live'])
-            )
-            # Calculate CBD (Cruz)
-            valid_cbd_mask = spp_cnfr_mask & (tree_df['tree_cfl_cruz_cnfr'] > 0) & (tree_df['tree_crwn_dpth'] > 0)
-            tree_df.loc[valid_cbd_mask, 'tree_cbd_cruz_cnfr'] = (
-                tree_df.loc[valid_cbd_mask, 'tree_cfl_cruz_cnfr'] / tree_df.loc[valid_cbd_mask, 'tree_crwn_dpth']
-            )
-
-        # CNBE (Canadian National Biomass Equations) MODEL
-        # Calculate CFL (CNBE)
-        tree_df.loc[spp_mask, 'tree_cfl_cnbe_cnfr'] = (
-            tree_df.loc[spp_mask, 'tree_dens_ha'] *
+        # Calculate CFL (CNBE Model)
+        tree_df.loc[spp_mask, 'tree_cfl_cnbe'] = (
             tree_params_df.loc[spp, 'BIOMASS_CNBE_DBH-HT_Bfoliage1'] *
             tree_df.loc[spp_mask, 'tree_dbh'] ** tree_params_df.loc[spp, 'BIOMASS_CNBE_DBH-HT_Bfoliage2'] *
             tree_df.loc[spp_mask, 'tree_ht'] ** tree_params_df.loc[spp, 'BIOMASS_CNBE_DBH-HT_Bfoliage3']
-        ) / 10000
-        # Calculate CBD (CNBE)
+        )
+        tree_df.loc[spp_mask, 'tree_cfl_cnbe_ha'] = (
+            tree_df.loc[spp_mask, 'tree_dens_ha'] * tree_df.loc[spp_mask, 'tree_cfl_cnbe']
+        )
+        # Calculate CBD (CNBE Model)
         cbd_mask = spp_mask & (tree_df['tree_crwn_dpth'] > 0)
-        tree_df.loc[cbd_mask, 'tree_cbd_cnbe_cnfr'] = (
-            tree_df.loc[cbd_mask, 'tree_cfl_cnbe_cnfr'] / tree_df.loc[cbd_mask, 'tree_crwn_dpth']
+        tree_df.loc[cbd_mask, 'tree_cbd_cnbe'] = (
+            tree_df.loc[cbd_mask, 'tree_cfl_cnbe'] / tree_df.loc[cbd_mask, 'tree_crwn_dpth']
+        )
+        tree_df.loc[cbd_mask, 'tree_cbd_cnbe_ha'] = (
+            tree_df.loc[spp_mask, 'tree_dens_ha'] * tree_df.loc[spp_mask, 'tree_cbd_cnbe']
         )
 
     return tree_df
 
 
 def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataFrame:
-        sppList = [n for n in tree_df['tree_species'].unique() if not pd.isnull(n)]
+    # Initialize columns
+    for col in ['tree_wood_cnbe', 'tree_bark_cnbe', 'tree_branches_cnbe', 'tree_foliage_cnbe']:
+        tree_df[col] = 0
 
-        # Assign combined decay class once
-        tree_df['tree_dcy_class'] = np.where(
-            tree_df.tree_type == 'conifer',
-            tree_df.tree_dcy_class_cnfr,
-            np.where(tree_df.tree_type == 'broadleaf', tree_df.tree_dcy_class_brdlf, np.nan)
-        )
+    sppList = [n for n in tree_df['tree_species'].unique() if not pd.isnull(n)]
 
-        for spp in sppList:
-            decayDict = tree_conifer_decay_class_dict if spp in conifer_list else tree_broadleaf_decay_class_dict
-            for component in tree_component_list:
-                comp_idx = tree_component_index_dict[component]
-                param1 = tree_params_df.loc[spp, f'BIOMASS_Ung_DBH-HT_B{component}1']
-                param2 = tree_params_df.loc[spp, f'BIOMASS_Ung_DBH-HT_B{component}2']
-                param3 = tree_params_df.loc[spp, f'BIOMASS_Ung_DBH-HT_B{component}3']
+    # Assign combined decay class once
+    tree_df['tree_dcy_class'] = np.where(
+        tree_df.tree_type == 'conifer',
+        tree_df.tree_dcy_class_cnfr,
+        np.where(tree_df.tree_type == 'broadleaf', tree_df.tree_dcy_class_brdlf, np.nan)
+    )
 
-                # Mask for live/less decayed trees
-                mask_live = (
-                    (tree_df.tree_species == spp) &
-                    (tree_df.tree_dcy_class > 0) &
-                    ((tree_df.tree_dcy_class_cnfr < 6) | (tree_df.tree_dcy_class_brdlf < 5)) &
-                    (tree_df.tree_dbh > 0) &
-                    (tree_df.tree_ht > 0)
-                )
-                # Mask for dead/more decayed trees
-                mask_dead = (
-                    (tree_df.tree_species == spp) &
-                    (tree_df.tree_dcy_class > 0) &
-                    ((tree_df.tree_dcy_class_cnfr >= 6) | (tree_df.tree_dcy_class_brdlf >= 5)) &
-                    (tree_df.tree_dbh > 0) &
-                    (tree_df.tree_ht > 0)
-                )
+    for spp in sppList:
+        decayDict = tree_conifer_decay_class_dict if spp in conifer_list else tree_broadleaf_decay_class_dict
+        for component in tree_component_list:
+            comp_idx = tree_component_index_dict[component]
+            param1 = tree_params_df.loc[spp, f'BIOMASS_CNBE_DBH-HT_B{component}1']
+            param2 = tree_params_df.loc[spp, f'BIOMASS_CNBE_DBH-HT_B{component}2']
+            param3 = tree_params_df.loc[spp, f'BIOMASS_CNBE_DBH-HT_B{component}3']
 
-                # Calculate biomass per ha for live/less decayed
-                tree_df.loc[mask_live, f'tree_{component}_ung'] = (
-                    tree_df.loc[mask_live, 'tree_dens_ha'] *
-                    decayDict.get(tree_df.loc[mask_live, 'tree_dcy_class']).apply(lambda x: x[comp_idx]) *
-                    param1 *
-                    tree_df.loc[mask_live, 'tree_dbh'] ** param2 *
-                    tree_df.loc[mask_live, 'tree_ht'] ** param3
-                ) / 10000
+            # Mask for live/less decayed trees
+            mask_live = (
+                (tree_df.tree_species == spp) &
+                (tree_df.tree_dcy_class > 0) &
+                ((tree_df.tree_dcy_class_cnfr < 6) | (tree_df.tree_dcy_class_brdlf < 5)) &
+                (tree_df.tree_dbh > 0) &
+                (tree_df.tree_ht > 0)
+            )
+            # Mask for dead/more decayed trees
+            mask_dead = (
+                (tree_df.tree_species == spp) &
+                (tree_df.tree_dcy_class > 0) &
+                ((tree_df.tree_dcy_class_cnfr >= 6) | (tree_df.tree_dcy_class_brdlf >= 5)) &
+                (tree_df.tree_dbh > 0) &
+                (tree_df.tree_ht > 0)
+            )
 
-                # Calculate biomass per ha for dead/more decayed
-                tree_df.loc[mask_dead, f'tree_{component}_ung'] = (
-                    tree_df.loc[mask_dead, 'tree_dens_ha'] *
-                    decayDict.get(tree_df.loc[mask_dead, 'tree_dcy_class']).apply(lambda x: x[comp_idx]) *
-                    param1 *
-                    tree_df.loc[mask_dead, 'tree_dbh'] ** param2 *
-                    tree_df.loc[mask_dead, 'tree_ht_modeled'] ** param3
-                ) / 10000
+            # Calculate biomass per ha for live/less decayed
+            tree_df.loc[mask_live, f'tree_{component}_cnbe'] = (
+                tree_df.loc[mask_live, 'tree_dens_ha'] *
+                decayDict.get(tree_df.loc[mask_live, 'tree_dcy_class']).apply(lambda x: x[comp_idx]) *
+                param1 *
+                tree_df.loc[mask_live, 'tree_dbh'] ** param2 *
+                tree_df.loc[mask_live, 'tree_ht'] ** param3
+            )
 
-        return tree_df
+            # Calculate biomass per ha for dead/more decayed
+            tree_df.loc[mask_dead, f'tree_{component}_cnbe'] = (
+                tree_df.loc[mask_dead, 'tree_dens_ha'] *
+                decayDict.get(tree_df.loc[mask_dead, 'tree_dcy_class']).apply(lambda x: x[comp_idx]) *
+                param1 *
+                tree_df.loc[mask_dead, 'tree_dbh'] ** param2 *
+                tree_df.loc[mask_dead, 'tree_ht_modeled'] ** param3
+            )
+
+    return tree_df
 
 
 def _calc_stand_density(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame:
@@ -553,18 +531,19 @@ def _calc_stand_basal_area(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFr
     return df
 
 
-def process_trees(in_folder: str, out_folder: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+def process_trees(in_folder: str, out_folder: str) -> pd.DataFrame:
     """
     Get the tree data from CSV files and return as an updated DataFrame.
 
-    :param in_folder: Path to the folder containing the input tree CSV files.
-    :return: Tuple containing the plot-level DataFrame and the individual tree DataFrame.
+    :param in_folder: Path to the folder containing the input CSV files.
+    :param out_folder: Path to the folder where output CSV files will be saved.
+    :return: DataFrame with processed tree attributes.
     """
     print('Processing Tree data')
 
     # ### PROCESS PLOT-LEVEL ATTRIBUTES
     # Get plot dataframe
-    df = _get_df(os.path.join(in_folder, 'survey_0.csv'))
+    df = helper.get_df(os.path.join(in_folder, 'survey_0.csv'))
     # Generate a unique ID for each plot
     df['year'] = df['_date'].apply(lambda y: dt.strptime(y, '%m/%d/%Y %I:%M:%S %p').year)
     df['uniqueID'] = df[['treatment_area', 'treatment_unit', 'treatment_unit_other', 'plot_id',
@@ -573,9 +552,9 @@ def process_trees(in_folder: str, out_folder: str) -> tuple[pd.DataFrame, pd.Dat
 
     # ### PROCESS INDIVIDUAL TREE ATTRIBUTES
     # Get tree dataframe
-    tree_df = _get_df(os.path.join(in_folder, 'tree_plot_1.csv'))
+    tree_df = helper.get_df(os.path.join(in_folder, 'tree_plot_1.csv'))
     # Load tree parameters and set index
-    tree_params_df = _get_df(os.path.join(r'.\Support_Data\tree_parameters.csv')).set_index('Species')
+    tree_params_df = helper.get_df(os.path.join(r'.\Support_Data\tree_parameters.csv')).set_index('Species')
     # Calculate tree attributes
     tree_df = _calc_tree_dbh_classes(tree_df)
     tree_df = _calc_tree_decay_classes(tree_df)
@@ -592,4 +571,9 @@ def process_trees(in_folder: str, out_folder: str) -> tuple[pd.DataFrame, pd.Dat
     df = _calc_stand_density(df, tree_df)
     df = _calc_stand_basal_area(df, tree_df)
 
-    return df, tree_df
+    # ### SAVE DATASETS TO OUTPUT FOLDER
+    os.makedirs(out_folder, exist_ok=True)
+    helper.export_csv(df, os.path.join(out_folder, 'survey_0.csv'))
+    helper.export_csv(tree_df, os.path.join(out_folder, 'tree_plot_1.csv'))
+
+    return df

@@ -10,17 +10,7 @@ import os
 import pandas as pd
 import numpy as np
 from datetime import datetime as dt
-
-
-def _get_df(csv_path: str) -> pd.DataFrame:
-    return pd.read_csv(csv_path, header=0, index_col=False)
-
-
-def _export_csv(df: pd.DataFrame, csv_path: str) -> None:
-    if os.path.exists(csv_path):
-        os.remove(csv_path)
-    df.to_csv(csv_path, sep=',', index=False)
-    return
+import helper
 
 
 def _get_photoload_biomass(photoload_code: str, pct_cover: float, height: float):
@@ -51,7 +41,7 @@ def _process_top_five_spp(df: pd.DataFrame) -> pd.DataFrame:
     :return: Updated DataFrame with calculated plant group attributes and species-level metrics.
     """
     # Assign plant PhotoLoad CSV to dataframe
-    plant_photoload_df = _get_df(r'.\Supporting_Data\plant_photoload.csv')
+    plant_photoload_df = helper.get_df(r'.\Supporting_Data\plant_photoload.csv')
     plant_photoload_df.set_index('Code', inplace=True)
 
     # Initialize columns for plant species data
@@ -245,17 +235,19 @@ def _process_regen(df: pd.DataFrame, regen_df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def process_plants_regen(csv_folder: str) -> pd.DataFrame:
+def process_plants_regen(in_folder: str, out_folder: str) -> pd.DataFrame:
     """
     Get the plant and tree regeneration data from a CSV file and return as an updated DataFrame.
 
-    :param csv_folder: Path to the folder containing the plant and regen CSV files.
+    :param in_folder: Path to the folder containing the input CSV files.
+    :param out_folder: Path to the folder where output CSV files will be saved.
+    :return: DataFrame with processed tree attributes.
     """
     print('Processing Plant and Regeneration data')
 
     # ### PROCESS PLANT DATA
     # Get plant dataframe
-    df = _get_df(os.path.join(csv_folder, 'survey_0.csv'))
+    df = helper.get_df(os.path.join(in_folder, 'survey_0.csv'))
     # Generate a unique ID for each plot
     df['year'] = df['_date'].apply(lambda y: dt.strptime(y, '%m/%d/%Y %I:%M:%S %p').year)
     df['uniqueID'] = df[['treatment_area', 'treatment_unit', 'treatment_unit_other', 'plot_id',
@@ -266,10 +258,15 @@ def process_plants_regen(csv_folder: str) -> pd.DataFrame:
 
     # ### PROCESS REGENERATION DATA
     # Get regen dataframe
-    regen_df = _get_df(os.path.join(csv_folder, 'regeneration_1.csv'))
+    regen_df = helper.get_df(os.path.join(in_folder, 'regeneration_1.csv'))
 
     # ### MERGE PLANT AND REGENERATION DATA
     # Calculate regeneration attributes
     df = _process_regen(df, regen_df)
+
+    # ### SAVE DATASETS TO OUTPUT FOLDER
+    os.makedirs(out_folder, exist_ok=True)
+    helper.export_csv(df, os.path.join(out_folder, 'survey_0.csv'))
+    helper.export_csv(regen_df, os.path.join(out_folder, 'regeneration_1.csv'))
 
     return df
