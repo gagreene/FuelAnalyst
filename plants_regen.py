@@ -31,23 +31,32 @@ def _get_photoload_biomass(photoload_code: str, pct_cover: float, height: float)
     return photoload_dict.get(photoload_code, np.nan)
 
 
-def _process_top_five_spp(df: pd.DataFrame) -> pd.DataFrame:
+def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     """
     Processes the top five plant species per plot, calculating biomass, percent cover, and height-weighted metrics
     for different plant functional groups (moss/bryophyte, grass, herb/forb, shrub). Adds columns for each group
     and for each species, including Photoload codes, biomass, and labels. Returns the updated DataFrame.
 
     :param df: DataFrame containing plant species, percent cover, and height data.
-    :return: Updated DataFrame with calculated plant group attributes and species-level metrics.
+    :return: Updated DataFrame with calculated plant group attributes and species-level metrics,
+        and a list of columns to keep.
     """
+    print(f'\tProcessing data for plants')
     # Assign plant PhotoLoad CSV to dataframe
     plant_photoload_df = helper.get_df(r'.\Supporting_Data\plant_photoload.csv')
     plant_photoload_df.set_index('Code', inplace=True)
 
     # Initialize columns for plant species data
     df['pc_species_kgpm2'] = 0.0
-    df['moss_kgpm2'] = 0.0
+    df['bryoid_kgpm2'] = 0.0
+    df['bryoid_pct_total'] = 0.0
+    df['bryoid_ht_wtd'] = 0.0
     df['grass_kgpm2'] = 0.0
+    df['grass_pct_total'] = 0.0
+    df['grass_ht_wtd'] = 0.0
+    df['herb_forb_kgpm2'] = 0.0
+    df['herb_forb_pct_total'] = 0.0
+    df['herb_forb_ht_wtd'] = 0.0
     df['herbs_kgpm2'] = 0.0
     df['herbs_pct_total'] = 0.0
     df['herbs_ht_wtd'] = 0.0
@@ -61,8 +70,7 @@ def _process_top_five_spp(df: pd.DataFrame) -> pd.DataFrame:
 
     # Cycle through the top 5 plant species
     for x in range(1, 6):
-        print(f'\tProcessing data for plant species {x}')
-
+        print(f'\t\tProcessing species {x}')
         # Assign alternate code if species classified as OTHER
         df[f'pc_species_{x}'] = np.where(
             df[f'pc_species_{x}'] == 'OTHER',
@@ -100,6 +108,8 @@ def _process_top_five_spp(df: pd.DataFrame) -> pd.DataFrame:
         df['bryoid_kgpm2'] += np.where(moss_bryo_mask, 0, 0)  # Mosses currently have no Photoload biomass equations
         # Get total percent cover of moss/bryophyte species
         df['bryoid_pct_total'] += np.where(moss_bryo_mask, df[f'pc_species_{x}_kgpm2'], 0)
+        # Get moss/bryophyte height weighted by percent cover
+        df['bryoid_ht_wtd'] += np.where(moss_bryo_mask, df[f'pc_species_{x}_pct'] * df[f'pc_species_{x}_ht'], 0)
 
         # PROCESS GRASS
         # Generate a mask for species that are grasses/graminoids
@@ -108,16 +118,18 @@ def _process_top_five_spp(df: pd.DataFrame) -> pd.DataFrame:
         df['grass_kgpm2'] += np.where(grass_mask, df[f'pc_species_{x}_kgpm2'], 0)
         # Get grass percent cover
         df['grass_pct_total'] += np.where(grass_mask, df[f'pc_species_{x}_pct'], 0)
+        # Get grass height weighted by percent cover
+        df['grass_ht_wtd'] += np.where(grass_mask, df[f'pc_species_{x}_pct'] * df[f'pc_species_{x}_ht'], 0)
 
         # PROCESS HERBS & FORBS
         # Generate a mask for species that are herbs or forbs
         herb_forb_mask = df[f'pc_species_{x}_label'].str.contains('Herb', na=False)
-        # Get total biomass of herb & fern species
-        df['herb_fern_kgpm2'] += np.where(herb_forb_mask, df[f'pc_species_{x}_kgpm2'], 0)
-        # Get herb & fern percent cover
-        df['herb_fern_pct_total'] += np.where(herb_forb_mask, df[f'pc_species_{x}_pct'], 0)
-        # Get herb & fern height weighted by percent cover
-        df['herb_fern_ht_wtd'] += np.where(herb_forb_mask, df[f'pc_species_{x}_pct'] * df[f'pc_species_{x}_ht'], 0)
+        # Get total biomass of herb & forb species
+        df['herb_forb_kgpm2'] += np.where(herb_forb_mask, df[f'pc_species_{x}_kgpm2'], 0)
+        # Get herb & forb percent cover
+        df['herb_forb_pct_total'] += np.where(herb_forb_mask, df[f'pc_species_{x}_pct'], 0)
+        # Get herb & forb height weighted by percent cover
+        df['herb_forb_ht_wtd'] += np.where(herb_forb_mask, df[f'pc_species_{x}_pct'] * df[f'pc_species_{x}_ht'], 0)
 
         # PROCESS ALL HERBACEOUS PLANTS
         # Generate a mask for species that are herbs or grasses
@@ -139,46 +151,54 @@ def _process_top_five_spp(df: pd.DataFrame) -> pd.DataFrame:
         # Get shrub height weighted by percent cover
         df['shrubs_ht_wtd'] += np.where(shrub_mask, df[f'pc_species_{x}_pct'] * df[f'pc_species_{x}_ht'], 0)
 
-    # Get average height of shrubs (m)
+    # Get average height of grass, herbs/forbs, all herbaceous plants (grass + herbs/forbs), and shrubs (m)
+    df['bryoid_ht_avg'] = (df['bryoid_ht_wtd'] / df['bryoid_pct_total']) / 100
+    df['grass_ht_avg'] = (df['grass_ht_wtd'] / df['grass_pct_total']) / 100
+    df['herb_forb_ht_avg'] = (df['herb_forb_ht_wtd'] / df['herb_forb_pct_total']) / 100
+    df['herbs_ht_avg'] = (df['herbs_ht_wtd'] / df['herbs_pct_total']) / 100
     df['shrubs_ht_avg'] = (df['shrubs_ht_wtd'] / df['shrubs_pct_total']) / 100
 
-    return df
+    keep_columns = [
+        'bryoid_kgpm2', 'grass_kgpm2', 'herb_forb_kgpm2', 'shrubs_kgpm2',
+    ]
+
+    return df, keep_columns
 
 
-def _get_dom_substrate(df: pd.DataFrame) -> pd.DataFrame:
+def _get_dom_substrate(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     """
     Determines the dominant substrate type for each row in the DataFrame based on percent cover
-    and other plant attribute columns. Adds 'domSub' and 'domSubstrate' columns to the DataFrame.
+    and other plant attribute columns. Adds 'dom_sub' and 'dom_substrate' columns to the DataFrame.
 
     :param df: DataFrame containing plant cover and height data.
     :return: pd.DataFrame: Updated DataFrame with dominant substrate column.
     """
     # List of substrate percent cover columns to consider
-    substrate_list = ['bryoid_pct_total', 'grass_pct_total', 'herb_fern_pct_total', 'shrubs_pct_total']
+    substrate_list = ['bryoid_pct_total', 'grass_pct_total', 'herb_forb_pct_total', 'shrubs_pct_total']
     # Mapping from substrate column to code
     substrate_dict = {
         'bryoid_pct_total': 'BY',
         'grass_pct_total': 'HG',
-        'herb_fern_pct_total': 'HF',
+        'herb_forb_pct_total': 'HF',
         'shrubs_pct_total': 'shrubs'
     }
     # Assign initial dominant substrate code based on max percent cover
-    df['domSub'] = df[substrate_list].apply(lambda y: substrate_dict.get(y.idxmax()), axis=1)
+    df['dom_sub'] = df[substrate_list].apply(lambda y: substrate_dict.get(y.idxmax()), axis=1)
 
     # Precompute boolean masks and values for substrate logic
     shrubs_dom = df.shrubs_pct_total.gt(50)
     tall_shrubs = df.shrubs_ht_avg >= 2
-    bryo_dom = df.moss_pct_total.gt(50)
-    herbs_dom = df.herb_fern_pct_total.gt(50)
+    bryo_dom = df.bryoid_pct_total.gt(50)
+    herbs_dom = df.herb_forb_pct_total.gt(50)
     grass_dom = df.grass_pct_total.gt(50)
-    herbs_grass_sum = df.herb_fern_pct_total + df.grass_pct_total
+    herbs_grass_sum = df.herb_forb_pct_total + df.grass_pct_total
     herbs_grass_dom = herbs_grass_sum > 50
-    herbs_ratio = df.herb_fern_pct_total / herbs_grass_sum.replace(0, np.nan)
+    herbs_ratio = df.herb_forb_pct_total / herbs_grass_sum.replace(0, np.nan)
     grass_ratio = df.grass_pct_total / herbs_grass_sum.replace(0, np.nan)
-    dom_shrubs = df.domSub == 'shrubs'
+    dom_shrubs = df.dom_sub == 'shrubs'
 
     # Assign final dominant substrate class based on rules and conditions
-    df['domSubstrate'] = np.select(
+    df['dom_substrate'] = np.select(
         [
             shrubs_dom,  # Shrubs dominant
             bryo_dom,    # Bryoid dominant
@@ -199,12 +219,12 @@ def _get_dom_substrate(df: pd.DataFrame) -> pd.DataFrame:
             'HE',  # Herbaceous (no distinction between forbs and graminoids)
             np.where(tall_shrubs, 'ST', 'SL')  # Tall or low shrubland based on regeneration height
         ],
-        default=df.domSub
+        default=df.dom_sub
     )
-    return df
+    return df, ['dom_sub', 'dom_substrate']
 
 
-def _process_regen(df: pd.DataFrame, regen_df: pd.DataFrame) -> pd.DataFrame:
+def _process_regen(df: pd.DataFrame, regen_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, list]:
     """
     Calculates stand-level (per hectare) regeneration metrics for small and tall, live and dead trees,
     and adds these as new columns to the main DataFrame.
@@ -215,46 +235,57 @@ def _process_regen(df: pd.DataFrame, regen_df: pd.DataFrame) -> pd.DataFrame:
     :param regen_df: DataFrame containing regeneration counts by plot.
     :return: Updated DataFrame with regeneration density columns (per hectare).
     """
+    print('\tProcessing data for tree regeneration')
     # Multiplier to convert plot counts to per hectare values (for 5.64m radius plot)
     plot_multiplier = 100
+
+    regen_df['rgn_live_small_cnt'] /= regen_df['rgn_small_plot_proportion']
+    regen_df['rgn_live_tall_cnt'] /= regen_df['rgn_tall_plot_proportion']
 
     # Aggregate regeneration counts by plot (ParentGlobalID), summing each count type
     regen_sums = regen_df.groupby('ParentGlobalID').agg({
         'rgn_live_small_cnt': 'sum',
-        'rgn_dead_small_cnt': 'sum',
         'rgn_live_tall_cnt': 'sum',
-        'rgn_dead_tall_cnt': 'sum'
     }).mul(plot_multiplier)  # Convert to per hectare
 
+    # Initialize columns to keep in the master DataFrame
+    keep_columns = []
+
     # Map aggregated regeneration counts to main DataFrame and normalize by number of plots
-    for col in ['rgn_live_small_cnt', 'rgn_dead_small_cnt', 'rgn_live_tall_cnt', 'rgn_dead_tall_cnt']:
+    for col in ['rgn_live_small_cnt', 'rgn_live_tall_cnt']:
         new_col = col.replace('rgn_', 'dens_regen_').replace('_cnt', '_ha')
-        df[new_col] = df.GlobalID.map(regen_sums[col]) / df.num_plots
-        df[new_col].fillna(0, inplace=True)  # Fill missing values with 0
+        df[new_col] = df.GlobalID.map(regen_sums[col])
+        df[new_col] = df[new_col].fillna(0)  # Fill missing values with 0
+        # Add the new columns to the keep_columns list
+        keep_columns.append(new_col)
 
-    return df
+    return df, regen_df, keep_columns
 
 
-def process_plants_regen(in_folder: str, out_folder: str) -> pd.DataFrame:
+def process_plants_regen(in_folder: str, out_folder: str) -> tuple[pd.DataFrame, list]:
     """
     Get the plant and tree regeneration data from a CSV file and return as an updated DataFrame.
 
     :param in_folder: Path to the folder containing the input CSV files.
     :param out_folder: Path to the folder where output CSV files will be saved.
-    :return: DataFrame with processed tree attributes.
+    :return: DataFrame with processed tree attributes, and a list of columns to keep.
     """
-    print('Processing Plant and Regeneration data')
+    print('\nProcessing Plant and Regeneration data')
 
-    # ### PROCESS PLANT DATA
-    # Get plant dataframe
+    keep_columns = []
+
+    # ### PROCESS PLOT DATA
+    # Get plot dataframe
     df = helper.get_df(os.path.join(in_folder, 'survey_0.csv'))
     # Generate a unique ID for each plot
-    df['year'] = df['_date'].apply(lambda y: dt.strptime(y, '%m/%d/%Y %I:%M:%S %p').year)
-    df['uniqueID'] = df[['treatment_area', 'treatment_unit', 'treatment_unit_other', 'plot_id',
-                             'treatment_type', 'year']].apply(lambda x: ''.join(x.astype(str)), axis=1)
+    df = helper.get_unique_id(df)
+
+    # ### PROCESS PLANT DATA
     # Calculate plant attributes
-    df = _process_top_five_spp(df)
-    df = _get_dom_substrate(df)
+    df, add_columns = _process_top_five_spp(df)
+    keep_columns.extend(add_columns)
+    df, add_columns = _get_dom_substrate(df)
+    keep_columns.extend(add_columns)
 
     # ### PROCESS REGENERATION DATA
     # Get regen dataframe
@@ -262,11 +293,12 @@ def process_plants_regen(in_folder: str, out_folder: str) -> pd.DataFrame:
 
     # ### MERGE PLANT AND REGENERATION DATA
     # Calculate regeneration attributes
-    df = _process_regen(df, regen_df)
+    df, regen_df, add_columns = _process_regen(df, regen_df)
+    keep_columns.extend(add_columns)
 
     # ### SAVE DATASETS TO OUTPUT FOLDER
     os.makedirs(out_folder, exist_ok=True)
     helper.export_csv(df, os.path.join(out_folder, 'survey_0.csv'))
     helper.export_csv(regen_df, os.path.join(out_folder, 'regeneration_1.csv'))
 
-    return df
+    return df, keep_columns
