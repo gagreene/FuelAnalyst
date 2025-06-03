@@ -1000,7 +1000,7 @@ def _calc_stand_attributes(df: pd.DataFrame,
 
 def process_trees(in_folder: str,
                   out_folder: str,
-                  stand_summary: dict) -> pd.DataFrame:
+                  stand_summary: dict) -> tuple[pd.DataFrame, list]:
     """
     Get the tree data from CSV files and return as an updated DataFrame.
 
