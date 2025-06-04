@@ -120,6 +120,7 @@ def fuel_analyst(in_folder: str,
     form_df = None
     master_tree_df = None
     fofem_tree_df = None
+    fofem_consume_df = None
 
     # Process plot attributes
     plot_df, add_columns = pa.process_plot_attributes(os.path.join(in_folder, folder_dict.get('plot')),
@@ -187,24 +188,30 @@ def fuel_analyst(in_folder: str,
     # Make the out_folder if it does not exist
     os.makedirs(out_folder, exist_ok=True)
 
-    # Save the Master Tree DataFrame to the output folder if it exists
-    if master_tree_df is not None:
-        master_tree_df_path = os.path.join(out_folder, 'master_tree_df.csv')
-        print(f'Saving the master tree DataFrame to: {master_tree_df_path}')
-        helper.export_csv(master_tree_df, master_tree_df_path)
-
-    # Save the Master Tree DataFrame to the output folder if it exists
-    if fofem_tree_df is not None:
-        fofem_tree_df_path = os.path.join(out_folder, 'fofem_tree_df.csv')
-        print(f'Saving the master tree DataFrame to: {fofem_tree_df_path}')
-        helper.export_csv(fofem_tree_df, fofem_tree_df_path)
-
     # Save the Master Fuel DataFrame to the output folder if it exists
     if plot_df is not None:
         master_df_path = os.path.join(out_folder, 'master_fuel_df.csv')
-        print(f'Saving the master fuel DataFrame to: {master_df_path}')
+        print(f'Saving the Master Fuel DataFrame to: {master_df_path}')
         plot_df = plot_df[keep_columns]  # Keep only the specified columns
         helper.export_csv(plot_df, master_df_path)
+
+    # Save the Master Tree DataFrame to the output folder if it exists
+    if master_tree_df is not None:
+        master_tree_df_path = os.path.join(out_folder, 'master_tree_df.csv')
+        print(f'Saving the Master Tree DataFrame to: {master_tree_df_path}')
+        helper.export_csv(master_tree_df, master_tree_df_path)
+
+    # Save the FOFEM Tree DataFrame to the output folder if it exists
+    if fofem_tree_df is not None:
+        fofem_tree_df_path = os.path.join(out_folder, 'fofem_tree_df.csv')
+        print(f'Saving the FOFEM Tree DataFrame to: {fofem_tree_df_path}')
+        helper.export_csv(fofem_tree_df, fofem_tree_df_path)
+
+    # Save the FOFEM Consumption DataFrame to the output folder if it exists
+    if fofem_consume_df is not None:
+        fofem_consume_df_path = os.path.join(out_folder, 'fofem_consume_df.csv')
+        print(f'Saving the FOFEM Consumption DataFrame to: {fofem_consume_df_path}')
+        helper.export_csv(fofem_consume_df, fofem_consume_df_path)
 
     return
 
