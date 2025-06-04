@@ -16,68 +16,77 @@ import canopy_cover as cc
 import woody_debris as wd
 import fofem_attributes
 
-
 default_stand_summary_dict = {
-        'dens': {
-            'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
-            'metrics': ['min', 'max', 'mean', 'sum'],  # These are the only options
-            'classes': {
-                'dbh': [5, 7.5, 12.5]
-            },
+    'dens': {
+        'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'metrics': ['min', 'max', 'mean', 'sum'],  # These are the only options
+        'classes': {
+            'dbh': [5, 7.5, 12.5]
         },
-        'ba': {
-            'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
-            'metrics': ['min', 'max', 'mean', 'sum'],  # These are the only options
-            'classes': {
-                'dbh': [5, 7.5, 12.5]
-            },
+    },
+    'ba': {
+        'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'metrics': ['min', 'max', 'mean', 'sum'],  # These are the only options
+        'classes': {
+            'dbh': [5, 7.5, 12.5]
         },
-        'ht': {
-            'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
-            'metrics': ['min', 'max', 'mean'],  # These are the only options
-            'classes': {
-                'dbh': [5]
-            },
+    },
+    'ht': {
+        'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'metrics': ['min', 'max', 'mean'],  # These are the only options
+        'classes': {
+            'dbh': [5]
         },
-        'cbh': {
-            'summary': ['total', 'live', 'conifer', 'broadleaf'],  # These are the only options
-            'metrics': ['min', 'max', 'mean'],  # These are the only options
-            'classes': {
-                'dbh': [5]
-            },
+    },
+    'cbh': {
+        'summary': ['total', 'live', 'conifer', 'broadleaf'],  # These are the only options
+        'metrics': ['min', 'max', 'mean'],  # These are the only options
+        'classes': {
+            'dbh': [5]
         },
-        'dcbh': {
-            'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
-            'metrics': ['min', 'max', 'mean'],  # These are the only options
-            'classes': {
-                'dbh': [5]
-            },
+    },
+    'dcbh': {
+        'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'metrics': ['min', 'max', 'mean'],  # These are the only options
+        'classes': {
+            'dbh': [5]
         },
-        'fsg': {
-            'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
-            'metrics': ['min', 'max', 'mean'],  # These are the only options
-            'classes': {
-                'dbh': [5]
-            },
+    },
+    'fsg': {
+        'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'metrics': ['min', 'max', 'mean'],  # These are the only options
+        'classes': {
+            'dbh': [5]
         },
-        'cfl': {
-            'summary': ['total', 'conifer', 'broadleaf'],  # These are all live trees
-            'metrics': ['min', 'max', 'mean', 'sum'],  # These are the only options
-            'classes': {
-                'dbh': [5]
-            },
+    },
+    'cfl': {
+        'summary': ['total', 'conifer', 'broadleaf'],  # These are all live trees
+        'metrics': ['min', 'max', 'mean', 'sum'],  # These are the only options
+        'classes': {
+            'dbh': [5]
         },
-        'cbd': {
-            'summary': ['total', 'conifer', 'broadleaf'],  # These are all live trees
-            'metrics': [],  # This is fixed as empty (no user options)
-            'classes': {
-                'dbh': [5]
-            },
+    },
+    'cbd': {
+        'summary': ['total', 'conifer', 'broadleaf'],  # These are all live trees
+        'metrics': [],  # This is fixed as empty (no user options)
+        'classes': {
+            'dbh': [5]
         },
-    }
+    },
+    'flame_length': {
+        'summary': ['total'],  # This is fixed (no user options)
+        'metrics': ['min', 'max', 'mean'],  # These are the only options
+    },
+    'fire_intensity': {
+        'summary': ['total'],  # This is fixed (no user options)
+        'metrics': ['min', 'max', 'mean'],  # These are the only options
+    },
+}
+
 
 def fuel_analyst(in_folder: str,
                  out_folder: str,
+                 surface_fire_intensity_model: str,
                  stand_summary: dict,
                  gen_fofem_tree_df: bool = False,
                  gen_fofem_consume_df: bool = False,
@@ -87,6 +96,7 @@ def fuel_analyst(in_folder: str,
 
     :param in_folder: Path to the input folder containing the survey data.
     :param out_folder: Path to the output folder where results will be saved.
+    :param surface_fire_intensity_model: Model to use for surface fire intensity calculations.
     :param stand_summary: List containing stand summary parameters.
     :param gen_fofem_tree_df: Boolean indicating whether to generate the FOFEM tree DataFrame.
     :param gen_fofem_consume_df: Boolean indicating whether to generate the FOFEM consumption DataFrame.
@@ -150,7 +160,10 @@ def fuel_analyst(in_folder: str,
                 form_df, add_columns = pr.process_plants_regen(in_path, out_path)
             elif form == 'trees':
                 (form_df, add_columns,
-                 master_tree_df, fofem_tree_df) = trees.process_trees(in_path, out_path, stand_summary)
+                 master_tree_df) = trees.process_trees(in_path,
+                                                       out_path,
+                                                       surface_fire_intensity_model,
+                                                       stand_summary)
             elif form == 'cover':
                 form_df, add_columns = cc.process_canopy_cover(in_path, out_path)
             elif form == 'woody':
@@ -180,9 +193,9 @@ def fuel_analyst(in_folder: str,
 
     # ### PROCESS FOFEM DATA
     if gen_fofem_tree_df:
-        fofem_tree_df = fofem_attributes.gen_fofem_tree_df(form_df, master_tree_df)
+        fofem_tree_df = fofem_attributes.gen_fofem_tree_df(plot_df, master_tree_df)
     if gen_fofem_consume_df:
-        fofem_consume_df = fofem_attributes.gen_fofem_consumption_df(form_df, fofem_consume_moisture_var)
+        fofem_consume_df = fofem_attributes.gen_fofem_consumption_df(plot_df, fofem_consume_moisture_var)
 
     # ### PROCESS OUTPUTS
     # Make the out_folder if it does not exist
@@ -220,6 +233,7 @@ if __name__ == '__main__':
     # Define input and output folders
     _in_folder = r'E:\UBC_FuelAnalyst_Testing\Survey123_Data\Survey_Data'
     _out_folder = r'E:\UBC_FuelAnalyst_Testing\Survey123_Data\_Results'
+    _surface_fire_intensity_model = 'Byram'
     _stand_summary_dict = default_stand_summary_dict
     _gen_fofem_tree_df = True  # Whether to generate the FOFEM tree DataFrame
     _gen_fofem_consume_df = False  # Whether to generate the FOFEM consumption DataFrame
@@ -228,6 +242,7 @@ if __name__ == '__main__':
     # Run the main fuel_analyst function
     fuel_analyst(in_folder=_in_folder,
                  out_folder=_out_folder,
+                 surface_fire_intensity_model=_surface_fire_intensity_model,
                  stand_summary=_stand_summary_dict,
                  gen_fofem_tree_df=_gen_fofem_tree_df,
                  gen_fofem_consume_df=_gen_fofem_consume_df)

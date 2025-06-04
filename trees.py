@@ -65,6 +65,8 @@ attribute_weighting_dict = {
     'dcbh': 'ba',
     'fsg': 'ba',
     'crwn_dpth': 'ba',
+    'flame_length': 'ba',
+    'fire_intensity': 'ba',
 }
 
 
@@ -638,32 +640,6 @@ def _calc_tree_crwn_dpth(tree_df: pd.DataFrame) -> pd.DataFrame:
     return tree_df
 
 
-def _calc_tree_weighted_attributes(tree_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calculate weighted attributes for each tree based on its density and basal area.
-
-    This function computes the weighted DBH, height, crown base height (CBH), dead crown base height (DCBH),
-    and fuel bed height for each tree, using the tree's density and basal area.
-
-    :param tree_df: DataFrame containing individual tree data, including DBH, height, CBH, DCBH, and fuel bed height.
-    :return: Updated DataFrame with new columns for weighted attributes.
-    """
-    print('\tCalculating tree weighted attributes')
-    # Initialize weighted attribute columns
-    attribute_list = ['ht', 'cbh', 'dcbh', 'fsg', 'crwn_dpth']
-
-    for att in attribute_list:
-        # Get the column names for the attribute and its weight multiplier
-        att_col = f'tree_{att}'
-        wtd_col = f'tree_{att}_wtd'
-        att_wt_mult = attribute_weighting_dict.get(att, 'dens')
-
-        # Calculate the weighted attribute
-        tree_df[wtd_col] = tree_df[att_col] * tree_df[f'tree_{att_wt_mult}_ha']
-
-    return tree_df
-
-
 def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculates tree component biomass (wood, bark, branches, foliage) per hectare using CNBE allometric equations,
@@ -879,6 +855,79 @@ def _calc_tree_specific_gravity(tree_df: pd.DataFrame, tree_params_df: pd.DataFr
     return tree_df
 
 
+def _calc_tree_fire_attributes(tree_df: pd.DataFrame, surface_fire_intensity_model: str = 'Byram') -> pd.DataFrame:
+    """
+    Calculates fire-related attributes for each tree in the DataFrame.
+
+    This function computes:
+    - Flame length based on bark char height.
+    - Fireline intensity (FLI) based on tree density and basal area.
+        - Byram (1959) or Thomas (1963) model for surface fire intensity.
+        - Butler's model for crown fire intensity.
+
+    :param tree_df: DataFrame containing individual tree data, including density, basal area, crown base height,
+                    dead crown base height, and fuel bed height.
+    :param surface_fire_intensity_model: Model to use for calculating surface fireline intensity (default is 'Byram').
+        Options: ['Byram', 'Thomas']
+    :return: Updated DataFrame with new columns for FLI, CFP, and CBD.
+    """
+    print('\tCalculating fire metrics (Fireline Intensity, Flame Length)')
+
+    # ### ESTIMATE FLAME LENGTH ###
+    # Invert the FOFEM char height equation to solve for flame length
+    tree_df['tree_flame_length'] = tree_df['tree_bark_char_high'] * 1.8
+
+    # ### CALCULATE VARIOUS FIRELINE INTENSITY OPTIONS ###
+    if surface_fire_intensity_model == 'Byram':
+        # Use the Byram (1959) flame length model to estimate fireline intensity (kW/m)
+        surface_model = (tree_df['tree_flame_length'] / 0.0775) ** (1 / 0.46)
+    elif surface_fire_intensity_model == 'Thomas':
+        # Use the Thomas (1963) flame length model to estimate fireline intensity (kW/m)
+        surface_model = (tree_df['tree_flame_length'] / 0.026700) ** (3 / 2)
+    else:
+        print('Invalid surface fireline intensity model specified. Using Byram (1959) as default.')
+        # Use the Byram (1959) flame length model to estimate fireline intensity (kW/m)
+        surface_model = (tree_df['tree_flame_length'] / 0.0775) ** (1 / 0.46)
+
+    # Use the Butler et al. (2004) crown fire flame length model to estimate crown fireline intensity
+    # (must add value to average stand height)
+    crown_model = (tree_df['tree_flame_length'] / 0.017500) ** (3 / 2)
+
+    # ### ESTIMATE FIRELINE INTENSITY ###
+    # Set bark char heights of 444 to the tree height
+    full_ht_mask = tree_df['tree_bark_char_high'] == 444
+    # Estimate fireline intensity based on the full_ht_mask
+    tree_df['tree_fire_intensity'] = np.where(full_ht_mask, crown_model, surface_model)
+
+    return tree_df
+
+
+def _calc_tree_weighted_attributes(tree_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate weighted attributes for each tree based on its density and basal area.
+
+    This function computes the weighted DBH, height, crown base height (CBH), dead crown base height (DCBH),
+    and fuel bed height for each tree, using the tree's density and basal area.
+
+    :param tree_df: DataFrame containing individual tree data, including DBH, height, CBH, DCBH, and fuel bed height.
+    :return: Updated DataFrame with new columns for weighted attributes.
+    """
+    print('\tCalculating tree weighted attributes')
+    # Initialize weighted attribute columns
+    attribute_list = list(attribute_weighting_dict.keys())
+
+    for att in attribute_list:
+        # Get the column names for the attribute and its weight multiplier
+        att_col = f'tree_{att}'
+        wtd_col = f'tree_{att}_wtd'
+        att_wt_mult = attribute_weighting_dict.get(att, 'dens')
+
+        # Calculate the weighted attribute
+        tree_df[wtd_col] = tree_df[att_col] * tree_df[f'tree_{att_wt_mult}_ha']
+
+    return tree_df
+
+
 def _gen_master_tree_df(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame:
     """
     Generate a master tree DataFrame with selected and renamed columns for export.
@@ -1081,7 +1130,6 @@ def _calc_stand_attributes(df: pd.DataFrame,
                 if att != 'cbd':
                     for metric in metrics:
                         unweight = False
-                        colname = f'stand_{att}_{summary}_{metric}'
                         if metric == 'sum':
                             value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].sum()
                         elif metric == 'min':
@@ -1104,15 +1152,19 @@ def _calc_stand_attributes(df: pd.DataFrame,
                             # Unweight values
                             value = unweight_value(att, value, tree_df[summary_mask])
 
+                        # Assign data to new column
+                        colname = f'stand_{att}_{summary}_{metric}'.replace('_total', '')
                         new_columns[colname] = df.GlobalID.map(value)
                 else:
-                    colname = f'stand_{att}_{summary}'
                     value = (
                             tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum() /
                             tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_crwn_dpth_wtd'].sum()
                     )
                     # Unweight values
                     value = unweight_value(att, value, tree_df[summary_mask])
+
+                    # Assign data to new column
+                    colname = f'stand_{att}_{summary}'.replace('_total', '')
                     new_columns[colname] = df.GlobalID.map(value)
 
                 # Process class cutoffs if present
@@ -1128,7 +1180,6 @@ def _calc_stand_attributes(df: pd.DataFrame,
                         if att != 'cbd':
                             for metric in metrics:
                                 unweight = False
-                                colname = f'stand_{att}_{summary}_{class_label}_{metric}'
                                 if metric == 'sum':
                                     value = tree_df[mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].sum()
                                 elif metric == 'min':
@@ -1150,12 +1201,17 @@ def _calc_stand_attributes(df: pd.DataFrame,
                                 if unweight:
                                     # Unweight values
                                     value = unweight_value(att, value, tree_df[mask])
-                                    new_columns[colname] = df.GlobalID.map(value)
+
+                                # Assign data to new column
+                                colname = f'stand_{att}_{summary}_{class_label}_{metric}'.replace('_total', '')
+                                new_columns[colname] = df.GlobalID.map(value)
                         else:
-                            colname = f'stand_{att}_{summary}_{class_label}'
                             value = tree_df[mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum()
                             # Unweight values
                             value = unweight_value(att, value, tree_df[mask])
+
+                            # Assign data to new column
+                            colname = f'stand_{att}_{summary}_{class_label}'.replace('_total', '')
                             new_columns[colname] = df.GlobalID.map(value)
 
             if new_columns:
@@ -1168,12 +1224,15 @@ def _calc_stand_attributes(df: pd.DataFrame,
 
 def process_trees(in_folder: str,
                   out_folder: str,
+                  surface_fire_intensity_model: str,
                   stand_summary: dict) -> tuple[pd.DataFrame, list, pd.DataFrame]:
     """
     Get the tree data from CSV files.
 
     :param in_folder: Path to the folder containing the input CSV files.
     :param out_folder: Path to the folder where output CSV files will be saved.
+    :param surface_fire_intensity_model: Model to use for calculating surface fireline intensity (default is 'Byram').
+        Options: ['Byram', 'Thomas']
     :param stand_summary: Dictionary containing stand summary parameters.
     :return: Tuple containing:
         - Updated DataFrame with plot-level attributes.
@@ -1221,15 +1280,18 @@ def process_trees(in_folder: str,
     tree_df = _calc_tree_cbh(tree_df)
     tree_df = _calc_tree_fsg(tree_df)
     tree_df = _calc_tree_crwn_dpth(tree_df)
-    tree_df = _calc_tree_weighted_attributes(tree_df)
     tree_df = _calc_tree_biomass(tree_df, tree_params_df)
     tree_df = _calc_tree_crown_fuels(tree_df, tree_params_df)
     # TODO - Verify that the tree_df and master_tree_df functions work correctly
     # Calculate FOFEM tree attributes
     tree_df = _calc_tree_fofem_attributes(tree_df, tree_params_df)
+    # Calculate fire behavior attributes
+    tree_df = _calc_tree_fire_attributes(tree_df, surface_fire_intensity_model)
     # Calculate woody debris related attributes
     tree_df = _calc_tree_bulk_density(tree_df, tree_params_df)
     tree_df = _calc_tree_specific_gravity(tree_df, tree_params_df)
+    # Calculate weighted attributes
+    tree_df = _calc_tree_weighted_attributes(tree_df)
     # Generate Master Tree DataFrame
     master_tree_df = _gen_master_tree_df(df, tree_df)
 

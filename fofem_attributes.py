@@ -18,7 +18,7 @@ def gen_fofem_tree_df(df: pd.DataFrame, master_tree_df: pd.DataFrame) -> pd.Data
     :param master_tree_df: DataFrame with processed tree-level data.
     :return: DataFrame with FOFEM tree mortality variables.
     """
-    # Prepare lookup dictionaries once
+    # Prepare lookup dictionaries
     treatment_dict = df.set_index('unique_id')['treatment_type'].to_dict()
     year_dict = df.set_index('unique_id')['year'].to_dict()
 
