@@ -10,55 +10,49 @@ import pandas as pd
 import numpy as np
 
 
-def _gen_fofem_tree_df(df: pd.DataFrame, master_tree_df: pd.DataFrame) -> pd.DataFrame:
+def gen_fofem_tree_df(df: pd.DataFrame, master_tree_df: pd.DataFrame) -> pd.DataFrame:
     """
     Generate a DataFrame formatted for FOFEM tree mortality modeling.
-
-    Maps and converts relevant columns from the master tree DataFrame and plot DataFrame
-    to the FOFEM-required format, including unit conversions and status assignments.
 
     :param df: DataFrame with plot-level data (must include 'uniqueID', 'treatment_type', 'year').
     :param master_tree_df: DataFrame with processed tree-level data.
     :return: DataFrame with FOFEM tree mortality variables.
     """
-    fofem_tree_df = pd.DataFrame()
+    # Prepare lookup dictionaries once
+    treatment_dict = df.set_index('unique_id')['treatment_type'].to_dict()
+    year_dict = df.set_index('unique_id')['year'].to_dict()
 
-    # Map plot and tree attributes to FOFEM columns
-    fofem_tree_df['# PlotId'] = master_tree_df['unique_id']
-    fofem_tree_df['MonStatus'] = fofem_tree_df['# PlotId'].map(
-        df.set_index('unique_id')['treatment_type'].to_dict())
-    fofem_tree_df['MonOrder'] = fofem_tree_df['# PlotId'].map(
-        df.set_index('unique_id')['year'].to_dict())
-    fofem_tree_df['TreeSpecies'] = master_tree_df['spp_fofem']
-    fofem_tree_df['TreeExpansionFactor'] = master_tree_df['dens_live_ha'] / 2.47105  # ha to acre
-    fofem_tree_df['Diameter'] = master_tree_df['dbh'] / 2.54  # cm to inches
-    fofem_tree_df['TreeHeight'] = master_tree_df['ht'] / 3.28084  # m to feet
-    fofem_tree_df['CrownBaseHeight'] = (master_tree_df['ht'] - master_tree_df['crown_depth']) / 3.28084  # m to feet
-
-    # Assign tree status for FOFEM: H = healthy, U = unhealthy, L = other
-    fofem_tree_df['TreeStatus'] = np.where(
-        (master_tree_df['decay_cnfr'] == 1) | (master_tree_df['decay_brdlf'] == 1), 'H',
-        np.where((master_tree_df['decay_cnfr'] == 2) | (master_tree_df['decay_brdlf'] == 2), 'U', 'L')
-    )
-
-    fofem_tree_df['CrownClass'] = master_tree_df['crown_class']
-    fofem_tree_df['CrownRatio'] = 100 * master_tree_df['crown_depth'] / master_tree_df['ht']
-
-    # Set FOFEM-specific columns to NaN or default values
-    fofem_tree_df['CharHeight'] = np.nan
-    fofem_tree_df['CrownScorchPercent'] = np.nan
-    fofem_tree_df['CrownScorchHeight'] = np.nan
-    fofem_tree_df['CKR'] = np.nan
-    fofem_tree_df['BeetleDamage'] = np.nan
-    fofem_tree_df['EquationType'] = 'CRNSCH'
-    fofem_tree_df['FlHt_ScHt'] = np.nan
-    fofem_tree_df['FL_SH_ID'] = 'F'
-    fofem_tree_df['Severity'] = np.nan
+    # Build DataFrame
+    fofem_tree_df = pd.DataFrame({
+        '# PlotId': master_tree_df['unique_id'],
+        'MonStatus': master_tree_df['unique_id'].map(treatment_dict),
+        'MonOrder': master_tree_df['unique_id'].map(year_dict),
+        'TreeSpecies': master_tree_df['spp_fofem'],
+        'TreeExpansionFactor': master_tree_df['dens_live_ha'] / 2.47105,  # ha to acre
+        'Diameter': master_tree_df['dbh'] / 2.54,  # cm to inches
+        'TreeHeight': master_tree_df['ht'] / 3.28084,  # m to feet
+        'CrownBaseHeight': (master_tree_df['ht'] - master_tree_df['crown_depth']) / 3.28084,  # m to feet
+        'TreeStatus': np.where(
+            (master_tree_df['decay_cnfr'] == 1) | (master_tree_df['decay_brdlf'] == 1), 'H',
+            np.where((master_tree_df['decay_cnfr'] == 2) | (master_tree_df['decay_brdlf'] == 2), 'U', 'L')
+        ),
+        'CrownClass': master_tree_df['crown_class'],
+        'CrownRatio': 100 * master_tree_df['crown_depth'] / master_tree_df['ht'],
+        'CharHeight': np.nan,
+        'CrownScorchPercent': np.nan,
+        'CrownScorchHeight': np.nan,
+        'CKR': np.nan,
+        'BeetleDamage': np.nan,
+        'EquationType': 'CRNSCH',
+        'FlHt_ScHt': np.nan,
+        'FL_SH_ID': 'F',
+        'Severity': np.nan
+    })
 
     return fofem_tree_df
 
 
-def _gen_fofem_consumption_df(df: pd.DataFrame, moisture_var: str = 'Very Dry') -> pd.DataFrame:
+def gen_fofem_consumption_df(df: pd.DataFrame, moisture_var: str) -> pd.DataFrame:
     """
     Generate a DataFrame formatted for FOFEM consumption/emissions modeling.
 
@@ -139,24 +133,3 @@ def _gen_fofem_consumption_df(df: pd.DataFrame, moisture_var: str = 'Very Dry') 
     )
 
     return fofem_consume_df
-
-
-def process_fofem_attributes(df: pd.DataFrame, master_tree_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Process FOFEM attributes for tree mortality and consumption modeling.
-
-    This function generates DataFrames formatted for FOFEM tree mortality and consumption modeling.
-
-    :param df: DataFrame with plot-level data (must include 'uniqueID', 'treatment_type', 'year').
-    :param master_tree_df: DataFrame with processed tree-level data.
-    :return: DataFrame with FOFEM tree mortality variables.
-    """
-    print('\nProcessing FOFEM Attributes')
-
-    # Generate the FOFEM tree DataFrame
-    fofem_tree_df = _gen_fofem_tree_df(df, master_tree_df)
-
-    # Generate the FOFEM consumption DataFrame
-    fofem_consume_df = _gen_fofem_consumption_df(df)
-
-    return fofem_tree_df, fofem_consume_df
