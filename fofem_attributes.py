@@ -123,7 +123,8 @@ def gen_fofem_consumption_df(df: pd.DataFrame, moisture_var: str) -> pd.DataFram
         np.where(df.domSubstrate.isin(['SL', 'ST']),
             np.where(df.fccs_spl_species.str.split(':').str[0].isin(['ARFR', 'ARTR']),
                      'Sagebrush', 'ShrubGroup'),
-        np.where(df.domSubstrate.isin(['HF', 'HG']), 'GrassGroup', '""'))))))
+        np.where(df.domSubstrate.isin(['HF', 'HG']), 'GrassGroup', '""')))))
+    )
 
     # Assign FuelCategory based on treatment_type
     fofem_consume_df['FuelCategory'] = np.where(
