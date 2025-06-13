@@ -47,5 +47,8 @@ def get_unique_id(df: pd.DataFrame) -> pd.DataFrame:
     df['unique_id'] = df[['treatment_area', 'treatment_unit', 'treatment_type', 'plot_id', 'year']].apply(
         lambda x: '_'.join(x.astype(str)), axis=1)
 
+    # Drop duplicate rows based on 'unique_id', keeping the most recent entry based on _date column
+    df = df.sort_values(by='_date').drop_duplicates(subset='unique_id', keep='last')
+
     return df
 
