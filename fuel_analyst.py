@@ -15,25 +15,26 @@ import trees
 import canopy_cover as cc
 import woody_debris as wd
 import fofem_attributes
+from typing import Optional
 
 default_stand_summary_dict = {
     'dens': {
         'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
-        'metrics': ['min', 'max', 'mean', 'sum'],  # These are the only options
+        'metrics': ['sum'],  # These options are fixed
         'classes': {
             'dbh': [5, 7.5, 12.5]
         },
     },
     'ba': {
         'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
-        'metrics': ['min', 'max', 'mean', 'sum'],  # These are the only options
+        'metrics': ['sum'],  # These options are fixed
         'classes': {
             'dbh': [5, 7.5, 12.5]
         },
     },
     'ht': {
         'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
-        'metrics': ['min', 'max', 'mean'],  # These are the only options
+        'metrics': ['max', 'mean'],  # These are the only options
         'classes': {
             'dbh': [5]
         },
@@ -87,7 +88,7 @@ default_stand_summary_dict = {
 def fuel_analyst(in_folder: str,
                  out_folder: str,
                  surface_fire_intensity_model: str,
-                 stand_summary: dict,
+                 stand_summary: Optional[dict] = None,
                  gen_fofem_tree_df: bool = False,
                  gen_fofem_consume_df: bool = False,
                  fofem_consume_moisture_var: str = 'Dry') -> None:
@@ -121,9 +122,11 @@ def fuel_analyst(in_folder: str,
         'woody': 'Woody Debris'
     }
 
+    if stand_summary is None:
+        stand_summary = default_stand_summary_dict
+
     # Create the list of forms to process
-    # form_select_list = ['plants', 'trees', 'cover', 'woody']
-    form_select_list = ['plants', 'trees', 'cover']
+    form_select_list = ['plants', 'trees', 'cover', 'woody']
 
     # Generate a list of columns to keep, using all columns in plot_df to begin with
     keep_columns = ['unique_id']
@@ -167,7 +170,7 @@ def fuel_analyst(in_folder: str,
             elif form == 'cover':
                 form_df, add_columns = cc.process_canopy_cover(in_path, out_path)
             elif form == 'woody':
-                form_df, add_columns = wd.process_woody_debris(in_path, out_path)
+                form_df, add_columns = wd.process_woody_debris(in_path, out_path, plot_df[mask])
 
             # Add the new columns to the keep_columns list
             keep_columns.extend(add_columns)
@@ -234,7 +237,7 @@ if __name__ == '__main__':
     _in_folder = r'E:\UBC_FuelAnalyst_Testing\Survey123_Data\Survey_Data'
     _out_folder = r'E:\UBC_FuelAnalyst_Testing\Survey123_Data\_Results'
     _surface_fire_intensity_model = 'Byram'
-    _stand_summary_dict = default_stand_summary_dict
+    _stand_summary_dict = None
     _gen_fofem_tree_df = True  # Whether to generate the FOFEM tree DataFrame
     _gen_fofem_consume_df = False  # Whether to generate the FOFEM consumption DataFrame
     _fofem_consume_moisture_var = 'Very Dry'  # Moisture regime setting for FOFEM consumption
