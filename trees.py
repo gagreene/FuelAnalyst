@@ -108,6 +108,22 @@ def _get_temesgen_tree_height(model: int,
         return np.nan
 
 
+def _round_plot_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Rounds plot data columns to appropriate decimal places.
+
+    :param df: DataFrame containing plot data.
+    :return: Updated DataFrame with rounded values.
+    """
+    print('\tRounding plot variables')
+    # Round DBH, height, cbh, and dcbh to 1 decimal place
+    df['lgtree_plot_radius'] = df['lgtree_plot_radius'].round(2)
+    df['smtree_plot_radius'] = df['smtree_plot_radius'].round(2)
+    df['sapling_plot_radius'] = df['sapling_plot_radius'].round(2)
+
+    return df
+
+
 def _calc_plot_multipliers(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate multipliers for tree data based on plot radii.
@@ -360,7 +376,7 @@ def _round_tree_data(tree_df: pd.DataFrame) -> pd.DataFrame:
     :param tree_df: DataFrame containing individual tree data.
     :return: Updated DataFrame with rounded values.
     """
-    print('\tRounding decimal tree variables')
+    print('\tRounding tree variables')
     # Round DBH, height, cbh, and dcbh to 1 decimal place
     tree_df['tree_dbh'] = tree_df['tree_dbh'].round(1)
     tree_df['tree_ht'] = tree_df['tree_ht'].round(1)
@@ -794,67 +810,6 @@ def _calc_tree_fofem_attributes(tree_df: pd.DataFrame, tree_params_df: pd.DataFr
     return tree_df
 
 
-def _calc_tree_bulk_density(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calculates weighted duff and litter bulk density for each tree based on species and basal area.
-
-    :param tree_df: DataFrame with individual tree data, including 'tree_species' and 'tree_ba_ha'.
-    :param tree_params_df: DataFrame with species parameters, including 'Duff_BD' and 'Litter_BD'.
-    :return: Updated DataFrame with 'tree_duff_bd_wtd' and 'tree_litter_bd_wtd' columns.
-    """
-    # Initialize columns to NaN
-    tree_df['tree_duff_bd_wtd'] = np.nan
-    tree_df['tree_litter_bd_wtd'] = np.nan
-
-    # Create mapping from species to duff and litter bulk density
-    duff_bd_map = tree_params_df['Duff_BD'].to_dict()
-    litter_bd_map = tree_params_df['Litter_BD'].to_dict()
-
-    # Calculate weighted duff and litter bulk density where tree density is valid
-    valid_mask = tree_df['tree_dens_ha'] >= 0
-    tree_df.loc[valid_mask, 'tree_duff_bd_wtd'] = (
-        tree_df.loc[valid_mask, 'tree_ba_ha'] *
-        tree_df.loc[valid_mask, 'tree_species'].map(duff_bd_map)
-    )
-    tree_df.loc[valid_mask, 'tree_litter_bd_wtd'] = (
-        tree_df.loc[valid_mask, 'tree_ba_ha'] *
-        tree_df.loc[valid_mask, 'tree_species'].map(litter_bd_map)
-    )
-    return tree_df
-
-
-def _calc_tree_specific_gravity(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calculates weighted specific gravity (SG) for various fuel size classes for each tree.
-
-    :param tree_df: DataFrame with individual tree data, including 'tree_species' and 'tree_ba_ha'.
-    :param tree_params_df: DataFrame with species parameters for SG classes.
-    :return: Updated DataFrame with weighted SG columns for each size class.
-    """
-    # Define SG columns and their corresponding parameter names in tree_params_df
-    sg_cols = {
-        'tree_sg_05cm_wtd': 'SG_0.5',
-        'tree_sg_1cm_wtd': 'SG_1',
-        'tree_sg_3cm_wtd': 'SG_3',
-        'tree_sg_5cm_wtd': 'SG_5',
-        'tree_sg_7cm_wtd': 'SG_7',
-        'tree_sg_1hr_wtd': 'SG_0.635',      # 1hr uses SG_0.635
-        'tree_sg_10hr_wtd': 'SG_2.54',      # 10hr uses SG_2.54
-        'tree_sg_100hr_wtd': 'SG_7.62',     # 100hr uses SG_7.62
-    }
-
-    # Initialize columns to NaN
-    for col in sg_cols:
-        tree_df[col] = np.nan
-
-    # Calculate weighted SG for each class
-    for col, param in sg_cols.items():
-        sg_map = tree_params_df[param].to_dict()
-        tree_df[col] = tree_df['tree_ba_ha'] * tree_df['tree_species'].map(sg_map)
-
-    return tree_df
-
-
 def _calc_tree_fire_attributes(tree_df: pd.DataFrame, surface_fire_intensity_model: str = 'Byram') -> pd.DataFrame:
     """
     Calculates fire-related attributes for each tree in the DataFrame.
@@ -1222,6 +1177,114 @@ def _calc_stand_attributes(df: pd.DataFrame,
         return df, keep_columns
 
 
+def _calc_stand_composition(df: pd.DataFrame, tree_df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
+    """
+    Calculates stand composition metrics for each plot based on tree basal area.
+
+    For each plot, this function determines the top 6 species by their percentage of total basal area,
+    both for live trees only and for all woody trees (live and dead). It adds columns to the plot-level
+    DataFrame for the species codes and their corresponding basal area percentages, as well as a summary
+    string for each stand. Returns the updated DataFrame and a list of new column names.
+
+    :param df: DataFrame containing plot-level data, including 'GlobalID' and 'unique_id'.
+    :param tree_df: DataFrame containing individual tree data, including 'tree_status', 'tree_ba_ha', and 'ParentGlobalID'.
+    :return: Tuple of (updated plot-level DataFrame, list of new column names).
+    """
+    print('\tCalculating stand composition metrics')
+    keep_columns = []
+
+    # Map from GlobalID to unique_id for joining
+    unique_id_map = df.set_index('GlobalID')['unique_id'].to_dict()
+
+    # Calculate composition for live trees only, then for all woody trees (live + dead)
+    for status in [['L'], ['L', 'D']]:
+        # Mask for trees with the given status
+        tree_mask = tree_df['tree_status'].isin(status)
+        # Aggregate basal area by plot and species
+        agg = (
+            tree_df.loc[tree_mask]
+            .groupby(['ParentGlobalID', 'tree_species'], as_index=False)['tree_ba_ha']
+            .sum()
+            .rename(columns={'tree_species': 'SPECIES_CD', 'tree_ba_ha': 'species_ba'})
+        )
+        # Remove zero-BA species
+        agg = agg[agg['species_ba'] > 0]
+        # Add unique_id for joining to plot-level data
+        agg['unique_id'] = agg['ParentGlobalID'].map(unique_id_map)
+        agg = agg.drop(columns=['ParentGlobalID'])
+
+        # Sum species BA by unique_id and species (in case of duplicates)
+        agg = (
+            agg.groupby(['unique_id', 'SPECIES_CD'], as_index=False)['species_ba']
+            .sum()
+        )
+
+        # Get total stand basal area for each plot
+        stand_ba = (
+            tree_df.loc[tree_mask]
+            .groupby('ParentGlobalID')['tree_ba_ha']
+            .sum()
+            .rename(unique_id_map)
+        )
+        agg['stand_ba'] = agg['unique_id'].map(stand_ba)
+        agg = agg[agg['stand_ba'] > 0]
+
+        # Calculate percent of stand BA for each species
+        agg['SPECIES_PCT'] = (100 * agg['species_ba'] / agg['stand_ba']).round(1)
+        agg = agg[agg['species_ba'] > 0]
+
+        # Keep only the top 6 species by BA percent per stand
+        agg = (
+            agg.sort_values(['unique_id', 'SPECIES_PCT'], ascending=[True, False])
+            .groupby('unique_id')
+            .head(6)
+            .reset_index(drop=True)
+        )
+        # Assign rank and column names for pivoting
+        agg['rank'] = agg.groupby('unique_id')['SPECIES_PCT'].rank('first', ascending=False).astype(int)
+        agg['code'] = 'SPECIES_CD_' + agg['rank'].astype(str)
+        agg['percent'] = 'SPECIES_PCT_' + agg['rank'].astype(str)
+
+        # Pivot to wide format for species codes and percentages
+        spp_code_df = agg.pivot(index='unique_id', columns='code', values='SPECIES_CD').reset_index()
+        spp_pct_df = agg.pivot(index='unique_id', columns='percent', values='SPECIES_PCT').reset_index()
+
+        spp_code_cols = [f'SPECIES_CD_{x}' for x in range(1, 7)]
+        spp_pct_cols = [f'SPECIES_PCT_{x}' for x in range(1, 7)]
+
+        # For live trees, add columns for top 6 species codes and percentages
+        if status == ['L']:
+            for col, df_src in [(spp_code_cols, spp_code_df), (spp_pct_cols, spp_pct_df)]:
+                map_dict = df_src.set_index('unique_id').to_dict()
+                for c in col:
+                    if c in df_src.columns:
+                        df[c] = df['unique_id'].map(map_dict[c])
+                        if df_src is spp_pct_df:
+                            df[c] = df[c].fillna(0)
+                    else:
+                        df[c] = 0 if df_src is spp_pct_df else np.nan
+                    keep_columns.append(c)
+
+        # Create a summary string column for each stand (live or woody)
+        merged = pd.merge(spp_code_df, spp_pct_df, on='unique_id', how='outer')
+        def spp_tuple_str(row):
+            # Build a string like "SP1:40.0, SP2:30.0, ..."
+            pairs = [
+                f"{row.get(f'SPECIES_CD_{i}')}:{row.get(f'SPECIES_PCT_{i}')}"
+                for i in range(1, 7)
+                if pd.notnull(row.get(f'SPECIES_CD_{i}')) and pd.notnull(row.get(f'SPECIES_PCT_{i}')) and row.get(f'SPECIES_PCT_{i}') > 0
+            ]
+            return ', '.join(pairs) if pairs else None
+
+        spp_comp_col_name = 'stand_spp_comp_live' if status == ['L'] else 'stand_spp_comp_woody'
+        df[spp_comp_col_name] = df['unique_id'].map(
+            merged.set_index('unique_id').apply(spp_tuple_str, axis=1)
+        )
+        keep_columns.append(spp_comp_col_name)
+
+    return df, keep_columns
+
+
 def process_trees(in_folder: str,
                   out_folder: str,
                   surface_fire_intensity_model: str,
@@ -1251,7 +1314,8 @@ def process_trees(in_folder: str,
     df = helper.get_df(os.path.join(in_folder, 'survey_0.csv'))
     # Generate a unique ID for each plot
     df = helper.get_unique_id(df)
-    # Get the tree multipliers for each plot
+    # Calculate plot attributes
+    df = _round_plot_data(df)
     df = _calc_plot_multipliers(df)
 
     # ### PROCESS SAPLING ATTRIBUTES
@@ -1287,15 +1351,13 @@ def process_trees(in_folder: str,
     tree_df = _calc_tree_fofem_attributes(tree_df, tree_params_df)
     # Calculate fire behavior attributes
     tree_df = _calc_tree_fire_attributes(tree_df, surface_fire_intensity_model)
-    # Calculate woody debris related attributes
-    tree_df = _calc_tree_bulk_density(tree_df, tree_params_df)
-    tree_df = _calc_tree_specific_gravity(tree_df, tree_params_df)
     # Calculate weighted attributes
     tree_df = _calc_tree_weighted_attributes(tree_df)
     # Generate Master Tree DataFrame
     master_tree_df = _gen_master_tree_df(df, tree_df)
 
     # ### PROCESS STAND_LEVEL (PER HA) ATTRIBUTES
+    df, keep_columns = _calc_stand_composition(df, tree_df)
     df, keep_columns = _calc_stand_attributes(df, tree_df, stand_summary)
 
     # ### SAVE DATASETS TO OUTPUT FOLDER
