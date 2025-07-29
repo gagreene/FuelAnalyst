@@ -18,6 +18,7 @@ def get_df(csv_path):
     :param csv_path: Path to the CSV file.
     :return: DataFrame containing the CSV data.
     """
+    print(f'Getting DataFrame from CSV file at: {csv_path}')
     # Read the CSV file with header row and no index column
     return pd.read_csv(csv_path, header=0, index_col=False)
 
