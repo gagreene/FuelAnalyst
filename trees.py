@@ -939,14 +939,14 @@ def _gen_master_tree_df(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame
 
 def _calc_stand_attributes(df: pd.DataFrame,
                            tree_df: pd.DataFrame,
-                           stand_summary: dict) -> tuple[pd.DataFrame, list]:
+                           stand_summary_params: dict) -> tuple[pd.DataFrame, list]:
         """
         Calculates stand-level attributes for requested parameters and attributes.
         Adds columns to the plot-level DataFrame for each attribute.
 
         :param df: DataFrame containing plot-level data.
         :param tree_df: DataFrame containing individual tree data.
-        :param stand_summary: Dictionary containing stand summary parameters.
+        :param stand_summary_params: Dictionary containing stand summary parameters.
         :return: Updated plot-level DataFrame with stand density columns.
         """
         # Helper: get all permutations of summary types
@@ -1061,7 +1061,7 @@ def _calc_stand_attributes(df: pd.DataFrame,
         # Initialize a list of keep columns for the final master DataFrame
         keep_columns = []
 
-        for att, att_dict in stand_summary.items():
+        for att, att_dict in stand_summary_params.items():
             summary_list = att_dict.get('summary', [])
             metrics = att_dict.get('metrics', [])
             classes = att_dict.get('classes', {})
@@ -1288,7 +1288,7 @@ def _calc_stand_composition(df: pd.DataFrame, tree_df: pd.DataFrame) -> tuple[pd
 def process_trees(in_folder: str,
                   out_folder: str,
                   surface_fire_intensity_model: str,
-                  stand_summary: dict) -> tuple[pd.DataFrame, list, pd.DataFrame]:
+                  stand_summary_params: dict) -> tuple[pd.DataFrame, list, pd.DataFrame]:
     """
     Get the tree data from CSV files.
 
@@ -1296,7 +1296,7 @@ def process_trees(in_folder: str,
     :param out_folder: Path to the folder where output CSV files will be saved.
     :param surface_fire_intensity_model: Model to use for calculating surface fireline intensity (default is 'Byram').
         Options: ['Byram', 'Thomas']
-    :param stand_summary: Dictionary containing stand summary parameters.
+    :param stand_summary_params: Dictionary containing stand summary parameters.
     :return: Tuple containing:
         - Updated DataFrame with plot-level attributes.
         - List of columns to keep in the final DataFrame.
@@ -1358,7 +1358,7 @@ def process_trees(in_folder: str,
 
     # ### PROCESS STAND_LEVEL (PER HA) ATTRIBUTES
     df, keep_columns = _calc_stand_composition(df, tree_df)
-    df, keep_columns = _calc_stand_attributes(df, tree_df, stand_summary)
+    df, keep_columns = _calc_stand_attributes(df, tree_df, stand_summary_params)
 
     # ### SAVE DATASETS TO OUTPUT FOLDER
     os.makedirs(out_folder, exist_ok=True)
