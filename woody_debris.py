@@ -146,7 +146,7 @@ def _calc_plot_woody_tally_biomass(df: pd.DataFrame,
     # Initialize list of columns to keep
     keep_columns = []
 
-    measure_tally_compare = woody_debris_params['measure_vs_tally_comparison']
+    measure_tally_qmd_compare = woody_debris_params['measure_vs_tally_qmd_comparison']
 
     for woody_class, woody_class_dict in woody_debris_params['woody_debris_classes'].items():
         print(f'\t\tProcessing {woody_class.upper()} class')
@@ -197,8 +197,26 @@ def _calc_plot_woody_tally_biomass(df: pd.DataFrame,
                 prior_dc = dc
             del prior_dc
 
-            if measure_tally_compare:
-                ### Calculate actual QMD of woody fuel tallies
+            ### Calculate theoretical QMD of woody fuel tallies using Van Wagner approach
+            df = pd.concat([
+                df,
+                _get_van_wagner_qmd(
+                    df[[f'tsct_length_max_{woody_class_ext}'] +
+                       [f'tsct_length_total_{length}_{woody_class_ext}'
+                        for length in sorted(np.unique(transect_lengths))] +
+                       [f'count_{str(dc).replace('.', '')}_{woody_class_ext}'
+                        for dc in sorted(diameter_cutoffs)]],
+                    woody_class_ext,
+                    diameter_cutoffs,
+                    transect_lengths
+                ).set_axis(
+                    [f'qmd_vanwagner_{str(dc).replace('.', '')}_{woody_class_ext}'
+                     for dc in sorted(diameter_cutoffs)],
+                    axis=1)
+            ], axis=1)
+
+            ### Calculate actual QMD of woody fuel tallies (if comparing measure vs tally)
+            if measure_tally_qmd_compare:
                 prior_dc = diameter_cutoffs[0]
                 for i, dc in enumerate(diameter_cutoffs[1:]):
                     dc_name = str(dc).replace('.', '')
@@ -217,24 +235,6 @@ def _calc_plot_woody_tally_biomass(df: pd.DataFrame,
                     # Assign prior diameter cutoff for next iteration
                     prior_dc = dc
                 del prior_dc
-
-            ### Calculate theoretical QMD of woody fuel tallies using Van Wagner approach
-            df = pd.concat([
-                df,
-                _get_van_wagner_qmd(
-                    df[[f'tsct_length_max_{woody_class_ext}'] +
-                       [f'tsct_length_total_{length}_{woody_class_ext}'
-                        for length in sorted(np.unique(transect_lengths))] +
-                       [f'count_{str(dc).replace('.', '')}_{woody_class_ext}'
-                        for dc in sorted(diameter_cutoffs)]],
-                    woody_class_ext,
-                    diameter_cutoffs,
-                    transect_lengths
-                ).set_axis(
-                    [f'qmd_vanwagner_{str(dc).replace('.', '')}_{woody_class_ext}'
-                     for dc in sorted(diameter_cutoffs)],
-                    axis=1)
-            ], axis=1)
 
             ### Calculate tallied woody fuel biomass
             for i, dc in enumerate(diameter_cutoffs):
@@ -258,7 +258,7 @@ def _calc_plot_woody_tally_biomass(df: pd.DataFrame,
                     # Add to keep columns
                     keep_columns.append(f'woody_kgpm2_{dc_name}_{woody_class_ext}')
 
-                elif measure_tally_compare:
+                elif measure_tally_qmd_compare:
                     # Calculate volumes and biomass using Van Wagner QMD
                     df[f'woody_volume_vanwagner_{dc_name}_{woody_class_ext}'] = (
                             10000 * df[f'count_{dc_name}_{woody_class_ext}'] *
@@ -286,7 +286,7 @@ def _calc_plot_woody_tally_biomass(df: pd.DataFrame,
                 else:
                     break
 
-    if measure_tally_compare:
+    if measure_tally_qmd_compare:
         keep_columns.extend([col for col in df if 'qmd_vanwagner' in col])
         keep_columns.extend([col for col in df if 'qmd_calculated' in col])
         keep_columns.extend([col for col in df if 'kgpm2_vanwagner' in col])
