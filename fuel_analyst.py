@@ -85,6 +85,10 @@ default_stand_summary_dict = {
 }
 
 default_woody_debris_dict = {
+    'protocol_transect_params': {
+        'size_classes': [0.5, 7, 30, float('inf')],  # Default size classes for transects (cm)
+        'transect_lengths': [4, 10, 20, 30],  # Default transect lengths (m)
+    },
     'woody_debris_classes': {
         'canadian': {
             'process_classes': True,  # Process Canadian woody debris classes
