@@ -13,130 +13,34 @@ import fnmatch
 from scipy.stats import linregress
 import helper
 
-
 bulk_density_map = [
-    # (output bd column, tree params column, output biomass column)
+    # (output bd column, tree params column, duff/litter depth columm, output biomass column)
     ('stand_duff_bd_kgpm3', 'Duff_BD', 'stand_duff_depth_m', 'ffl_duff_kgpm2'),
     ('stand_litter_bd_kgpm3', 'Litter_BD', 'stand_litter_depth_m', 'ffl_litter_kgpm2'),
+]
+
+woody_tally_map = [
+    # (output tally column, transect 1 tally 0-2m column, transect 1 tally 28-30m column,
+    # transect 2 tally 0-2m column, transect 2 tally 28-30m column)
+    ('woody_fine_count', 't1_woody_fine_0to2', 't1_woody_fine_28to30', 't2_woody_fine_0to2', 't2_woody_fine_28to30')
 ]
 
 specific_gravity_map = [
     # (output sg column, input sg column, tree parameters column, lower diam limit, upper diam limit)
     ('woody_sg_05cm', 'SG_0.5', 0, 0.5),
+    ('woody_sg_0635cm', 'SG_0.635', 0, 0.635),      # 1hr woody fuels
     ('woody_sg_1cm', 'SG_1', 0.5, 1),
+    ('woody_sg_2cm', 'SG_2', 1, 2),
     ('woody_sg_3cm', 'SG_3', 1, 3),
+    ('woody_sg_4cm', 'SG_4', 3, 4),
     ('woody_sg_5cm', 'SG_5', 3, 5),
+    ('woody_sg_6cm', 'SG_6', 5, 6),
     ('woody_sg_7cm', 'SG_7', 5, 7),
     ('woody_sg_gt7cm', 'SG_7+', 7, 9999),
-    ('woody_sg_1hr', 'SG_0.635', 0, 0.635),
-    ('woody_sg_10hr', 'SG_2.54', 0.635, 2.54),
-    ('woody_sg_100hr', 'SG_7.62', 2.54, 7.62),
-    ('woody_sg_gt100hr', 'SG_7.62+', 7.62, 9999),
+    ('woody_sg_254cm', 'SG_2.54', 0.635, 2.54),     # 10hr woody fuels
+    ('woody_sg_762cm', 'SG_7.62', 2.54, 7.62),      # 100hr woody fuels
+    ('woody_sg_gt762cm', 'SG_7.62+', 7.62, 9999),     # 1000hr woody fuels
 ]
-
-
-def _get_van_wagner_qmd(inDF, extension, dClasses, tLengths, tsct):
-    # Replace missing values with np.nan
-    dcDF = inDF.copy().replace(r'^\s+$', np.nan, regex=True)
-
-    # Average QMD values from Delisle and Woodard (1988)
-    # Designed for typical Canadian fuel size classes
-    # Polynomial Model Equation for Delisle and Woodard (1988) points
-    # (only good between ~0.5cm and ~7cm):
-    # QMD = 0.0537x^2 + 0.4583x + 0.0977 (R^2 = 0.9977)
-    delisleDict = {
-        '0.5': 0.3155,
-        '0.635': 0.0537 * (0.635 ** 2) + 0.4583 * 0.635 + 0.0977,
-        '1': 0.68975,
-        '2': 0.0537 * (2 ** 2) + 0.4583 * 2 + 0.0977,
-        '2.5': 0.0537 * (2.5 ** 2) + 0.4583 * 2.5 + 0.0977,
-        '2.54': 0.0537 * (2.54 ** 2) + 0.4583 * 2.54 + 0.0977,
-        '3': 1.80575,
-        '5': 3.87075,
-        '7': 5.8905,
-        '7.5': 0.0537 * (7.5 ** 2) + 0.4583 * 7.5 + 0.0977,
-        '7.62': 0.0537 * (7.62 ** 2) + 0.4583 * 7.62 + 0.0977
-    }
-
-    ## Count all diameter classes with empty tallies (empty = null or nan)
-    dcDF['countEmpty'] = dcDF[[col for col in dcDF.columns if 'count' in col]].isnull().sum(axis=1)
-
-    # Replace NAN values with 0
-    dcDF = dcDF.replace(np.nan, 0)
-
-    ## These calculations should only happen if counts are missing in only 3 or fewer classes
-    for i, dc in enumerate(dClasses):
-        if i == 0:
-            dcDF[f'adjFreq{dc}'] = ((max(tLengths) *
-                                     (dcDF[fnmatch.filter(list(dcDF.columns),
-                                                          f't{tsct}_count{dc}{extension}')] / tLengths[i])) /
-                                    dc)
-            dcDF[f'midClass{dc}'] = dc / 2
-        else:
-            dcDF[f'adjFreq{dc}'] = ((max(tLengths) *
-                                     (dcDF[fnmatch.filter(list(dcDF.columns),
-                                                          f't{tsct}_count{dc}{extension}')] / tLengths[i])) /
-                                    (dc - dClasses[i - 1]))
-            dcDF[f'midClass{dc}'] = (dc + dClasses[i - 1]) / 2
-        dcDF[f'adjFreq{dc}'] = dcDF[f'adjFreq{dc}'].replace(0, np.nan)  # Replace 0 values with np.nan
-        dcDF[f'lnAdjFreq{dc}'] = np.log(dcDF[f'adjFreq{dc}'])
-        dcDF[f'lnMidClass{dc}'] = np.log(dcDF[f'midClass{dc}'])
-
-    # Get X and Y elements to enable slope (linear regression) calculation
-    dcDF['slopeX'] = dcDF.apply(lambda x: x[[f'lnMidClass{dc}' for dc in dClasses]].values.tolist(), axis=1)
-    dcDF['slopeY'] = dcDF.apply(lambda x: x[[f'lnAdjFreq{dc}' for dc in dClasses]].values.tolist(), axis=1)
-
-    # Delete infinite or null elements from slopeX and slopeY columns, using slopeY as a reference to match indices
-    # Must delete slopeX values first, otherwise you lose the reference for index matching
-    dcDF['slopeY'] = dcDF.apply(lambda x: np.array(x.slopeY)[np.isfinite(x.slopeX)], axis=1)
-    dcDF['slopeX'] = dcDF.apply(lambda x: np.array(x.slopeX)[np.isfinite(x.slopeX)], axis=1)
-    dcDF['slopeX'] = dcDF.apply(lambda x: np.array(x.slopeX)[np.isfinite(x.slopeY)], axis=1)
-    dcDF['slopeY'] = dcDF.apply(lambda x: np.array(x.slopeY)[np.isfinite(x.slopeY)], axis=1)
-
-    # Calculate slope (b) by creating a regression against the points
-    def getSlope(inX, inY):
-        try:
-            return linregress(inX, inY)[0]
-        except RuntimeWarning:
-            return np.nan
-
-    dcDF['slopeB'] = dcDF.apply(lambda x: getSlope(x.slopeX, x.slopeY)
-    if len(list(x.slopeY)) > 1
-    else np.nan, axis=1)
-
-    # Handle situation where slope (b) == -1 or -3
-    dcDF['slopeB'] = np.where((dcDF.slopeB == -1) | (dcDF.slopeB == -3),
-                              dcDF.slopeB + 0.01,
-                              dcDF.slopeB)
-
-    ## Calculate QMD for each size class
-    ## Apply default plot-level QMD values if counts missing in at least four diameter classes
-    for i, dc in enumerate(dClasses):
-        try:
-            if i == 0:
-                dcDF[f'qmd{dc}'] = dcDF.apply(
-                    lambda x: np.sqrt(((x.slopeB + 1) * (np.power(dc, x.slopeB + 3) - np.power(0.1, x.slopeB + 3))) /
-                                      ((x.slopeB + 3) * (np.power(dc, x.slopeB + 1) - np.power(0.1, x.slopeB + 1))))
-                    if (len(x.slopeY) > 1) &
-                       (np.isfinite(x.slopeB))
-                    else delisleDict.get(f'{dc}', np.nan), axis=1)
-            else:
-                dcDF[f'qmd{dc}'] = dcDF.apply(
-                    lambda x: np.sqrt(
-                        ((x.slopeB + 1) * (np.power(dc, x.slopeB + 3) -
-                                           np.power(dClasses[i - 1], x.slopeB + 3))) /
-                        ((x.slopeB + 3) * (np.power(dc, x.slopeB + 1) -
-                                           np.power(dClasses[i - 1], x.slopeB + 1))))
-                    if ((len(x.slopeY) > 1) & np.isfinite(x.slopeB) & np.isfinite(x[f'adjFreq{dc}']))
-                    else delisleDict.get(f'{dc}', np.nan), axis=1)
-        except RuntimeWarning:
-            dcDF[f'qmd{dc}'] = delisleDict.get(f'{dc}', np.nan)
-            pass
-
-        # Replace qmd values with np.nan if no count exists for the class
-        dcDF[f'qmd{dc}'] = np.where(dcDF[f't{tsct}_count{dc}{extension}'] == 0, np.nan, dcDF[f'qmd{dc}'])
-
-    return dcDF[[f'qmd{dc}' for dc in dClasses]]
 
 
 def _calc_plot_t2_azimuth(df: pd.DataFrame) -> pd.DataFrame:
@@ -192,9 +96,10 @@ def _calc_plot_duff_litter_depths(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
+
 def _calc_plot_tsct_slope_correction(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculate the corrected transect lengths based on diameter class.
+    Calculate the slope correction factor for each transect.
 
     :param df: DataFrame containing transect length and slope data.
     :return: Updated df with corrected transect lengths.
@@ -216,6 +121,481 @@ def _calc_plot_tsct_slope_correction(df: pd.DataFrame) -> pd.DataFrame:
         df[f't{tsct}_slope_cor'] = (1 + np.power(df[f't{tsct}_slope_rad'], 2)) ** 0.5
 
     return df
+
+
+def _calc_plot_fine_woody_tallies(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Sum fine woody debris tallies from transects 1 and 2.
+
+    :param df: DataFrame containing tallies from both transects.
+    :return: Updated DataFrame with summed tallies.
+    """
+
+    for out_col, t1_meas1_col, t1_meas2_col, t2_meas1_col, t2_meas2_col in woody_tally_map:
+        # Calculate total tallies across both transects
+        df[out_col] = df[t1_meas1_col] + df[t1_meas2_col] + df[t2_meas1_col] + df[t2_meas2_col]
+
+    return df
+
+
+def _calc_plot_woody_tally_biomass(df: pd.DataFrame, woody_merged_df: pd.DataFrame) -> pd.DataFrame:
+    for tsct in range(1, 3):
+        print(f'\tProcessing Transect {tsct}')
+
+        #### TALLIED WOODY FUELS
+        ## CALCULATE VAN WAGNER QMD FOR EACH DIAMETER CLASS
+        # Create diameter class and transect length lists
+        canClasses = [0.5, 1, 3, 5, 7]
+        canLengths = [4, 10, 10, 10, 10, 30]
+        usClasses = [0.635, 2.54, 7.62]
+        usLengths = [4, 10, 10, 30]
+        modClasses = [0.5, 1, 2, 3, 4, 5, 6, 7]
+        modLengths = [4, 10, 10, 10, 10, 10, 10, 10, 30]
+
+        ### Get counts of woody fuel tallies
+        # Canadian Size Classes
+        df[f't{tsct}_count_05'] = df[f't{tsct}_woody_fine_0to2'] + df[f't{tsct}_woody_fine_28to30']
+        df[f't{tsct}_count_1'] = df.GlobalID.map(
+            woody_merged_df[
+                (woody_merged_df['woody_diam_cm'] > 0.5) &
+                (woody_merged_df['woody_diam_cm'] <= 1) &
+                (woody_merged_df['transect_id'] == tsct)
+            ].groupby('ParentGlobalID')['woody_diam_cm'].count())
+        df[f't{tsct}_count_3'] = df.GlobalID.map(
+            woody_merged_df[
+                (woody_merged_df['woody_diam_cm'] > 1) &
+                (woody_merged_df['woody_diam_cm'] <= 3) &
+                (woody_merged_df['transect_id'] == tsct)
+            ].groupby('ParentGlobalID')['woody_diam_cm'].count())
+        df[f't{tsct}_count_5'] = df.GlobalID.map(
+            woody_merged_df[
+                (woody_merged_df['woody_diam_cm'] > 3) &
+                (woody_merged_df['woody_diam_cm'] <= 5) &
+                (woody_merged_df['transect_id'] == tsct)
+            ].groupby('ParentGlobalID')['woody_diam_cm'].count())
+        df[f't{tsct}_count_7'] = df.GlobalID.map(
+            woody_merged_df[
+                (woody_merged_df['woody_diam_cm'] > 5) &
+                (woody_merged_df['woody_diam_cm'] <= 7) &
+                (woody_merged_df['transect_id'] == tsct)
+            ].groupby('ParentGlobalID')['woody_diam_cm'].count())
+        # U.S. Size Classes
+        df[f't{tsct}_count_0635'] = df.GlobalID.map(
+            woody_merged_df[
+                (woody_merged_df['woody_diam_cm'] > 0.635) &
+                (woody_merged_df['woody_diam_cm'] <= 1) &
+                (woody_merged_df['transect_id'] == tsct)
+            ].groupby('ParentGlobalID')['woody_diam_cm'].count())
+        df[f't{tsct}_count_254'] = df.GlobalID.map(
+            woody_merged_df[
+                (woody_merged_df['woody_diam_cm'] > 0.5) &
+                (woody_merged_df['woody_diam_cm'] <= 2.54) &
+                (woody_merged_df['transect_id'] == tsct)
+            ].groupby('ParentGlobalID')['woody_diam_cm'].count())
+        # Ensure all 7.62cm class samples are from 0-5m and 25-30m along the transect
+        df[f't{tsct}_count_762'] = df.GlobalID.map(
+            woody_merged_df[
+                (woody_merged_df['woody_diam_cm'] > 2.54) &
+                (woody_merged_df['woody_diam_cm'] <= 7.62) &
+                ((woody_merged_df['woody_dist'].astype(float) <= 5) |
+                 (woody_merged_df['woody_dist'].astype(float) >= 25)) &
+                (woody_merged_df['transect_id'] == tsct)
+            ].groupby('ParentGlobalID')['woody_diam_cm'].count())
+        # Modified Size Classes
+        df[f't{tsct}_count_05_mod'] = df[f't{tsct}_woody_fine_0to2'] + df[f't{tsct}_woody_fine_28to30']
+        df[f't{tsct}_count_1_mod'] = df.GlobalID.map(
+            woody_merged_df[
+                (woody_merged_df['woody_diam_cm'] > 0.5) &
+                (woody_merged_df['woody_diam_cm'] <= 1) &
+                (woody_merged_df['transect_id'] == tsct)
+            ].groupby('ParentGlobalID')['woody_diam_cm'].count())
+        df[f't{tsct}_count_2_mod'] = df.GlobalID.map(
+            woody_merged_df[
+                (woody_merged_df['woody_diam_cm'] > 1) &
+                (woody_merged_df['woody_diam_cm'] <= 2) &
+                (woody_merged_df['transect_id'] == tsct)
+            ].groupby('ParentGlobalID')['woody_diam_cm'].count())
+        df[f't{tsct}_count_3_mod'] = df.GlobalID.map(
+            woody_merged_df[
+                (woody_merged_df['woody_diam_cm'] > 2) &
+                (woody_merged_df['woody_diam_cm'] <= 3) &
+                (woody_merged_df['transect_id'] == tsct)
+            ].groupby('ParentGlobalID')['woody_diam_cm'].count())
+        df[f't{tsct}_count_4_mod'] = df.GlobalID.map(
+            woody_merged_df[
+                (woody_merged_df['woody_diam_cm'] > 3) &
+                (woody_merged_df['woody_diam_cm'] <= 4) &
+                (woody_merged_df['transect_id'] == tsct)
+            ].groupby('ParentGlobalID')['woody_diam_cm'].count())
+        df[f't{tsct}_count_5_mod'] = df.GlobalID.map(
+            woody_merged_df[
+                (woody_merged_df['woody_diam_cm'] > 4) &
+                (woody_merged_df['woody_diam_cm'] <= 5) &
+                (woody_merged_df['transect_id'] == tsct)
+            ].groupby('ParentGlobalID')['woody_diam_cm'].count())
+        df[f't{tsct}_count_6_mod'] = df.GlobalID.map(
+            woody_merged_df[
+                (woody_merged_df['woody_diam_cm'] > 5) &
+                (woody_merged_df['woody_diam_cm'] <= 6) &
+                (woody_merged_df['transect_id'] == tsct)
+            ].groupby('ParentGlobalID')['woody_diam_cm'].count())
+        df[f't{tsct}_count_7_mod'] = df.GlobalID.map(
+            woody_merged_df[
+                (woody_merged_df['woody_diam_cm'] > 6) &
+                (woody_merged_df['woody_diam_cm'] <= 7) &
+                (woody_merged_df['transect_id'] == tsct)
+            ].groupby('ParentGlobalID')['woody_diam_cm'].count())
+
+        ### Calculate actual QMD of woody fuel tallies
+        # Canadian Size Classes
+        df[f't{tsct}_diamSquared_sum_1'] = df.GlobalID.map(
+            woody_merged_df[
+                (woody_merged_df['woody_diam_cm'] > 0.5) &
+                (woody_merged_df['woody_diam_cm'] <= 1) &
+                (woody_merged_df['transect_id'] == tsct)
+                ].groupby('ParentGlobalID')['woody_diamSquared'].sum())
+        df[f't{tsct}_calcQMD_1'] = np.where(df[f't{tsct}_count_1'] > 0,
+                                            np.sqrt(df[f't{tsct}_diamSquared_sum_1'] /
+                                                    df[f't{tsct}_count_1']),
+                                            np.nan)
+        df[f't{tsct}_diamSquared_sum_3'] = df.GlobalID.map(
+            woody_merged_df[
+                (woody_merged_df['woody_diam_cm'] > 1) &
+                (woody_merged_df['woody_diam_cm'] <= 3) &
+                (woody_merged_df['transect_id'] == tsct)
+                ].groupby('ParentGlobalID')['woody_diamSquared'].sum())
+        df[f't{tsct}_calcQMD_3'] = np.where(df[f't{tsct}_count_3'] > 0,
+                                            np.sqrt(df[f't{tsct}_diamSquared_sum_3'] /
+                                                    df[f't{tsct}_count_3']),
+                                            np.nan)
+        df[f't{tsct}_diamSquared_sum_5'] = df.GlobalID.map(
+            woody_merged_df[(woody_merged_df['woody_diam_cm'] > 3) &
+                            (woody_merged_df['woody_diam_cm'] <= 5)].groupby('ParentGlobalID')['woody_diamSquared'].sum())
+        df[f't{tsct}_calcQMD_5'] = np.where(df[f't{tsct}_count_5'] > 0,
+                                            np.sqrt(df[f't{tsct}_diamSquared_sum_5'] /
+                                                    df[f't{tsct}_count_5']),
+                                            np.nan)
+        df[f't{tsct}_diamSquared_sum_7'] = df.GlobalID.map(
+            woody_merged_df[(woody_merged_df['woody_diam_cm'] > 5) &
+                            (woody_merged_df['woody_diam_cm'] <= 7)].groupby('ParentGlobalID')['woody_diamSquared'].sum())
+        df[f't{tsct}_calcQMD_7'] = np.where(df[f't{tsct}_count_7'] > 0,
+                                            np.sqrt(df[f't{tsct}_diamSquared_sum_7'] /
+                                                    df[f't{tsct}_count_7']),
+                                            np.nan)
+        # U.S. Size Classes
+        df[f't{tsct}_diamSquared_sum_254'] = df.GlobalID.map(
+            woody_merged_df[(woody_merged_df['woody_diam_cm'] > 0.635) &
+                            (woody_merged_df['woody_diam_cm'] <= 2.54)].groupby('ParentGlobalID')['woody_diamSquared'].sum())
+        df[f't{tsct}_calcQMD_254'] = np.where(df[f't{tsct}_count_254'] > 0,
+                                               np.sqrt(df[f't{tsct}_diamSquared_sum_254'] /
+                                                       df[f't{tsct}_count_254']),
+                                               np.nan)
+        df[f't{tsct}_diamSquared_sum_762'] = df.GlobalID.map(
+            woody_merged_df[(woody_merged_df['woody_diam_cm'] > 2.54) &
+                            (woody_merged_df['woody_diam_cm'] <= 7.62) &
+                            ((woody_merged_df['woody_dist'].astype(float) <= 5) |
+                             (woody_merged_df['woody_dist'].astype(float) >= 25))].groupby('ParentGlobalID')[
+                'woody_diamSquared'].sum())
+        df[f't{tsct}_calcQMD_762'] = np.where(df[f't{tsct}_count_762'] > 0,
+                                               np.sqrt(df[f't{tsct}_diamSquared_sum_762'] /
+                                                       df[f't{tsct}_count_762']),
+                                               np.nan)
+        # Modified Size Classes
+        df[f't{tsct}_diamSquared_sum_1_mod'] = df.GlobalID.map(
+            woody_merged_df[(woody_merged_df['woody_diam_cm'] > 0.635) &
+                            (woody_merged_df['woody_diam_cm'] <= 1)].groupby('ParentGlobalID')['woody_diamSquared'].sum())
+        df[f't{tsct}_calcQMD_1_mod'] = np.where(df[f't{tsct}_count_1_mod'] > 0,
+                                                np.sqrt(
+                                                    df[f't{tsct}_diamSquared_sum_1_mod'] /
+                                                    df[f't{tsct}_count_1_mod']),
+                                                np.nan)
+        df[f't{tsct}_diamSquared_sum_2_mod'] = df.GlobalID.map(
+            woody_merged_df[(woody_merged_df['woody_diam_cm'] > 1) &
+                            (woody_merged_df['woody_diam_cm'] <= 2)].groupby('ParentGlobalID')['woody_diamSquared'].sum())
+        df[f't{tsct}_calcQMD_2_mod'] = np.where(df[f't{tsct}_count_2_mod'] > 0,
+                                                np.sqrt(df[f't{tsct}_diamSquared_sum_2_mod'] /
+                                                        df[f't{tsct}_count_2_mod']),
+                                                np.nan)
+        df[f't{tsct}_diamSquared_sum_3_mod'] = df.GlobalID.map(
+            woody_merged_df[(woody_merged_df['woody_diam_cm'] > 2) &
+                            (woody_merged_df['woody_diam_cm'] <= 3)].groupby('ParentGlobalID')['woody_diamSquared'].sum())
+        df[f't{tsct}_calcQMD_3_mod'] = np.where(df[f't{tsct}_count_3_mod'] > 0,
+                                                np.sqrt(df[f't{tsct}_diamSquared_sum_3_mod'] /
+                                                        df[f't{tsct}_count_3_mod']),
+                                                np.nan)
+        df[f't{tsct}_diamSquared_sum_4_mod'] = df.GlobalID.map(
+            woody_merged_df[(woody_merged_df['woody_diam_cm'] > 3) &
+                            (woody_merged_df['woody_diam_cm'] <= 4)].groupby('ParentGlobalID')['woody_diamSquared'].sum())
+        df[f't{tsct}_calcQMD_4_mod'] = np.where(df[f't{tsct}_count_4_mod'] > 0,
+                                                np.sqrt(df[f't{tsct}_diamSquared_sum_4_mod'] /
+                                                        df[f't{tsct}_count_4_mod']),
+                                                np.nan)
+        df[f't{tsct}_diamSquared_sum_5_mod'] = df.GlobalID.map(
+            woody_merged_df[(woody_merged_df['woody_diam_cm'] > 4) &
+                            (woody_merged_df['woody_diam_cm'] <= 5)].groupby('ParentGlobalID')['woody_diamSquared'].sum())
+        df[f't{tsct}_calcQMD_5_mod'] = np.where(df[f't{tsct}_count_5_mod'] > 0,
+                                                np.sqrt(df[f't{tsct}_diamSquared_sum_5_mod'] /
+                                                        df[f't{tsct}_count_5_mod']),
+                                                np.nan)
+        df[f't{tsct}_diamSquared_sum_6_mod'] = df.GlobalID.map(
+            woody_merged_df[(woody_merged_df['woody_diam_cm'] > 5) &
+                            (woody_merged_df['woody_diam_cm'] <= 6)].groupby('ParentGlobalID')['woody_diamSquared'].sum())
+        df[f't{tsct}_calcQMD_6_mod'] = np.where(df[f't{tsct}_count_6_mod'] > 0,
+                                                np.sqrt(df[f't{tsct}_diamSquared_sum_6_mod'] /
+                                                        df[f't{tsct}_count_6_mod']),
+                                                np.nan)
+        df[f't{tsct}_diamSquared_sum_7_mod'] = df.GlobalID.map(
+            woody_merged_df[(woody_merged_df['woody_diam_cm'] > 6) &
+                            (woody_merged_df['woody_diam_cm'] <= 7)].groupby('ParentGlobalID')['woody_diamSquared'].sum())
+        df[f't{tsct}_calcQMD_7_mod'] = np.where(df[f't{tsct}_count_7_mod'] > 0,
+                                                np.sqrt(df[f't{tsct}_diamSquared_sum_7_mod'] /
+                                                        df[f't{tsct}_count_7_mod']),
+                                                np.nan)
+
+        ### Get Van Wagner QMD values
+        # Canadian Size Classes
+        df = pd.concat([
+            df,
+            _get_van_wagner_qmd(
+                df[[f't{tsct}_count_{str(dc).replace('.', '')}' for dc in sorted(canClasses)]],
+                '', canClasses, canLengths, tsct
+            ).set_axis([f't{tsct}_woody_qmd_{str(dc).replace('.', '')}_can' for dc in sorted(canClasses)],
+                       axis=1)
+        ], axis=1)
+        # U.S. Size Classes
+        df = pd.concat([
+            df,
+            _get_van_wagner_qmd(
+                df[[f't{tsct}_count_{str(dc).replace('.', '')}' for dc in sorted(usClasses)]],
+                '', usClasses, usLengths, tsct
+            ).set_axis([f't{tsct}_woody_qmd_{str(dc).replace('.', '')}_us' for dc in sorted(usClasses)],
+                       axis=1)
+        ], axis=1)
+        # Modified Size Classes
+        df = pd.concat([
+            df,
+            _get_van_wagner_qmd(
+                df[[f't{tsct}_count_{str(dc).replace('.', '')}_mod' for dc in sorted(modClasses)]],
+                '_mod', modClasses, modLengths, tsct
+            ).set_axis([f't{tsct}_woody_qmd_{str(dc).replace('.', '')}_mod' for dc in sorted(modClasses)],
+                       axis=1)
+        ], axis=1)
+
+        # CALCULATE BIOMASS FOR TALLIED WOODY FUELS
+        for i, dc in enumerate(canClasses):
+            dc_name = str(dc).replace('.', '')
+            # Calculate corrected transect lengths
+            df[f't{tsct}_woody_{dc_name}_can_tlength_cor'] = canLengths[i] / df[f't{tsct}_slope_cor']
+            # Convert to volumes and biomass using Van Wagner QMD value
+            df[f't{tsct}_woody_volume_{dc_name}_can'] = (
+                    10000 * df[f't{tsct}_count_{dc_name}'] *
+                    (1.234 / df[f't{tsct}_woody_{dc_name}_can_tlength_cor']) *
+                    np.power(df[f't{tsct}_woody_qmd_{dc_name}_can'] / 100, 2)
+            )
+            df[f't{tsct}_{dc_name}_can_kgpm2'] = (df[f't{tsct}_slope_cor'] * df[f'woody_sg_{dc_name}cm'] *
+                                             df[f't{tsct}_woody_volume_{dc_name}_can'] / 10)
+
+        for i, dc in enumerate(usClasses):
+            dc_name = str(dc).replace('.', '')
+            # Calculate corrected transect lengths
+            df[f't{tsct}_woody_{dc_name}_us_tlength_cor'] = usLengths[i] / df[f't{tsct}_slope_cor']
+            # Convert to volumes and biomass using Van Wagner QMD value
+            df[f't{tsct}_woody_volume_{dc_name}_us'] = (10000 * df[f't{tsct}_count_{dc_name}'] *
+                                                 (1.234 / df[f't{tsct}_woody_{dc_name}_us_tlength_cor']) *
+                                                 np.power(df[f't{tsct}_woody_qmd_{dc_name}_us'] / 100, 2))
+            df[f't{tsct}_{dc_name}_us_kgpm2'] = (df[f't{tsct}_slope_cor'] * df[f'woody_sg_{dc_name}cm'] *
+                                            df[f't{tsct}_woody_volume_{dc_name}_us'] / 10)
+
+        for i, dc in enumerate(modClasses):
+            dc_name = str(dc).replace('.', '')
+            # Calculate corrected transect lengths
+            df[f't{tsct}_woody_{dc_name}_mod_tlength_cor'] = modLengths[i] / df[f't{tsct}_slope_cor']
+            # Convert to volumes and biomass using Van Wagner QMD value
+            df[f't{tsct}_woody_volume_{dc_name}_mod'] = (10000 * df[f't{tsct}_count_{dc_name}_mod'] *
+                                                  (1.234 / df[f't{tsct}_woody_{dc_name}_mod_tlength_cor']) *
+                                                  np.power(df[f't{tsct}_woody_qmd_{dc_name}_mod'] / 100, 2))
+            df[f't{tsct}_{dc_name}_mod_kgpm2'] = (df[f't{tsct}_slope_cor'] * df[f'woody_sg_{dc_name}cm'] *
+                                             df[f't{tsct}_woody_volume_{dc_name}_mod'] / 10)
+
+    return df
+
+
+def _calc_plot_woody_tally_biomass_streamlined(df: pd.DataFrame,
+                                               woody_merged_df: pd.DataFrame,
+                                               woody_debris_params: dict) -> tuple[pd.DataFrame, list]:
+    print(f'\tProcessing tallied woody fuels')
+
+    # Initialize list of columns to keep
+    keep_columns = []
+
+    measure_tally_compare = woody_debris_params['measure_vs_tally_comparison']
+
+    for woody_class, woody_class_dict in woody_debris_params['woody_debris_classes'].items():
+        print(f'\t\tProcessing {woody_class.upper()} class')
+
+        if woody_class_dict['process_classes']:
+            # Get the class extension, diameter cutoffs, and transect lengths
+            woody_class_ext = woody_class_dict['class_extension']
+            diameter_cutoffs = woody_class_dict['diameter_cutoffs']
+            transect_lengths = woody_class_dict['transect_lengths']
+
+            ### Calculate total and max transect lengths for each plot
+            for i, lngth in enumerate(np.unique(transect_lengths)):
+                df[f'tsct_length_total_{lngth}_{woody_class_ext}'] = df['num_transects'] * lngth
+            df[f'tsct_length_max_{woody_class_ext}'] = df['num_transects'] * max(transect_lengths)
+
+            ### Calculate corrected slope lengths
+            for i, lngth in enumerate(np.unique(transect_lengths)):
+                df[f'tsct_length_cor_{lngth}_{woody_class_ext}'] = 0
+                for tsct in range(1, 3):
+                    df[f't{tsct}_length_cor_{lngth}_{woody_class_ext}'] = (
+                            lngth / df[f't{tsct}_slope_cor']
+                    )
+                    df[f'tsct_length_cor_{lngth}_{woody_class_ext}'] += (
+                        df[f't{tsct}_length_cor_{lngth}_{woody_class_ext}']
+                    )
+                df[f'tsct_slope_cor_{lngth}_{woody_class_ext}'] = (
+                        df[f'tsct_length_total_{lngth}_{woody_class_ext}'] /
+                        df[f'tsct_length_cor_{lngth}_{woody_class_ext}']
+                )
+
+            ### Get counts of woody fuel tallies
+            prior_dc = 0
+            for i, dc in enumerate(diameter_cutoffs):
+                dc_name = str(dc).replace('.', '')
+                df[f'count_{dc_name}_{woody_class_ext}'] = df.GlobalID.map(
+                    woody_merged_df[
+                        (woody_merged_df['woody_diam_cm'] > prior_dc) &
+                        (woody_merged_df['woody_diam_cm'] <= dc)
+                        ].groupby('ParentGlobalID')['woody_diam_cm'].count()
+                )
+                if i == 0:
+                    df[f'count_{dc_name}_{woody_class_ext}'] = (
+                        df[f'count_{dc_name}_{woody_class_ext}'].replace(np.nan, 0) +
+                        df['woody_fine_count'].replace(np.nan, 0)
+                    )
+
+                # Assign prior diameter cutoff for next iteration
+                prior_dc = dc
+            del prior_dc
+
+            if measure_tally_compare:
+                ### Calculate actual QMD of woody fuel tallies
+                prior_dc = diameter_cutoffs[0]
+                for i, dc in enumerate(diameter_cutoffs[1:]):
+                    dc_name = str(dc).replace('.', '')
+                    df[f'diamSquared_sum_{dc_name}_{woody_class_ext}'] = df.GlobalID.map(
+                        woody_merged_df[
+                            (woody_merged_df['woody_diam_cm'] > prior_dc) &
+                            (woody_merged_df['woody_diam_cm'] <= dc)
+                            ].groupby('ParentGlobalID')['woody_diamSquared'].sum()
+                    )
+                    df[f'qmd_calculated_{dc_name}_{woody_class_ext}'] = np.where(
+                        df[f'count_{dc_name}_{woody_class_ext}'] > 0,
+                        np.sqrt(df[f'diamSquared_sum_{dc_name}_{woody_class_ext}'] /
+                                df[f'count_{dc_name}_{woody_class_ext}']),
+                        np.nan
+                    )
+                    # Assign prior diameter cutoff for next iteration
+                    prior_dc = dc
+                del prior_dc
+
+            ### Calculate theoretical QMD of woody fuel tallies using Van Wagner approach
+            df = pd.concat([
+                df,
+                _get_van_wagner_qmd(
+                    df[[f'tsct_length_max_{woody_class_ext}'] +
+                       [f'tsct_length_total_{length}_{woody_class_ext}'
+                        for length in sorted(np.unique(transect_lengths))] +
+                       [f'count_{str(dc).replace('.', '')}_{woody_class_ext}'
+                        for dc in sorted(diameter_cutoffs)]],
+                    woody_class_ext,
+                    diameter_cutoffs,
+                    transect_lengths
+                ).set_axis(
+                    [f'qmd_vanwagner_{str(dc).replace('.', '')}_{woody_class_ext}'
+                     for dc in sorted(diameter_cutoffs)],
+                    axis=1)
+            ], axis=1)
+
+            ### Calculate tallied woody fuel biomass
+            for i, dc in enumerate(diameter_cutoffs):
+                dc_name = str(dc).replace('.', '')
+
+                # Convert to volumes and biomass using calculated QMD value
+                if i == 0:
+                    # Calculate volume and biomass using Van Wagner QMD for smallest size class
+                    df[f'woody_volume_{dc_name}_{woody_class_ext}'] = (
+                            10000 * df[f'count_{dc_name}_{woody_class_ext}'] *
+                            ((np.pi**2 / 8) / df[f'tsct_length_cor_{transect_lengths[i]}_{woody_class_ext}']) *
+                            np.power(df[f'qmd_vanwagner_{dc_name}_{woody_class_ext}'] / 100, 2)
+                    )
+                    df[f'woody_kgpm2_{dc_name}_{woody_class_ext}'] = (
+                            df[f'tsct_slope_cor_{transect_lengths[i]}_{woody_class_ext}'] *
+                            df[f'woody_sg_{dc_name}cm'] *
+                            df[f'woody_volume_{dc_name}_{woody_class_ext}'] /
+                            10
+                    )
+
+                    # Add to keep columns
+                    keep_columns.append(f'woody_kgpm2_{dc_name}_{woody_class_ext}')
+
+                elif measure_tally_compare:
+                    # Calculate volumes and biomass using Van Wagner QMD
+                    df[f'woody_volume_vanwagner_{dc_name}_{woody_class_ext}'] = (
+                            10000 * df[f'count_{dc_name}_{woody_class_ext}'] *
+                            ((np.pi**2 / 8) / df[f'tsct_length_cor_{transect_lengths[i]}_{woody_class_ext}']) *
+                            np.power(df[f'qmd_vanwagner_{dc_name}_{woody_class_ext}'] / 100, 2)
+                    )
+                    df[f'woody_kgpm2_vanwagner_{dc_name}_{woody_class_ext}'] = (
+                            df[f'tsct_slope_cor_{transect_lengths[i]}_{woody_class_ext}'] *
+                            df[f'woody_sg_{dc_name}cm'] *
+                            df[f'woody_volume_vanwagner_{dc_name}_{woody_class_ext}'] /
+                            10
+                    )
+                    # Calculate volumes and biomass using calculated QMD
+                    df[f'woody_volume_calculated_{dc_name}_{woody_class_ext}'] = (
+                            10000 * df[f'count_{dc_name}_{woody_class_ext}'] *
+                            ((np.pi**2 / 8) / df[f'tsct_length_cor_{transect_lengths[i]}_{woody_class_ext}']) *
+                            np.power(df[f'qmd_calculated_{dc_name}_{woody_class_ext}'] / 100, 2)
+                    )
+                    df[f'woody_kgpm2_calculated_{dc_name}_{woody_class_ext}'] = (
+                            df[f'tsct_slope_cor_{transect_lengths[i]}_{woody_class_ext}'] *
+                            df[f'woody_sg_{dc_name}cm'] *
+                            df[f'woody_volume_calculated_{dc_name}_{woody_class_ext}'] /
+                            10
+                    )
+                else:
+                    break
+
+    if measure_tally_compare:
+        keep_columns.extend([col for col in df if 'qmd_vanwagner' in col])
+        keep_columns.extend([col for col in df if 'qmd_calculated' in col])
+        keep_columns.extend([col for col in df if 'kgpm2_vanwagner' in col])
+        keep_columns.extend([col for col in df if 'kgpm2_calculated' in col])
+
+    return df, keep_columns
+
+
+def _calc_plot_woody_debris(df: pd.DataFrame,
+                            woody_merged_df: pd.DataFrame,
+                            woody_debris_params: dict) -> tuple[pd.DataFrame, list]:
+
+    print('\tProcessing final woody debris calculations')
+
+    # Initialize list of columns to keep
+    keep_columns = []
+
+    for woody_class, woody_class_dict in woody_debris_params['woody_debris_classes'].items():
+        print(f'\t\tProcessing {woody_class.upper()} class')
+
+        if woody_class_dict['process_classes']:
+            # Get the class extension, diameter cutoffs, and transect lengths
+            woody_class_ext = woody_class_dict['class_extension']
+            diameter_cutoffs = woody_class_dict['diameter_cutoffs']
+            transect_lengths = woody_class_dict['transect_lengths']
+
+    return df, keep_columns
 
 
 def _get_merged_woody_df(in_folder: str) -> pd.DataFrame:
@@ -247,6 +627,118 @@ def _get_merged_woody_df(in_folder: str) -> pd.DataFrame:
     return woody_merged_df
 
 
+def _get_van_wagner_qmd(df, extension, diam_classes, trans_lengths):
+    # Replace missing values with np.nan
+    dc_df = df.copy().replace(r'^\s+$', np.nan, regex=True).replace(0, np.nan)
+
+    # Average QMD values from Delisle and Woodard (1988), designed for typical Canadian fuel size classes
+    # Polynomial Model Equation for Delisle and Woodard (1988) points (best between ~0.5cm and ~7cm):
+    # QMD = 0.0537x^2 + 0.4583x + 0.0977 (R^2 = 0.9977)
+    delisle_dict = {
+        '0.5': 0.3155,
+        '0.635': 0.0537 * (0.635 ** 2) + 0.4583 * 0.635 + 0.0977,
+        '1': 0.68975,
+        '2': 0.0537 * (2 ** 2) + 0.4583 * 2 + 0.0977,
+        '2.5': 0.0537 * (2.5 ** 2) + 0.4583 * 2.5 + 0.0977,
+        '2.54': 0.0537 * (2.54 ** 2) + 0.4583 * 2.54 + 0.0977,
+        '3': 1.80575,
+        '4': 0.0537 * (4 ** 2) + 0.4583 * 4 + 0.0977,
+        '5': 3.87075,
+        '6': 0.0537 * (6 ** 2) + 0.4583 * 6 + 0.0977,
+        '7': 5.8905,
+        '7.5': 0.0537 * (7.5 ** 2) + 0.4583 * 7.5 + 0.0977,
+        '7.62': 0.0537 * (7.62 ** 2) + 0.4583 * 7.62 + 0.0977
+    }
+
+    ## Count all diameter classes with empty tallies (empty = null or nan)
+    dc_df['countEmpty'] = dc_df[[col for col in dc_df.columns if 'count' in col]].isnull().sum(axis=1)
+
+    # Replace NAN values with 0
+    dc_df = dc_df.replace(np.nan, 0)
+
+    ## These calculations should only happen if counts are missing in only 3 or fewer classes
+    for i, dc in enumerate(diam_classes):
+        dc_name = str(dc).replace('.', '')  # Remove decimal point for column names
+        count_col = fnmatch.filter(list(dc_df.columns), f'count_{dc_name}_{extension}')
+        if count_col:
+            count_series = dc_df[count_col[0]]
+        else:
+            count_series = 0
+        if i == 0:
+            dc_df[f'adjFreq{dc}'] = (dc_df[f'tsct_length_max_{extension}'] * (
+                    count_series / dc_df[f'tsct_length_total_{trans_lengths[i]}_{extension}']
+            )) / dc
+            dc_df[f'midClass{dc}'] = dc / 2
+        else:
+            dc_df[f'adjFreq{dc}'] = (dc_df[f'tsct_length_max_{extension}'] * (
+                    count_series / dc_df[f'tsct_length_total_{trans_lengths[i]}_{extension}']
+            )) / (dc - diam_classes[i - 1])
+            dc_df[f'midClass{dc}'] = (dc + diam_classes[i - 1]) / 2
+        dc_df[f'adjFreq{dc}'] = dc_df[f'adjFreq{dc}'].replace(0, np.nan)  # Replace 0 values with np.nan
+        dc_df[f'lnAdjFreq{dc}'] = np.log(dc_df[f'adjFreq{dc}'])
+        dc_df[f'lnMidClass{dc}'] = np.log(dc_df[f'midClass{dc}'])
+
+    # Get X and Y elements to enable slope (linear regression) calculation
+    dc_df['slopeX'] = dc_df.apply(lambda x: x[[f'lnMidClass{dc}' for dc in diam_classes]].values.tolist(), axis=1)
+    dc_df['slopeY'] = dc_df.apply(lambda x: x[[f'lnAdjFreq{dc}' for dc in diam_classes]].values.tolist(), axis=1)
+
+    # Delete infinite or null elements from slopeX and slopeY columns
+    # Must delete slopeX values first, otherwise you lose the reference for index matching
+    dc_df['slopeX'], dc_df['slopeY'] = zip(*dc_df.apply(
+        lambda x: zip(*[(xi, yi) for xi, yi in zip(x.slopeX, x.slopeY) if np.isfinite(xi) and np.isfinite(yi)]),
+        axis=1
+    ))
+    dc_df['slopeX'] = dc_df['slopeX'].apply(list)
+    dc_df['slopeY'] = dc_df['slopeY'].apply(list)
+
+    # Calculate slope (b) by creating a regression against the points
+    def getSlope(inX, inY):
+        try:
+            return linregress(inX, inY)[0]
+        except RuntimeWarning:
+            return np.nan
+
+    dc_df['slopeB'] = dc_df.apply(
+        lambda x: getSlope(x.slopeX, x.slopeY) if len(list(x.slopeY)) > 1 else np.nan,
+        axis=1
+    )
+
+    # Handle situation where slope (b) == -1 or -3
+    dc_df['slopeB'] = np.where((dc_df.slopeB == -1) | (dc_df.slopeB == -3),
+                              dc_df.slopeB + 0.01,
+                              dc_df.slopeB)
+
+    ## Calculate QMD for each size class
+    ## Apply default plot-level QMD values if counts missing in at least four diameter classes
+    for i, dc in enumerate(diam_classes):
+        dc_name = str(dc).replace('.', '')  # Remove decimal point for column names
+        try:
+            if i == 0:
+                dc_df[f'qmd{dc}'] = dc_df.apply(
+                    lambda x: np.sqrt(((x.slopeB + 1) * (np.power(dc, x.slopeB + 3) - np.power(0.1, x.slopeB + 3))) /
+                                      ((x.slopeB + 3) * (np.power(dc, x.slopeB + 1) - np.power(0.1, x.slopeB + 1))))
+                    if (len(x.slopeY) > 1) &
+                       (np.isfinite(x.slopeB))
+                    else delisle_dict.get(f'{dc}', np.nan), axis=1)
+            else:
+                dc_df[f'qmd{dc}'] = dc_df.apply(
+                    lambda x: np.sqrt(
+                        ((x.slopeB + 1) * (np.power(dc, x.slopeB + 3) -
+                                           np.power(diam_classes[i - 1], x.slopeB + 3))) /
+                        ((x.slopeB + 3) * (np.power(dc, x.slopeB + 1) -
+                                           np.power(diam_classes[i - 1], x.slopeB + 1))))
+                    if ((len(x.slopeY) > 1) & np.isfinite(x.slopeB) & np.isfinite(x[f'adjFreq{dc}']))
+                    else delisle_dict.get(f'{dc}', np.nan), axis=1)
+        except RuntimeWarning:
+            dc_df[f'qmd{dc}'] = delisle_dict.get(f'{dc}', np.nan)
+            pass
+
+        # Replace qmd values with np.nan if no count exists for the class
+        dc_df[f'qmd{dc}'] = np.where(dc_df[f'count_{dc_name}_{extension}'] == 0, np.nan, dc_df[f'qmd{dc}'])
+
+    return dc_df[[f'qmd{dc}' for dc in diam_classes]]
+
+
 def _calc_woody_diam_cm(woody_merged_df: pd.DataFrame) -> pd.DataFrame:
     """
     Convert woody fuel diameter from mm to cm and round to 2 decimal places.
@@ -256,6 +748,8 @@ def _calc_woody_diam_cm(woody_merged_df: pd.DataFrame) -> pd.DataFrame:
     """
     # Convert diameter from mm to cm and round to 3 decimal places
     woody_merged_df['woody_diam_cm'] = round(pd.to_numeric(woody_merged_df['woody_diam']) / 10, 3)
+    # Calculate squared diameter in cm^2
+    woody_merged_df['woody_diamSquared'] = woody_merged_df['woody_diam_cm'] ** 2
 
     return woody_merged_df
 
@@ -310,12 +804,12 @@ def _calc_woody_species(woody_merged_df: pd.DataFrame) -> pd.DataFrame:
     """
     Assign adjusted species codes for woody debris pieces based on decay class.
 
-    If the decay class (_wsf_decay) is greater than 3, assigns 'DECAYED' to the
-    'wsf_species_adj' column; otherwise, retains the original species code.
+    If the decay class (_woody_decay) is greater than 3, assigns 'DECAYED' to the
+    'woody_species_adj' column; otherwise, retains the original species code.
 
     :param woody_merged_df: DataFrame containing woody debris data with
-        '_wsf_decay' and 'wsf_species' columns.
-    :return: DataFrame with an added or updated 'wsf_species_adj' column.
+        '_woody_decay' and 'woody_species' columns.
+    :return: DataFrame with an added or updated 'woody_species_adj' column.
     """
     # Assign 'DECAYED' if decay class > 3, else keep original species code
     woody_merged_df['woody_species_adj'] = np.where(
@@ -327,7 +821,7 @@ def _calc_woody_species(woody_merged_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _calc_woody_specific_gravity(woody_merged_df: pd.DataFrame, tree_params: pd.DataFrame) -> pd.DataFrame:
-        """
+    """
         Calculate and assign specific gravity values for each woody debris piece in the
         merged transect DataFrame, based on species and diameter class, normalized by the sum of
         diameters per plot and class.
@@ -336,35 +830,35 @@ def _calc_woody_specific_gravity(woody_merged_df: pd.DataFrame, tree_params: pd.
         :param tree_params: DataFrame with specific gravity parameters for each species.
         :return: Updated woody_merged_df
         """
-        for _, param_col, low_lim, up_lim in specific_gravity_map:
-            # Mask for diameter class (low_lim < diam <= up_lim)
-            diam_mask = woody_merged_df['woody_diam_cm'].between(low_lim, up_lim, inclusive='right')
-            # For each plot in this diameter class
-            for plot in woody_merged_df['ParentGlobalID'].unique():
-                plot_mask = woody_merged_df['ParentGlobalID'] == plot
-                diam_sum = woody_merged_df.loc[plot_mask, 'woody_diam_cm'].sum()
-                # Calculate sum of diameters for normalization
-                woody_merged_df.loc[plot_mask, f'woody_diam_sum'] = diam_sum
-                # For each species in this plot and diameter class
-                for spp in woody_merged_df.loc[plot_mask, 'woody_species_adj'].unique():
-                    spp_mask = woody_merged_df['woody_species_adj'] == spp
-                    # Get specific gravity for species
-                    # Fallback to 'UNK' if spp not in tree_params
-                    woody_merged_df.loc[diam_mask & plot_mask & spp_mask, 'woody_sg'] = (
-                        tree_params.loc[spp, param_col]
-                        if spp in tree_params.index
-                        else tree_params.loc['UNK', param_col]
-                    )
-                    # Calculate species percentage of total diameter for normalization
-                    woody_merged_df.loc[diam_mask & plot_mask & spp_mask, 'woody_spp_percent_wtd'] = (
-                        100 * woody_merged_df['woody_diam_cm'] / diam_sum if diam_sum else 0
-                    )
-                    # Assign normalized specific gravity
-                    woody_merged_df.loc[diam_mask & plot_mask & spp_mask, f'woody_sg_wtd'] = (
+    for _, param_col, low_lim, up_lim in specific_gravity_map:
+        # Mask for diameter class (low_lim < diam <= up_lim)
+        diam_mask = woody_merged_df['woody_diam_cm'].between(low_lim, up_lim, inclusive='right')
+        # For each plot in this diameter class
+        for plot in woody_merged_df['ParentGlobalID'].unique():
+            plot_mask = woody_merged_df['ParentGlobalID'] == plot
+            diam_sum = woody_merged_df.loc[plot_mask, 'woody_diam_cm'].sum()
+            # Calculate sum of diameters for normalization
+            woody_merged_df.loc[plot_mask, f'woody_diam_sum'] = diam_sum
+            # For each species in this plot and diameter class
+            for spp in woody_merged_df.loc[plot_mask, 'woody_species_adj'].unique():
+                spp_mask = woody_merged_df['woody_species_adj'] == spp
+                # Get specific gravity for species
+                # Fallback to 'UNK' if spp not in tree_params
+                woody_merged_df.loc[diam_mask & plot_mask & spp_mask, 'woody_sg'] = (
+                    tree_params.loc[spp, param_col]
+                    if spp in tree_params.index
+                    else tree_params.loc['UNK', param_col]
+                )
+                # Calculate species percentage of total diameter for normalization
+                woody_merged_df.loc[diam_mask & plot_mask & spp_mask, 'woody_spp_percent_wtd'] = (
+                    100 * woody_merged_df['woody_diam_cm'] / diam_sum if diam_sum else 0
+                )
+                # Assign normalized specific gravity
+                woody_merged_df.loc[diam_mask & plot_mask & spp_mask, f'woody_sg_wtd'] = (
                         woody_merged_df['woody_sg'] * woody_merged_df['woody_spp_percent_wtd'] / 100
-                    )
+                )
 
-        return woody_merged_df
+    return woody_merged_df
 
 
 def _calc_woody_volume(woody_merged_df: pd.DataFrame) -> pd.DataFrame:
@@ -381,7 +875,7 @@ def _calc_woody_volume(woody_merged_df: pd.DataFrame) -> pd.DataFrame:
 
     # Calculate volume in cubic meters: V = (k/L) * d^2
     woody_merged_df['woody_volume_m3pha'] = ((k / woody_merged_df['tsct_length_cor']) *
-                                          np.power(woody_merged_df[f'woody_diam_cm'], 2))
+                                             np.power(woody_merged_df['woody_diam_cm'], 2))
 
     return woody_merged_df
 
@@ -396,8 +890,8 @@ def _calc_woody_weight(woody_merged_df: pd.DataFrame) -> pd.DataFrame:
     """
     # Calculate weight of fuel (W) in kilograms per m^2: W = sg * volume / 10
     woody_merged_df['woody_mass_kgpm2'] = (
-        woody_merged_df['woody_sg'] * woody_merged_df['woody_volume_m3pha'] /
-        10  # Convert from t/ha to kg/m^2
+            woody_merged_df['woody_sg'] * woody_merged_df['woody_volume_m3pha'] /
+            10  # Convert from t/ha to kg/m^2
     )
 
     return woody_merged_df
@@ -410,7 +904,6 @@ def _assign_spp_comp_id_col(df: pd.DataFrame, spp_comp_df: pd.DataFrame) -> pd.D
     )
 
     return spp_comp_df
-
 
 
 def _add_spp_comp_type(spp_comp_df: pd.DataFrame) -> pd.DataFrame:
@@ -429,7 +922,7 @@ def _add_spp_comp_type(spp_comp_df: pd.DataFrame) -> pd.DataFrame:
 def _merge_spp_comp(plot_df: pd.DataFrame,
                     df: pd.DataFrame,
                     woody_merged_df: pd.DataFrame,
-                    spp_comp_df: pd.DataFrame,) -> pd.DataFrame:
+                    spp_comp_df: pd.DataFrame, ) -> pd.DataFrame:
     """
     Ensure all plots and species in woody_merged_df are represented in spp_comp_df.
     For any (plot, species) pair missing from spp_comp_df, add a row with the summed
@@ -486,9 +979,8 @@ def _merge_spp_comp(plot_df: pd.DataFrame,
 
 
 def _calc_spp_comp_duff_litter_bulk_density(df: pd.DataFrame,
-                                        spp_comp_df: pd.DataFrame,
-                                        tree_params: pd.DataFrame) -> pd.DataFrame:
-
+                                            spp_comp_df: pd.DataFrame,
+                                            tree_params: pd.DataFrame) -> pd.DataFrame:
     print('\tCalculating duff and litter bulk density for species composition')
 
     for out_col, param_col, _, _ in bulk_density_map:
@@ -501,10 +993,10 @@ def _calc_spp_comp_duff_litter_bulk_density(df: pd.DataFrame,
             spp_mask = spp_comp_df['spp_comp_code'] == spp
             # Get bulk density for species
             spp_comp_df.loc[spp_mask, out_col] = (
-                tree_params.loc[spp, param_col]
-                if spp in tree_params.index
-                else tree_params.loc['UNK', param_col]
-            ) * spp_comp_df['spp_comp_percent'] / 100
+                                                     tree_params.loc[spp, param_col]
+                                                     if spp in tree_params.index
+                                                     else tree_params.loc['UNK', param_col]
+                                                 ) * spp_comp_df['spp_comp_percent'] / 100
 
     return spp_comp_df
 
@@ -521,7 +1013,7 @@ def _calc_plot_duff_litter_biomass(plot_df: pd.DataFrame,
     :param spp_comp_df: DataFrame containing species composition and calculated bulk densities.
     :return: Updated df with duff and litter biomass columns.
     """
-    print('\tProcessing plot-level specific gravity')
+    print('\tProcessing plot-level duff and litter biomass')
 
     # Loop through each species composition type
     for spp_comp_type in ['tree_data', 'transect_data', 'manual_entry']:
@@ -571,12 +1063,10 @@ def _calc_spp_comp_specific_gravity(spp_comp_df: pd.DataFrame,
     :return: DataFrame with specific gravity columns added for each species.
     """
     print('\tCalculating specific gravity for species composition')
-    # Initialize specific gravity columns based on bulk density dictionary
-    for out_col, param_col in bulk_density_map:
-        spp_comp_df[out_col] = np.nan
-
     # Assign specific gravity values based on species
-    for out_col, param_col, _, _ in bulk_density_map:
+    for out_col, param_col, _, _ in specific_gravity_map:
+        # Initialize specific gravity columns based on bulk density dictionary
+        spp_comp_df[out_col] = np.nan
         # Map specific gravity values from tree_params to spp_comp_df based on species
         spp_comp_df[out_col] = (
                 spp_comp_df['spp_comp_code'].map(
@@ -592,7 +1082,6 @@ def _calc_spp_comp_specific_gravity(spp_comp_df: pd.DataFrame,
 
 def _calc_plot_specific_gravity(df: pd.DataFrame,
                                 spp_comp_df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
-
     print(f'\tProcessing plot-level specific gravity')
 
     # Initialize list of columns to keep
@@ -626,352 +1115,17 @@ def _calc_plot_specific_gravity(df: pd.DataFrame,
     return df, keep_columns
 
 
-def _calc_woody_debris(in_folder: str,
-                       df: pd.DataFrame,
-                       tree_params: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-
-    for tsct in range(1, 3):
-        print(f'\tProcessing Transect {tsct}')
-
-        # Calculate slope percent
-        df[f't{tsct}_slope_pct'] = np.where(df[f't{tsct}_slope_units'] == 'degrees',
-                                            100 * np.tan(df[f't{tsct}_slope'] * np.pi / 180),
-                                            df[f't{tsct}_slope'].astype(float))
-
-        # Calculate slope degrees
-        df[f't{tsct}_slope_deg'] = np.arctan(df[f't{tsct}_slope_pct'].astype(float) / 100) * 180 / np.pi
-
-        # Calculate slope correction
-        df[f't{tsct}_slope_cor'] = np.sqrt(1 + np.power(df[f't{tsct}_slope_pct'].astype(float) / 100, 2))
-
-        # Assign transect data CSV to woody_df
-        woody_df = helper.get_df(os.path.join(in_folder, f't{tsct}_woody_{tsct}.csv'))
-        woody_df['group'] = woody_df['ParentGlobalID']
-
-        # Assign NAN to woody fuel pieces at distance of 999 (i.e., no data for that transect)
-        # No data occurs when the user enters transect data on separate surface fuel forms
-        woody_df[f't{tsct}_woody_diam'] = np.where(woody_df[f't{tsct}_woody_dist'] == 999, np.nan,
-                                                   woody_df[f't{tsct}_woody_diam'])
-        woody_df[f't{tsct}_woody_dist'] = np.where(woody_df[f't{tsct}_woody_dist'] == 999, np.nan, woody_df[f't{tsct}_woody_dist'])
-
-        # Convert woody fuel diameter from mm to cm
-        woody_df[f't{tsct}_woody_diam_cm'] = round(pd.to_numeric(woody_df[f't{tsct}_woody_diam']) / 10, 2)
-
-        #### TALLIED WOODY FUELS
-        ## CALCULATE VAN WAGNER QMD FOR EACH DIAMETER CLASS
-        # Create diameter class and transect length lists
-        dClasses = [0.5, 1, 3, 5, 7]
-        tLengths = [4, 10, 10, 10, 10, 20, 30]
-        wlcfFR_dClasses = [0.635, 2.54, 7.62]
-        wlcfFR_tLengths = [1, 2, 4, 15]
-
-
-
-        # Get counts of woody fuel tallies (Tree-Ring Lab Plots)
-        df[f't{tsct}_count0.635'] = df[f't{tsct}_woody_fine_0to2'] + df[f't{tsct}_woody_fine_28to30']
-        df[f't{tsct}_count1'] = df.group.map(
-            woody_df[(woody_df[f't{tsct}_woody_diam_cm'] < 1)].groupby('group')[f't{tsct}_woody_diam_cm'].count())
-        df[f't{tsct}_count3'] = df.group.map(
-            woody_df[(woody_df[f't{tsct}_woody_diam_cm'] > 1) &
-                 (woody_df[f't{tsct}_woody_diam_cm'] <= 3)].groupby('group')[f't{tsct}_woody_diam_cm'].count())
-        df[f't{tsct}_count5'] = df.group.map(
-            woody_df[(woody_df[f't{tsct}_woody_diam_cm'] > 3) &
-                 (woody_df[f't{tsct}_woody_diam_cm'] <= 5)].groupby('group')[f't{tsct}_woody_diam_cm'].count())
-        df[f't{tsct}_count7'] = df.group.map(
-            woody_df[(woody_df[f't{tsct}_woody_diam_cm'] > 5) &
-                 (woody_df[f't{tsct}_woody_diam_cm'] <= 7)].groupby('group')[f't{tsct}_woody_diam_cm'].count())
-
-        # Get Van Wagner QMD values (Tree-Ring Lab Plots)
-        # Temporarily ignore invalid values & divide by zero warnings
-        # with np.errstate(divide='ignore', invalid='ignore'):
-        df[[f't{tsct}_woody_qmd{dc}' for dc in sorted(dClasses)]] = getVanWagnerQMD(
-            df[[f't{tsct}_count0.635', f't{tsct}_count1', f't{tsct}_count3', f't{tsct}_count5',
-                  f't{tsct}_count7']],
-            dClasses, tLengths)
-
-        if tsct == 1:
-            # Get counts of woody fuel tallies (WLCF Consus Plots)
-            df[f't{tsct}_count0.635'] = np.where(df.group.str.contains('|'.join(['WLCFFR', "ESK'ETEMCFTU"])),
-                                                   df[f't{tsct}_woody_1hr_0to1'],
-                                                   df[f't{tsct}_count0.635'])
-            df[f't{tsct}_count2.54'] = df[f't{tsct}_woody_10hr_0to2']
-            df[f't{tsct}_count7.62'] = df.group.map(
-                woody_df[(woody_df.group.str.contains('|'.join(['WLCFFR', "ESK'ETEMCFTU"]))) &
-                     (woody_df[f't{tsct}_woody_diam_cm'] > 2.54) &
-                     (woody_df[f't{tsct}_woody_diam_cm'] <= 7.62)].groupby('group')[f't{tsct}_woody_diam_cm'].count())
-
-            # Get Van Wagner QMD values (WLCF Consus Plots)
-            # Temporarily ignore invalid values & divide by zero warnings
-            # with np.errstate(divide='ignore', invalid='ignore'):
-            df[[f't{tsct}_woody_qmd1hr', f't{tsct}_woody_qmd10hr', f't{tsct}_woody_qmd100hr']] = getVanWagnerQMD(
-                df[[f't{tsct}_count0.635', f't{tsct}_count2.54', f't{tsct}_count7.62']],
-                wlcfFR_dClasses, wlcfFR_tLengths)
-
-        # CALCULATE BIOMASS FOR TALLIED WOODY FUELS
-        # Calculate corrected transect lengths (Tree-Ring Lab Plots)
-        df[f't{tsct}_woody_0635_tlength_cor'] = 4 / df[f't{tsct}_slope_cor']
-        # Convert to volumes and biomass using Van Wagner QMD value (Tree-Ring Lab Plots)
-        df[f't{tsct}_woody_volume_0635'] = 10000 * df[f't{tsct}_count0.635'] * \
-                                           (0.1234 / df[f't{tsct}_woody_0635_tlength_cor']) * \
-                                           np.power(df[f't{tsct}_woody_qmd0.635'] / 100, 2)
-        df[f't{tsct}_0635_kgpm2'] = df[f't{tsct}_slope_cor'] * df.woody_sg_05cm * \
-                                      df[f't{tsct}_woody_volume_0635']
-        if tsct == 1:
-            # Calculate corrected transect lengths (WLCF Consus & Esk'etemc Plots)
-            df[f't{tsct}_woody_1hr_tlength_cor'] = np.where(
-                df.group.str.contains('|'.join(['WLCFFR', "ESK'ETEMCFTU"]), case=True),
-                1 / df[f't{tsct}_slope_cor'],
-                np.nan)
-            df[f't{tsct}_woody_10hr_tlength_cor'] = np.where(
-                df.group.str.contains('|'.join(['WLCFFR', "ESK'ETEMCFTU"]), case=True),
-                2 / df[f't{tsct}_slope_cor'],
-                np.nan)
-            # Convert to volumes and biomass using Van Wagner QMD values (WLCF Consus & Esk'etemc Plots)
-            df[f't{tsct}_woody_volume_1hr'] = 10000 * df[f't{tsct}_count0.635'] * \
-                                              (0.1234 / df[f't{tsct}_woody_1hr_tlength_cor']) * \
-                                              np.power(df[f't{tsct}_woody_qmd1hr'] / 100, 2)
-            df[f't{tsct}_1hr_kgpm2'] = df[f't{tsct}_slope_cor'] * df.woody_sg_1hr * \
-                                         df[f't{tsct}_woody_volume_1hr']
-            df[f't{tsct}_woody_volume_10hr'] = 10000 * df[f't{tsct}_count2.54'] * \
-                                               (0.1234 / df[f't{tsct}_woody_10hr_tlength_cor']) * \
-                                               np.power(df[f't{tsct}_woody_qmd10hr'] / 100, 2)
-            df[f't{tsct}_10hr_kgpm2'] = df[f't{tsct}_slope_cor'] * df.woody_sg_10hr * \
-                                          df[f't{tsct}_woody_volume_10hr']
-
-        #### MEASURED WOODY FUELS
-        # Join survey_0 dataframe to the transect dataframe and assign as dfT
-        # This copies the plot-level data to each row of data in the transect dataframe
-        dfT = pd.merge(woody_df, df.copy(), on='group', suffixes=('_DROP', ''))  # .filter(regex='^(?!.*_DROP)')
-
-        # Adjust Species Codes
-        # Change FD species to FDI
-        dfT[f't{tsct}_woody_species'] = np.where(dfT[f't{tsct}_woody_species'] == 'FD', 'FDI', dfT[f't{tsct}_woody_species'])
-        dfT[f't{tsct}_woody_species'] = np.where(dfT[f't{tsct}_woody_species'] == 'FDC', 'FDI', dfT[f't{tsct}_woody_species'])
-        # Change PL and P species to PLI
-        dfT[f't{tsct}_woody_species'] = np.where(dfT[f't{tsct}_woody_species'] == 'PL', 'PLI', dfT[f't{tsct}_woody_species'])
-        dfT[f't{tsct}_woody_species'] = np.where(dfT[f't{tsct}_woody_species'] == 'P', 'PLI', dfT[f't{tsct}_woody_species'])
-        # Change C species to CW
-        dfT[f't{tsct}_woody_species'] = np.where(dfT[f't{tsct}_woody_species'] == 'C', 'CW', dfT[f't{tsct}_woody_species'])
-        # Change UNK species to XC (UNKNOWN CONIFER)
-        # dfT[f't{tsct}_woody_species'] = np.where(dfT[f't{tsct}_woody_species'] == 'UNK', 'XC', dfT[f't{tsct}_woody_species'])
-
-        # Calculate horizontal transect length
-        dfT[f't{tsct}_woody_tlength'] = np.nan
-        dfT[f't{tsct}_woody_tlength'] = np.where(dfT.group.str.contains('|'.join(['WLCFFR', "ESK'ETEMCFTU"])),
-                                               # WLCF Consus Plots
-                                               np.where(dfT[f't{tsct}_woody_diam_cm'] <= 7.62,
-                                                        4,
-                                                        dfT[f't{tsct}_woody_tlength']),
-                                               # Tree-Ring Lab Plots
-                                               np.where(dfT[f't{tsct}_woody_diam_cm'] <= 7,
-                                                        10,
-                                                        dfT[f't{tsct}_woody_tlength']))
-        dfT[f't{tsct}_woody_tlength'] = np.where(dfT.group.str.contains('|'.join(['WLCFFR', "ESK'ETEMCFTU"])),
-                                               # WLCF Consus Plots
-                                               np.where(dfT[f't{tsct}_woody_diam_cm'] > 7.62,
-                                                        15,
-                                                        dfT[f't{tsct}_woody_tlength']),
-                                               # Tree-Ring Lab Plots
-                                               np.where((dfT[f't{tsct}_woody_diam_cm'] > 7) &
-                                                        (dfT[f't{tsct}_woody_diam_cm'] <= 30),
-                                                        20,
-                                                        dfT[f't{tsct}_woody_tlength']))
-        dfT[f't{tsct}_woody_tlength'] = np.where(dfT.group.str.contains('|'.join(['WLCFFR', "ESK'ETEMCFTU"])),
-                                               # WLCF Consus Plots
-                                               dfT[f't{tsct}_woody_tlength'],
-                                               # Tree-Ring Lab Plots
-                                               np.where(dfT[f't{tsct}_woody_diam_cm'] > 30,
-                                                        30,
-                                                        dfT[f't{tsct}_woody_tlength']))
-
-        # Calculate corrected transect length
-        dfT[f't{tsct}_woody_tlength_cor'] = dfT[f't{tsct}_woody_tlength'] / dfT[f't{tsct}_slope_cor']
-
-        # Change species code to DECAYED if decay class is > 3
-        dfT[f't{tsct}_woody_species_adj'] = np.where(dfT[f't{tsct}_woody_decay'] > 3,
-                                                   'DECAYED',
-                                                   dfT[f't{tsct}_woody_species'])
-
-        # Get relative density / specific gravity (sg) of woody fuel piece
-        sppList = [n for n in dfT[f't{tsct}_woody_species_adj'].unique() if not pd.isnull(n)]
-        dfT[f't{tsct}_woody_sg'] = np.nan
-        for spp in sppList:
-            sg1 = tree_params.loc[spp, 'SG_1']
-            sg3 = tree_params.loc[spp, 'SG_3']
-            sg5 = tree_params.loc[spp, 'SG_5']
-            sg7 = tree_params.loc[spp, 'SG_7']
-            sg7p = tree_params.loc[spp, 'SG_7+']
-            dfT[f't{tsct}_woody_sg'] = np.where((dfT[f't{tsct}_woody_species_adj'] == spp) &
-                                              (dfT[f't{tsct}_woody_diam_cm'] <= 1), sg1, dfT[f't{tsct}_woody_sg'])
-            dfT[f't{tsct}_woody_sg'] = np.where((dfT[f't{tsct}_woody_species_adj'] == spp) &
-                                              (dfT[f't{tsct}_woody_diam_cm'] > 1) &
-                                              (dfT[f't{tsct}_woody_diam_cm'] <= 3), sg3, dfT[f't{tsct}_woody_sg'])
-            dfT[f't{tsct}_woody_sg'] = np.where((dfT[f't{tsct}_woody_species_adj'] == spp) &
-                                              (dfT[f't{tsct}_woody_diam_cm'] > 3) &
-                                              (dfT[f't{tsct}_woody_diam_cm'] <= 5), sg5, dfT[f't{tsct}_woody_sg'])
-            dfT[f't{tsct}_woody_sg'] = np.where((dfT[f't{tsct}_woody_species_adj'] == spp) &
-                                              (dfT[f't{tsct}_woody_diam_cm'] > 5) &
-                                              (dfT[f't{tsct}_woody_diam_cm'] <= 7), sg7, dfT[f't{tsct}_woody_sg'])
-            dfT[f't{tsct}_woody_sg'] = np.where((dfT[f't{tsct}_woody_species_adj'] == spp) &
-                                              (dfT[f't{tsct}_woody_diam_cm'] > 7), sg7p, dfT[f't{tsct}_woody_sg'])
-
-        ## Calculate woody fuel volume
-        dfT[f't{tsct}_woody_vol'] = (0.1234 / dfT[f't{tsct}_woody_tlength_cor']) * \
-                                  np.power(dfT[f't{tsct}_woody_diam_cm'] / 100, 2) * 10000
-
-        ## Calculate kilograms per m^2 (kgpm2) for all fuel pieces
-        dfT[f't{tsct}_woody_mass_kgpm2'] = dfT[f't{tsct}_slope_cor'] * \
-                                         dfT[f't{tsct}_woody_sg'] * \
-                                         dfT[f't{tsct}_woody_vol']
-
-        # Calculate kgpm2 for Canadian fuel size classes
-        dfT[f't{tsct}_woody_mass_kgpm2_0635cm'] = np.where(dfT[f't{tsct}_woody_diam_cm'] <= 0.635,
-                                                         dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_1cm'] = np.where((dfT[f't{tsct}_woody_diam_cm'] > 0.635) &
-                                                      (dfT[f't{tsct}_woody_diam_cm'] <= 1),
-                                                      dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_3cm'] = np.where((dfT[f't{tsct}_woody_diam_cm'] > 1) &
-                                                      (dfT[f't{tsct}_woody_diam_cm'] <= 3),
-                                                      dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_5cm'] = np.where((dfT[f't{tsct}_woody_diam_cm'] > 3) &
-                                                      (dfT[f't{tsct}_woody_diam_cm'] <= 5),
-                                                      dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_7cm'] = np.where((dfT[f't{tsct}_woody_diam_cm'] > 5) &
-                                                      (dfT[f't{tsct}_woody_diam_cm'] <= 7),
-                                                      dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_lte3'] = np.where(dfT[f't{tsct}_woody_diam_cm'] <= 3,
-                                                       dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_lte7'] = np.where(dfT[f't{tsct}_woody_diam_cm'] <= 7,
-                                                       dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_7to20'] = np.where((dfT[f't{tsct}_woody_diam_cm'] > 7) &
-                                                        (dfT[f't{tsct}_woody_diam_cm'] <= 20),
-                                                        dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_gt20'] = np.where((dfT[f't{tsct}_woody_diam_cm'] > 20),
-                                                       dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-
-        # Calculate kgpm2 for U.S. fuel size classes
-        # 1hr = 0-0.25", 10hr = 0.25-1", 100hr = 1-3", 1000hr = 3-8", gt1000hr = >8")
-        if tsct == 1:
-            if processBVRC:
-                dfT[f't{tsct}_woody_mass_kgpm2_1hr'] = 0
-                dfT[f't{tsct}_woody_mass_kgpm2_10hr'] = 0
-            elif processRover:
-                dfT[f't{tsct}_woody_mass_kgpm2_1hr'] = np.where(dfT[f't{tsct}_woody_diam_cm'] < 0.635,
-                                                              dfT[f't{tsct}_woody_mass_kgpm2'],
-                                                              0)
-                dfT[f't{tsct}_woody_mass_kgpm2_10hr'] = np.where((dfT[f't{tsct}_woody_diam_cm'] >= 0.635) &
-                                                               (dfT[f't{tsct}_woody_diam_cm'] < 2.54),
-                                                               dfT[f't{tsct}_woody_mass_kgpm2'],
-                                                               0)
-            else:
-                dfT[f't{tsct}_woody_mass_kgpm2_1hr'] = np.where(
-                    dfT.group.str.contains('|'.join(['WLCFFR', "ESK'ETEMCFTU"]), case=True),
-                    # WLCF Consus Plots
-                    dfT[f't{tsct}_1hr_kgpm2'],
-                    # Tree-Ring Lab Plots
-                    np.where(dfT[f't{tsct}_woody_diam_cm'] < 0.635,
-                             dfT[f't{tsct}_woody_mass_kgpm2'],
-                             0))
-                dfT[f't{tsct}_woody_mass_kgpm2_10hr'] = np.where(
-                    dfT.group.str.contains('|'.join(['WLCFFR', "ESK'ETEMCFTU"]), case=True),
-                    # Rover & WLCF Consus Plots
-                    dfT[f't{tsct}_10hr_kgpm2'],
-                    # Tree-Ring Lab Plots
-                    np.where((dfT[f't{tsct}_woody_diam_cm'] >= 0.635) &
-                             (dfT[f't{tsct}_woody_diam_cm'] < 2.54),
-                             dfT[f't{tsct}_woody_mass_kgpm2'],
-                             0))
-        else:
-            if processBVRC:
-                dfT[f't{tsct}_woody_mass_kgpm2_1hr'] = 0
-                dfT[f't{tsct}_woody_mass_kgpm2_10hr'] = 0
-            else:
-                dfT[f't{tsct}_woody_mass_kgpm2_1hr'] = np.where(dfT[f't{tsct}_woody_diam_cm'] < 0.635,
-                                                              dfT[f't{tsct}_woody_mass_kgpm2'],
-                                                              0)
-                dfT[f't{tsct}_woody_mass_kgpm2_10hr'] = np.where((dfT[f't{tsct}_woody_diam_cm'] >= 0.635) &
-                                                               (dfT[f't{tsct}_woody_diam_cm'] < 2.54),
-                                                               dfT[f't{tsct}_woody_mass_kgpm2'],
-                                                               0)
-
-        dfT[f't{tsct}_woody_mass_kgpm2_100hr'] = np.where((dfT[f't{tsct}_woody_diam_cm'] >= 2.54) &
-                                                        (dfT[f't{tsct}_woody_diam_cm'] < 7.62),
-                                                        dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_1000hr'] = np.where((dfT[f't{tsct}_woody_diam_cm'] >= 7.62) &
-                                                         (dfT[f't{tsct}_woody_diam_cm'] < 22.86),
-                                                         dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_10000hr'] = np.where((dfT[f't{tsct}_woody_diam_cm'] >= 22.86) &
-                                                          (dfT[f't{tsct}_woody_diam_cm'] < 50.8),
-                                                          dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_gt10000hr'] = np.where(dfT[f't{tsct}_woody_diam_cm'] >= 50.8,
-                                                            dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        # FCCS classifications for >=1000hr fuels: sound (decay class <=3) and rotten (decay class >3)
-        dfT[f't{tsct}_woody_mass_kgpm2_1000hr_sound'] = np.where((dfT[f't{tsct}_woody_diam_cm'] >= 7.62) &
-                                                               (dfT[f't{tsct}_woody_diam_cm'] < 22.86) &
-                                                               (dfT[f't{tsct}_woody_decay'] <= 3),
-                                                               dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_1000hr_rotten'] = np.where((dfT[f't{tsct}_woody_diam_cm'] >= 7.62) &
-                                                                (dfT[f't{tsct}_woody_diam_cm'] < 22.86) &
-                                                                (dfT[f't{tsct}_woody_decay'] > 3),
-                                                                dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_10000hr_sound'] = np.where((dfT[f't{tsct}_woody_diam_cm'] >= 22.86) &
-                                                                (dfT[f't{tsct}_woody_diam_cm'] < 50.8) &
-                                                                (dfT[f't{tsct}_woody_decay'] <= 3),
-                                                                dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_10000hr_rotten'] = np.where((dfT[f't{tsct}_woody_diam_cm'] >= 22.86) &
-                                                                 (dfT[f't{tsct}_woody_diam_cm'] < 50.8) &
-                                                                 (dfT[f't{tsct}_woody_decay'] > 3),
-                                                                 dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_gt10000hr_sound'] = np.where((dfT[f't{tsct}_woody_diam_cm'] >= 50.8) &
-                                                                  (dfT[f't{tsct}_woody_decay'] <= 3),
-                                                                  dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_gt10000hr_rotten'] = np.where((dfT[f't{tsct}_woody_diam_cm'] >= 50.8) &
-                                                                   (dfT[f't{tsct}_woody_decay'] > 3),
-                                                                   dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        # FOFEM classification for > 10hr fuels: sound (decay class <=3) and rotten (decay class >3)
-        dfT[f't{tsct}_woody_mass_kgpm2_fofem3to6_sound'] = np.where((dfT[f't{tsct}_woody_diam_cm'] >= 7.62) &
-                                                                  (dfT[f't{tsct}_woody_diam_cm'] < 15.24) &
-                                                                  (dfT[f't{tsct}_woody_decay'] <= 3),
-                                                                  dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_fofem3to6_rotten'] = np.where((dfT[f't{tsct}_woody_diam_cm'] >= 7.62) &
-                                                                   (dfT[f't{tsct}_woody_diam_cm'] < 15.24) &
-                                                                   (dfT[f't{tsct}_woody_decay'] > 3),
-                                                                   dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_fofem6to9_sound'] = np.where((dfT[f't{tsct}_woody_diam_cm'] >= 15.24) &
-                                                                  (dfT[f't{tsct}_woody_diam_cm'] < 22.86) &
-                                                                  (dfT[f't{tsct}_woody_decay'] <= 3),
-                                                                  dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_fofem6to9_rotten'] = np.where((dfT[f't{tsct}_woody_diam_cm'] >= 15.24) &
-                                                                   (dfT[f't{tsct}_woody_diam_cm'] < 22.86) &
-                                                                   (dfT[f't{tsct}_woody_decay'] > 3),
-                                                                   dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_fofem9to20_sound'] = np.where((dfT[f't{tsct}_woody_diam_cm'] >= 22.86) &
-                                                                   (dfT[f't{tsct}_woody_diam_cm'] < 50.8) &
-                                                                   (dfT[f't{tsct}_woody_decay'] <= 3),
-                                                                   dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_fofem9to20_rotten'] = np.where((dfT[f't{tsct}_woody_diam_cm'] >= 22.86) &
-                                                                    (dfT[f't{tsct}_woody_diam_cm'] < 50.8) &
-                                                                    (dfT[f't{tsct}_woody_decay'] > 3),
-                                                                    dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_fofem20plus_sound'] = np.where((dfT[f't{tsct}_woody_diam_cm'] > 50.8) &
-                                                                    (dfT[f't{tsct}_woody_decay'] <= 3),
-                                                                    dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-        dfT[f't{tsct}_woody_mass_kgpm2_fofem20plus_rotten'] = np.where((dfT[f't{tsct}_woody_diam_cm'] > 50.8) &
-                                                                     (dfT[f't{tsct}_woody_decay'] > 3),
-                                                                     dfT[f't{tsct}_woody_mass_kgpm2'], 0)
-
-    return dfT
-
-
 def process_woody_debris(in_folder: str,
                          out_folder: str,
-                         plot_df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
+                         plot_df: pd.DataFrame,
+                         woody_debris_params: dict) -> tuple[pd.DataFrame, list]:
     """
     Process woody debris data from a CSV file and return an updated DataFrame.
 
     :param in_folder: Path to the folder containing the input CSV files.
     :param out_folder: Path to the folder where output CSV files will be saved.
     :param plot_df: DataFrame containing plot-level data.
+    :param woody_debris_params: Dictionary containing parameters for processing woody debris.
     :return: DataFrame with processed woody debris attributes.
     """
     print('\nProcessing Woody Debris data')
@@ -1006,7 +1160,7 @@ def process_woody_debris(in_folder: str,
     woody_merged_df = _calc_woody_weight(woody_merged_df)
 
     # ### PROCESS SPECIES COMPOSITION DATA
-    # Get manual species composition dataframe
+    # Get manual entry species composition dataframe
     spp_comp_df = helper.get_df(os.path.join(in_folder, 'spp_comp_manual_1.csv'))
     # Process species composition attributes
     spp_comp_df = _assign_spp_comp_id_col(df, spp_comp_df)
@@ -1024,9 +1178,14 @@ def process_woody_debris(in_folder: str,
     df, add_columns = _calc_plot_specific_gravity(df, spp_comp_df)
     keep_columns.extend(add_columns)
 
-    # ### CALCULATE WOODY DEBRIS ATTRIBUTES
-    df, woody_merged_df = _calc_woody_debris(in_folder, plot_df, df, woody_merged_df, tree_params_df)
+    # ### PROCESS PLOT TALLIED WOODY DATA
+    df = _calc_plot_fine_woody_tallies(df)
+    # df, woody_merged_df = _calc_plot_woody_tally_biomass(df, woody_merged_df)
+    df, add_columns = _calc_plot_woody_tally_biomass_streamlined(df, woody_merged_df, woody_debris_params)
+    keep_columns.extend(add_columns)
 
+    # ### PROCESS PLOT-LEVEL WOODY DEBRIS ATTRIBUTES
+    df, add_columns = _calc_plot_woody_debris(df, woody_merged_df)
 
     # Save the processed DataFrame to the output folder
     os.makedirs(out_folder, exist_ok=True)
