@@ -84,11 +84,36 @@ default_stand_summary_dict = {
     },
 }
 
+default_woody_debris_dict = {
+    'woody_debris_classes': {
+        'canadian': {
+            'process_classes': True,  # Process Canadian woody debris classes
+            'class_extension': 'can',  # Extension for Canadian classes
+            'diameter_cutoffs': [0.5, 1, 3, 5, 7],  # Diameter cutoffs for Canadian classes (cm)
+            'transect_lengths': [4, 10, 10, 10, 10, 30],  # Transect lengths for Canadian classes (m)
+        },
+        'us': {
+            'process_classes': True,  # Process U.S. woody debris classes
+            'class_extension': 'us',  # Extension for U.S. classes
+            'diameter_cutoffs': [0.635, 2.54, 7.62],  # Diameter cutoffs for U.S. classes (cm)
+            'transect_lengths': [4, 10, 10, 30],  # Transect lengths for U.S. classes (m)
+        },
+        'modified': {
+            'process_classes': True,  # Process modified woody debris classes
+            'class_extension': 'mod',  # Extension for modified classes
+            'diameter_cutoffs': [0.5, 1, 2, 3, 4, 5, 6, 7],  # Diameter cutoffs for modified classes (cm)
+            'transect_lengths': [4, 10, 10, 10, 10, 10, 10, 10, 30],  # Transect lengths for modified classes (m)
+        },
+    },
+    'measure_vs_tally_comparison': False,  # Compare differences (QMD, biomass) between measured and tallied data
+}
+
 
 def fuel_analyst(in_folder: str,
                  out_folder: str,
                  surface_fire_intensity_model: str,
-                 stand_summary: Optional[dict] = None,
+                 stand_summary_params: Optional[dict] = None,
+                 woody_debris_params: Optional[dict] = None,
                  gen_fofem_tree_df: bool = False,
                  gen_fofem_consume_df: bool = False,
                  fofem_consume_moisture_var: str = 'Dry') -> None:
@@ -98,7 +123,8 @@ def fuel_analyst(in_folder: str,
     :param in_folder: Path to the input folder containing the survey data.
     :param out_folder: Path to the output folder where results will be saved.
     :param surface_fire_intensity_model: Model to use for surface fire intensity calculations.
-    :param stand_summary: List containing stand summary parameters.
+    :param stand_summary_params: Dictionary containing stand summary parameters.
+    :param woody_debris_params: Dictionary containing parameters for woody debris processing.
     :param gen_fofem_tree_df: Boolean indicating whether to generate the FOFEM tree DataFrame.
     :param gen_fofem_consume_df: Boolean indicating whether to generate the FOFEM consumption DataFrame.
     :param fofem_consume_moisture_var: Moisture regime for FOFEM consumption (default is 'Dry').
@@ -122,8 +148,11 @@ def fuel_analyst(in_folder: str,
         'woody': 'Woody Debris'
     }
 
-    if stand_summary is None:
-        stand_summary = default_stand_summary_dict
+    if stand_summary_params is None:
+        stand_summary_params = default_stand_summary_dict
+
+    if woody_debris_params is None:
+        woody_debris_params = default_woody_debris_dict
 
     # Create the list of forms to process
     form_select_list = ['plants', 'trees', 'cover', 'woody']
@@ -166,11 +195,11 @@ def fuel_analyst(in_folder: str,
                  master_tree_df) = trees.process_trees(in_path,
                                                        out_path,
                                                        surface_fire_intensity_model,
-                                                       stand_summary)
+                                                       stand_summary_params)
             elif form == 'cover':
                 form_df, add_columns = cc.process_canopy_cover(in_path, out_path)
             elif form == 'woody':
-                form_df, add_columns = wd.process_woody_debris(in_path, out_path, plot_df[mask])
+                form_df, add_columns = wd.process_woody_debris(in_path, out_path, plot_df[mask], woody_debris_params)
 
             # Add the new columns to the keep_columns list
             keep_columns.extend(add_columns)
@@ -237,8 +266,9 @@ if __name__ == '__main__':
     _in_folder = r'E:\UBC_FuelAnalyst_Testing\Survey123_Data\Survey_Data'
     _out_folder = r'E:\UBC_FuelAnalyst_Testing\Survey123_Data\_Results'
     _surface_fire_intensity_model = 'Byram'
-    _stand_summary_dict = None
-    _gen_fofem_tree_df = True  # Whether to generate the FOFEM tree DataFrame
+    _stand_summary_dict = None  # Use default stand summary settings
+    _woody_debris_dict = None   # Use default woody debris settings
+    _gen_fofem_tree_df = True   # Whether to generate the FOFEM tree DataFrame
     _gen_fofem_consume_df = False  # Whether to generate the FOFEM consumption DataFrame
     _fofem_consume_moisture_var = 'Very Dry'  # Moisture regime setting for FOFEM consumption
 
@@ -246,6 +276,7 @@ if __name__ == '__main__':
     fuel_analyst(in_folder=_in_folder,
                  out_folder=_out_folder,
                  surface_fire_intensity_model=_surface_fire_intensity_model,
-                 stand_summary=_stand_summary_dict,
+                 stand_summary_params=_stand_summary_dict,
+                 woody_debris_params=_woody_debris_dict,
                  gen_fofem_tree_df=_gen_fofem_tree_df,
                  gen_fofem_consume_df=_gen_fofem_consume_df)
