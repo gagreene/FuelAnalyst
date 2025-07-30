@@ -105,7 +105,7 @@ default_woody_debris_dict = {
             'transect_lengths': [4, 10, 10, 10, 10, 10, 10, 10, 30],  # Transect lengths for modified classes (m)
         },
     },
-    'measure_vs_tally_comparison': False,  # Compare differences (QMD, biomass) between measured and tallied data
+    'measure_vs_tally_qmd_comparison': False,  # Compare differences (QMD, biomass) between measured and tallied data
 }
 
 
