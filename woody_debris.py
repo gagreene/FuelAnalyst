@@ -104,8 +104,6 @@ def _calc_plot_tsct_slope_correction(df: pd.DataFrame) -> pd.DataFrame:
     :param df: DataFrame containing transect length and slope data.
     :return: Updated df with corrected transect lengths.
     """
-    # TODO - Determine if a slope correction is needed for transects
-    #  (should calculations be based on horizontal length or slope length?)
 
     # Calculate slope correction for each transect
     for tsct in [1, 2]:
@@ -119,6 +117,31 @@ def _calc_plot_tsct_slope_correction(df: pd.DataFrame) -> pd.DataFrame:
 
         # Calculate slope correction
         df[f't{tsct}_slope_cor'] = (1 + np.power(df[f't{tsct}_slope_rad'], 2)) ** 0.5
+
+    return df
+
+
+def _calc_plot_tsct_total_slope_correction(df: pd.DataFrame, woody_debris_params: dict) -> pd.DataFrame:
+
+    # Define corresponding transect lengths (in meters) for each bin
+    lengths = woody_debris_params['protocol_transect_params']['transect_lengths']
+
+    for lngth in lengths:
+        for tsct in [1, 2]:
+            # Calculate the corrected transect length for each diameter class
+            df[f't{tsct}_length_{lngth}m_cor'] = lngth / df[f't{tsct}_slope_cor']
+
+        # Sum the corrected transect lengths for both transects to get the total transect length
+        df[f'tsct_length_{lngth}m_cor'] = (
+                df[f't1_length_{lngth}m_cor'].replace(np.nan, 0) +
+                df[f't2_length_{lngth}m_cor'].replace(np.nan, 0)
+        )
+
+    # Calculate the total (overall) slope correction factor
+    # (it's the same for all transect lengths, so we can just use the first one)
+    df[f'tsct_slope_cor'] = (
+        (df['num_transects'] * lengths[0]) / df[f'tsct_length_{lengths[0]}m_cor']
+    )
 
     return df
 
@@ -180,14 +203,14 @@ def _calc_plot_woody_tally_biomass(
 
                 # Calculate corrected slope lengths for each transect and sum for each plot
                 for i, lngth in enumerate(np.unique(transect_lengths)):
-                    df[f'tsct_length_cor_{lngth}_{woody_class_ext}'] = 0
-                    for tsct in range(1, 3):
+                    for tsct in [1, 2]:
                         df[f't{tsct}_length_cor_{lngth}_{woody_class_ext}'] = (
                             lngth / df[f't{tsct}_slope_cor']
                         )
-                        df[f'tsct_length_cor_{lngth}_{woody_class_ext}'] += (
-                            df[f't{tsct}_length_cor_{lngth}_{woody_class_ext}']
-                        )
+                    df[f'tsct_length_cor_{lngth}_{woody_class_ext}'] = (
+                        df[f't1_length_cor_{lngth}_{woody_class_ext}'].replace(np.nan, 0) +
+                        df[f't2_length_cor_{lngth}_{woody_class_ext}'].replace(np.nan, 0)
+                    )
                     # Slope correction factor for each transect length
                     df[f'tsct_slope_cor_{lngth}_{woody_class_ext}'] = (
                         df[f'tsct_length_total_{lngth}_{woody_class_ext}'] /
@@ -494,7 +517,9 @@ def _calc_woody_diam_cm(woody_merged_df: pd.DataFrame) -> pd.DataFrame:
     return woody_merged_df
 
 
-def _calc_woody_corrected_tsct_lengths(df: pd.DataFrame, woody_merged_df: pd.DataFrame) -> pd.DataFrame:
+def _calc_woody_corrected_tsct_lengths(df: pd.DataFrame,
+                                       woody_merged_df: pd.DataFrame,
+                                       woody_debris_params: dict) -> pd.DataFrame:
     """
     Assigns corrected transect lengths to woody debris pieces based on their diameter class.
 
@@ -503,39 +528,35 @@ def _calc_woody_corrected_tsct_lengths(df: pd.DataFrame, woody_merged_df: pd.Dat
 
     :param df: DataFrame containing plot-level data (not used in this function, but kept for interface consistency).
     :param woody_merged_df: DataFrame containing woody debris data with a 'woody_diam_cm' column.
+    :param woody_debris_params: Dictionary containing parameters for woody debris processing.
     :return: DataFrame with a new 'tsct_lengths' column indicating transect length for each piece.
     """
     # Define bin edges for woody diameter classes (in cm)
-    bins = [0, 0.5, 7, 30, float('inf')]
+    bins = [0] + woody_debris_params['protocol_transect_params']['size_classes']
 
     # Define corresponding transect lengths (in meters) for each bin
-    lengths = [4.0, 10.0, 20.0, 30.0]
+    lengths = woody_debris_params['protocol_transect_params']['transect_lengths']
 
-    # Assign transect length to each woody debris piece based on its diameter class
+    # Assign number of transects from df to woody_merged_df for each plot
+    woody_merged_df['num_transects'] = df.set_index('GlobalID')['num_transects'].reindex(
+        woody_merged_df['ParentGlobalID']
+    ).values
+
+    # Assign total transect length to each woody debris piece based on its diameter class
     woody_merged_df['tsct_length'] = pd.cut(
         woody_merged_df['woody_diam_cm'],
         bins=bins,
         labels=lengths,
         right=True
-    ).astype(float)
+    ).astype(float) * woody_merged_df['num_transects']
+
+    # Assign total slope correction from df to woody_merged_df for each plot
+    woody_merged_df['tsct_slope_cor'] = df.set_index('GlobalID')['tsct_slope_cor'].reindex(
+        woody_merged_df['ParentGlobalID']
+    ).values
 
     # Calculate the corrected transect lengths based on the slope correction value in df
-    for tsct in [1, 2]:
-        # Create a mapping from (GlobalID, transect_id) to slope correction if the column exists
-        if f't{tsct}_slope_cor' in df.columns:
-            slope_cor_map = {(gid, tsct): val for gid, val in zip(df['GlobalID'], df[f't{tsct}_slope_cor'])}
-        else:
-            slope_cor_map = {}
-
-        mask = woody_merged_df['transect_id'] == tsct
-        # Map the slope correction to each woody debris piece, defaulting to 1.0 if not found
-        woody_merged_df.loc[mask, 'tsct_slope_cor'] = woody_merged_df.loc[mask].apply(
-            lambda x: slope_cor_map.get((x['ParentGlobalID'], x['transect_id']), 1.0), axis=1
-        )
-
-        # Apply the slope correction to the transect lengths
-        woody_merged_df.loc[mask, 'tsct_length_cor'] = (woody_merged_df.loc[mask, 'tsct_length'] /
-                                                        woody_merged_df.loc[mask, 'tsct_slope_cor'])
+    woody_merged_df['tsct_length_cor'] = woody_merged_df['tsct_length'] / woody_merged_df['tsct_slope_cor']
 
     return woody_merged_df
 
@@ -887,13 +908,14 @@ def process_woody_debris(in_folder: str,
     df = _calc_plot_t2_azimuth(df)
     df = _calc_plot_duff_litter_depths(df)
     df = _calc_plot_tsct_slope_correction(df)
+    df = _calc_plot_tsct_total_slope_correction(df, woody_debris_params)
 
     # ### PROCESS WOODY DATA
     # Get transect woody debris data
     woody_merged_df = _get_merged_woody_df(in_folder)
     # Process woody debris attributes
     woody_merged_df = _calc_woody_diam_cm(woody_merged_df)
-    woody_merged_df = _calc_woody_corrected_tsct_lengths(df, woody_merged_df)
+    woody_merged_df = _calc_woody_corrected_tsct_lengths(df, woody_merged_df, woody_debris_params)
     woody_merged_df = _calc_woody_species(woody_merged_df)
     woody_merged_df = _calc_woody_specific_gravity(woody_merged_df, tree_params_df)
     woody_merged_df = _calc_woody_volume(woody_merged_df)
