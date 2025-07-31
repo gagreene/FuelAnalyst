@@ -98,7 +98,7 @@ default_woody_debris_dict = {
             # Output request for woody fuels
             # Start at upper diameter limit of tallied data for diameter cutoffs
             'output_request': [
-                # [column name extension, filter dictionary, diameter cutoffs]
+                # [output name extension, filter dictionary, diameter cutoffs]
                 ['default', {}, [0, 0.5, 1, 3, 5, 7, float('inf')]],
                 ['lt7cm', {}, [0, 7]],
             ],  # Output diameter cutoffs for Canadian classes (cm)
@@ -111,11 +111,11 @@ default_woody_debris_dict = {
             # Output request for woody fuels
             # At a minimum, diameter cutoffs must start at the upper diameter limit of tallied data
             'output_request': [
-                # [column name extension, filter dictionary, diameter cutoffs]
+                # [output name extension, filter dictionary, diameter cutoffs]
                 ['default', {}, [0, 0.635, 2.54, 7.62, float('inf')]],
                 ['fofemSound', {'woody_decay':'<=3'}, [0, 0.635, 2.54, 7.62, 15.24, 22.86, 50.8, float('inf')]],
                 ['fofemRotten', {'woody_decay':'>3'}, [0, 0.635, 2.54, 7.62, 15.24, 22.86, 50.8, float('inf')]],
-                ['gt762cm', {}, [7.62, float('inf')]],
+                ['coarse', {}, [7.62, float('inf')]],
             ],  # Output diameter cutoffs for U.S. classes (cm)
         },
         'modified': {
@@ -126,12 +126,12 @@ default_woody_debris_dict = {
             # Output request for woody fuels
             # Start at upper diameter limit of tallied data for diameter cutoffs
             'output_request': [
-                # [column name extension, filter dictionary, diameter cutoffs]
+                # [output name extension, filter dictionary, diameter cutoffs]
                 ['default', {}, [0, 0.5, 1, 2, 3, 4, 5, 6, 7, float('inf')]],
             ],
         },
     },
-    'measure_vs_tally_qmd_comparison': False,  # Compare differences (QMD, biomass) between measured and tallied data
+    'measure_vs_tally_qmd_comparison': True,  # Compare differences (QMD, biomass) between measured and tallied data
 }
 
 
@@ -262,7 +262,7 @@ def fuel_analyst(in_folder: str,
     # Save the Master Fuel DataFrame to the output folder if it exists
     if plot_df is not None:
         master_df_path = os.path.join(out_folder, 'master_fuel_df.csv')
-        print(f'Saving the Master Fuel DataFrame to: {master_df_path}')
+        print(f'\n\nSaving the Master Fuel DataFrame to: {master_df_path}')
         plot_df = plot_df[keep_columns]  # Keep only the specified columns
         helper.export_csv(plot_df, master_df_path)
 
