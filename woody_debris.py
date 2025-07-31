@@ -58,7 +58,15 @@ def _add_spp_comp_type(spp_comp_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _assign_spp_comp_id_col(df: pd.DataFrame, spp_comp_df: pd.DataFrame) -> pd.DataFrame:
-    # Where ParentGlobalID in spp_comp_df matches GlobalID in df, assign unique_id from df to spp_comp_df
+    """
+    Assigns the `unique_id` from `df` to `spp_comp_df` where `ParentGlobalID` in `spp_comp_df`
+    matches `GlobalID` in `df`.
+
+    :param df: DataFrame containing plot-level data with `GlobalID` and `unique_id` columns.
+    :param spp_comp_df: DataFrame containing species composition data with `ParentGlobalID`.
+    :return: Updated `spp_comp_df` with a new `unique_id` column mapped from `df`.
+    """
+    # Map unique_id from df to spp_comp_df based on matching ParentGlobalID and GlobalID
     spp_comp_df['unique_id'] = spp_comp_df['ParentGlobalID'].map(
         df.set_index('GlobalID')['unique_id'].to_dict()
     )
@@ -158,13 +166,28 @@ def _calc_plot_duff_litter_depths(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _calc_plot_specific_gravity(df: pd.DataFrame,
-                                spp_comp_df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
+def _calc_plot_specific_gravity(
+        df: pd.DataFrame,
+        spp_comp_df: pd.DataFrame
+    ) -> tuple[pd.DataFrame, list]:
+    """
+    Calculate plot-level specific gravity values for woody debris fuel size classes.
+
+    For each plot, this function aggregates specific gravity values from the species composition
+    DataFrame (`spp_comp_df`) by `unique_id` and species composition type, and assigns the
+    summed values to the corresponding rows in the plot DataFrame (`df`). It also adds a comment
+    describing the source of the specific gravity values for each plot.
+
+    :param df: DataFrame containing plot-level data, including `unique_id` and `spp_comp_type`.
+    :param spp_comp_df: DataFrame containing species composition data and specific gravity columns.
+    :return: Tuple of the updated plot DataFrame and a sorted list of specific gravity columns added.
+    """
     print(f'\tProcessing plot-level specific gravity')
 
     # Initialize list of columns to keep
     keep_columns = []
 
+    # Loop through each species composition type
     for spp_comp_type in ['tree_data', 'transect_data', 'manual_entry']:
         # Filter the DataFrame for the current species composition type
         plot_comp_type_mask = df['spp_comp_type'] == spp_comp_type
@@ -177,14 +200,14 @@ def _calc_plot_specific_gravity(df: pd.DataFrame,
                           'along transect(s).')
         else:
             sg_comment = 'Specific gravity values derived using manual species composition entry.'
-        df.loc[plot_comp_type_mask, f'woody_sg_comment'] = sg_comment
+        df.loc[plot_comp_type_mask, 'woody_sg_comment'] = sg_comment
 
-        # If there are no rows for this type, skip to the next iteration
+        # Only process if there are rows for this type
         if not df[plot_comp_type_mask].empty:
-            # Process specific gravity for tree data
+            # For each specific gravity output column, aggregate and assign values
             for out_col, param_col, _, _ in specific_gravity_map:
                 spp_comp_mask = spp_comp_df['spp_comp_type'] == spp_comp_type
-                # Get the specific gravity for the "manual entry" approach
+                # Map summed specific gravity from spp_comp_df to df by unique_id
                 df.loc[plot_comp_type_mask, out_col] = df['unique_id'].map(
                     spp_comp_df[spp_comp_mask].groupby('unique_id')[out_col].sum()
                 )
@@ -235,23 +258,33 @@ def _calc_plot_tsct_slope_correction(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _calc_plot_tsct_total_slope_correction(df: pd.DataFrame, woody_debris_params: dict) -> pd.DataFrame:
+    """
+    Calculate the total slope-corrected transect lengths for each plot and diameter class.
 
-    # Define corresponding transect lengths (in meters) for each bin
+    For each transect length defined in the protocol parameters, this function computes the slope-corrected
+    length for both transects (t1 and t2) and sums them to get the total corrected transect length per plot.
+    It also calculates an overall slope correction factor for each plot.
+
+    :param df: DataFrame containing plot-level data, including slope correction factors for each transect.
+    :param woody_debris_params: Dictionary containing protocol transect parameters, including transect lengths.
+    :return: Updated DataFrame with new columns for corrected transect lengths and total slope correction.
+    """
+    # Get the list of transect lengths (in meters) for each diameter class
     lengths = woody_debris_params['protocol_transect_params']['transect_lengths']
 
     for lngth in lengths:
         for tsct in [1, 2]:
-            # Calculate the corrected transect length for each diameter class
+            # Calculate the corrected transect length for each transect and diameter class
             df[f't{tsct}_length_{lngth}m_cor'] = lngth / df[f't{tsct}_slope_cor']
 
-        # Sum the corrected transect lengths for both transects to get the total transect length
+        # Sum the corrected transect lengths for both transects to get the total corrected length
         df[f'tsct_length_{lngth}m_cor'] = (
-                df[f't1_length_{lngth}m_cor'].replace(np.nan, 0) +
-                df[f't2_length_{lngth}m_cor'].replace(np.nan, 0)
+            df[f't1_length_{lngth}m_cor'].replace(np.nan, 0) +
+            df[f't2_length_{lngth}m_cor'].replace(np.nan, 0)
         )
 
-    # Calculate the total (overall) slope correction factor
-    # (it's the same for all transect lengths, so we can just use the first one)
+    # Calculate the total (overall) slope correction factor for the plot
+    # (uses the first transect length as representative)
     df[f'tsct_slope_cor'] = (
         (df['num_transects'] * lengths[0]) / df[f'tsct_length_{lengths[0]}m_cor']
     )
@@ -259,15 +292,31 @@ def _calc_plot_tsct_total_slope_correction(df: pd.DataFrame, woody_debris_params
     return df
 
 
-def _calc_plot_woody_debris(df: pd.DataFrame,
-                            woody_merged_df: pd.DataFrame,
-                            woody_debris_params: dict) -> tuple[pd.DataFrame, list]:
+def _calc_plot_woody_debris(
+        df: pd.DataFrame,
+        woody_merged_df: pd.DataFrame,
+        woody_debris_params: dict
+    ) -> tuple[pd.DataFrame, list]:
+    """
+    Calculate plot-level woody debris biomass (kg/m^2) for each requested output class.
 
+    For each woody debris class defined in the protocol parameters, this function:
+    - Applies user-defined filters to the merged woody debris DataFrame to select pieces in each output class.
+    - Sums the measured woody debris biomass for each plot and output class.
+    - Optionally incorporates tallied woody fuel biomass into the output for the first diameter class.
+    - Adds the resulting columns to a list of columns to keep.
+
+    :param df: DataFrame containing plot-level data (with GlobalID).
+    :param woody_merged_df: DataFrame with merged woody debris transect data, including diameter and biomass.
+    :param woody_debris_params: Dictionary with woody debris class definitions and output requests.
+    :return: Tuple of the updated plot DataFrame and a sorted list of new output columns.
+    """
     print('\tProcessing final woody debris calculations')
 
     # Initialize list of columns to keep
     keep_columns = []
 
+    # Loop through each woody debris class defined in parameters
     for woody_class, woody_class_dict in woody_debris_params['woody_debris_classes'].items():
         print(f'\t\tProcessing {woody_class.upper()} class')
 
@@ -277,91 +326,104 @@ def _calc_plot_woody_debris(df: pd.DataFrame,
             diameter_cutoffs = woody_class_dict['diameter_cutoffs']
             output_requests = woody_class_dict['output_request']
 
+            # Loop through each output request for this woody debris class
             for i, (req_ext, req_filter, req_cutoffs) in enumerate(output_requests):
-                    prior_out_dc = req_cutoffs[0]
-                    for out_dc in req_cutoffs[1:]:
-                        out_dc_str = str(out_dc).replace('.', '_')
-                        if out_dc_str == 'inf':
-                            prior_out_dc_str = str(prior_out_dc).replace('.', '_')
-                            out_dc_str = f'gt{prior_out_dc_str}'
+                prior_out_dc = req_cutoffs[0]
+                for out_dc in req_cutoffs[1:]:
+                    out_dc_str = str(out_dc).replace('.', '_')
+                    if out_dc_str == 'inf':
+                        prior_out_dc_str = str(prior_out_dc).replace('.', '_')
+                        out_dc_str = f'gt{prior_out_dc_str}'
 
-                        # Create a mask for the merged woody DataFrame (default to all True)
-                        mask = np.ones(len(woody_merged_df), dtype=bool)
+                    # Create a mask for the merged woody DataFrame (default to all True)
+                    mask = np.ones(len(woody_merged_df), dtype=bool)
 
-                        # Apply filters to the merged woody DataFrame
-                        for col, cond in req_filter.items():
-                            ops = {
-                                '<=': operator.le,
-                                '>=': operator.ge,
-                                '<': operator.lt,
-                                '>': operator.gt,
-                                '==': operator.eq,
-                                '!=': operator.ne,
-                            }
-                            for op_str, op_func in ops.items():
-                                if cond.startswith(op_str):
-                                    val = float(cond[len(op_str):])
-                                    mask &= op_func(woody_merged_df[col], val)
-                                    break
-                            else:
-                                raise ValueError(f'Unsupported condition: {cond}')
+                    # Apply user-defined filters to the merged woody DataFrame
+                    for col, cond in req_filter.items():
+                        ops = {
+                            '<=': operator.le,
+                            '>=': operator.ge,
+                            '<': operator.lt,
+                            '>': operator.gt,
+                            '==': operator.eq,
+                            '!=': operator.ne,
+                        }
+                        for op_str, op_func in ops.items():
+                            if cond.startswith(op_str):
+                                val = float(cond[len(op_str):])
+                                mask &= op_func(woody_merged_df[col], val)
+                                break
+                        else:
+                            raise ValueError(f'Unsupported condition: {cond}')
 
-                        # Count the number of measured woody fuels within each diameter class
-                        df[f'woody_kgpm2_{woody_class_ext}_{req_ext}_{out_dc_str}'] = df.GlobalID.map(
-                            woody_merged_df[
-                                (woody_merged_df['woody_diam_cm'] > prior_out_dc) &
-                                (woody_merged_df['woody_diam_cm'] <= out_dc) &
-                                mask
-                                ].groupby('ParentGlobalID')['woody_mass_kgpm2'].sum()
-                        )
+                    # Sum measured woody debris biomass for each plot and output class
+                    df[f'woody_kgpm2_{woody_class_ext}_{req_ext}_{out_dc_str}'] = df.GlobalID.map(
+                        woody_merged_df[
+                            (woody_merged_df['woody_diam_cm'] > prior_out_dc) &
+                            (woody_merged_df['woody_diam_cm'] <= out_dc) &
+                            mask
+                        ].groupby('ParentGlobalID')['woody_mass_kgpm2'].sum()
+                    )
 
-                        # Incorporate tallied woody fuels into outputs on first iteration
-                        if i == 0:
-                            dc = diameter_cutoffs[0]
-                            dc_str = str(dc).replace('.', '_')
-                            if dc == out_dc:
-                                # If the tallied diameter class matches the output diameter class,
-                                # copy the tallied woody value
-                                df[f'woody_kgpm2_{woody_class_ext}_{req_ext}_{out_dc_str}'] = (
-                                    df[f'woody_kgpm2_{woody_class_ext}_{dc_str}']
-                                )
-                            elif prior_out_dc < dc < out_dc:
-                                # Add the tallied fuel mass to the first class if the tallied diameter class is between
-                                # the prior and current output diameter classes
-                                df[f'woody_kgpm2_{woody_class_ext}_{req_ext}_{out_dc_str}'] += (
-                                    df[f'woody_kgpm2_{woody_class_ext}_{dc_str}']
-                                )
-                            else:
-                                pass
+                    # Incorporate tallied woody fuels into outputs on first iteration
+                    if i == 0:
+                        dc = diameter_cutoffs[0]
+                        dc_str = str(dc).replace('.', '_')
+                        if dc == out_dc:
+                            # If the tallied diameter class matches the output diameter class,
+                            # copy the tallied woody value
+                            df[f'woody_kgpm2_{woody_class_ext}_{req_ext}_{out_dc_str}'] = (
+                                df[f'woody_kgpm2_{woody_class_ext}_{dc_str}']
+                            )
+                        elif prior_out_dc < dc < out_dc:
+                            # Add the tallied fuel mass to the first class if the tallied diameter class is between
+                            # the prior and current output diameter classes
+                            df[f'woody_kgpm2_{woody_class_ext}_{req_ext}_{out_dc_str}'] += (
+                                df[f'woody_kgpm2_{woody_class_ext}_{dc_str}']
+                            )
+                        else:
+                            pass
 
-                        # Add the output column to the keep_columns list
-                        keep_columns.append(f'woody_kgpm2_{woody_class_ext}_{req_ext}_{out_dc_str}')
+                    # Add the output column to the keep_columns list
+                    keep_columns.append(f'woody_kgpm2_{woody_class_ext}_{req_ext}_{out_dc_str}')
 
-                        # Assign the previous diameter class to the current one
-                        prior_out_dc = out_dc
+                    # Assign the previous diameter class to the current one
+                    prior_out_dc = out_dc
 
     return df, helper.sort_list(keep_columns)
 
 
-def _calc_spp_comp_duff_litter_bulk_density(df: pd.DataFrame,
-                                            spp_comp_df: pd.DataFrame,
-                                            tree_params: pd.DataFrame) -> pd.DataFrame:
+def _calc_spp_comp_duff_litter_bulk_density(
+        spp_comp_df: pd.DataFrame,
+        tree_params: pd.DataFrame
+    ) -> pd.DataFrame:
+    """
+    Calculate duff and litter bulk density for each species in the species composition DataFrame.
+
+    For each output column defined in `bulk_density_map`, this function assigns a bulk density value
+    to each species based on the corresponding parameter in `tree_params`, weighted by the species
+    composition percent. If a species is not found in `tree_params`, the value for 'UNK' is used.
+
+    :param spp_comp_df: DataFrame containing species composition data.
+    :param tree_params: DataFrame containing bulk density parameters for each species.
+    :return: Updated spp_comp_df with calculated bulk density columns.
+    """
     print('\tCalculating duff and litter bulk density for species composition')
 
     for out_col, param_col, _, _ in bulk_density_map:
-        # Initialize bulk density column
+        # Initialize bulk density column with NaN
         spp_comp_df[out_col] = np.nan
 
-        # For each species in this plot
+        # Assign bulk density for each species in spp_comp_df
         for spp in spp_comp_df['spp_comp_code'].unique():
-            # Generate a mask for the current species
+            # Mask for current species
             spp_mask = spp_comp_df['spp_comp_code'] == spp
-            # Get bulk density for species
+            # Get bulk density value from tree_params, fallback to 'UNK' if not found
             spp_comp_df.loc[spp_mask, out_col] = (
-                                                     tree_params.loc[spp, param_col]
-                                                     if spp in tree_params.index
-                                                     else tree_params.loc['UNK', param_col]
-                                                 ) * spp_comp_df['spp_comp_percent'] / 100
+                tree_params.loc[spp, param_col]
+                if spp in tree_params.index
+                else tree_params.loc['UNK', param_col]
+            ) * spp_comp_df['spp_comp_percent'] / 100  # Weight by species percent
 
     return spp_comp_df
 
@@ -583,9 +645,11 @@ def _calc_tallied_woody_biomass(
         return df, keep_columns
 
 
-def _calc_woody_corrected_tsct_lengths(df: pd.DataFrame,
-                                       woody_merged_df: pd.DataFrame,
-                                       woody_debris_params: dict) -> pd.DataFrame:
+def _calc_woody_corrected_tsct_lengths(
+        df: pd.DataFrame,
+        woody_merged_df: pd.DataFrame,
+        woody_debris_params: dict
+) -> pd.DataFrame:
     """
     Assigns corrected transect lengths to woody debris pieces based on their diameter class.
 
@@ -664,14 +728,14 @@ def _calc_woody_species(woody_merged_df: pd.DataFrame) -> pd.DataFrame:
 
 def _calc_woody_specific_gravity(woody_merged_df: pd.DataFrame, tree_params: pd.DataFrame) -> pd.DataFrame:
     """
-        Calculate and assign specific gravity values for each woody debris piece in the
-        merged transect DataFrame, based on species and diameter class, normalized by the sum of
-        diameters per plot and class.
+    Calculate and assign specific gravity values for each woody debris piece in the
+    merged transect DataFrame, based on species and diameter class, normalized by the sum of
+    diameters per plot and class.
 
-        :param woody_merged_df: DataFrame with merged woody debris transect data.
-        :param tree_params: DataFrame with specific gravity parameters for each species.
-        :return: Updated woody_merged_df
-        """
+    :param woody_merged_df: DataFrame with merged woody debris transect data.
+    :param tree_params: DataFrame with specific gravity parameters for each species.
+    :return: Updated woody_merged_df
+    """
     for _, param_col, low_lim, up_lim in specific_gravity_map:
         # Mask for diameter class (low_lim < diam <= up_lim)
         diam_mask = woody_merged_df['woody_diam_cm'].between(low_lim, up_lim, inclusive='right')
@@ -725,6 +789,7 @@ def _calc_woody_volume(woody_merged_df: pd.DataFrame) -> pd.DataFrame:
 def _calc_woody_weight(woody_merged_df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate the weight (kg per m^2) of woody debris based on specific gravity and volume.
+    Divide by 10 to convert from t/ha to kg/m^2.
     Equations per Van Wagner (1968, 1982).
 
     :param woody_merged_df: DataFrame containing woody debris data with 'woody_sg_wtd' and 'woody_volume_m3'.
@@ -768,8 +833,27 @@ def _get_merged_woody_df(in_folder: str) -> pd.DataFrame:
     return woody_merged_df
 
 
-def _get_van_wagner_qmd(df, extension, diam_classes, trans_lengths):
-    # Replace missing values with np.nan
+def _get_van_wagner_qmd(
+    df: pd.DataFrame,
+    extension: str,
+    diam_classes: list[float],
+    trans_lengths: list[float]
+) -> pd.DataFrame:
+    """
+    Calculate the quadratic mean diameter (QMD) for woody debris fuel size classes using the Van Wagner method.
+
+    This function estimates QMD for each diameter class in a plot, based on tally counts and transect lengths.
+    It uses a regression approach (log-log of adjusted frequency vs. mid-class diameter) to estimate the slope,
+    then applies the Van Wagner equations to compute QMD. If insufficient data exists, it falls back to
+    default QMD values from Delisle and Woodard (1988).
+
+    :param df: DataFrame containing tally counts and transect length columns for each plot.
+    :param extension: String extension for column names (e.g., 'can', 'mod').
+    :param diam_classes: List of diameter class upper bounds (in cm).
+    :param trans_lengths: List of transect lengths (in meters) for each class.
+    :return: DataFrame with QMD columns for each diameter class.
+    """
+    # Replace missing values and zeros with np.nan for proper calculations
     dc_df = df.copy().replace(r'^\s+$', np.nan, regex=True).replace(0, np.nan)
 
     # Average QMD values from Delisle and Woodard (1988), designed for typical Canadian fuel size classes
@@ -791,13 +875,13 @@ def _get_van_wagner_qmd(df, extension, diam_classes, trans_lengths):
         '7.62': 0.0537 * (7.62 ** 2) + 0.4583 * 7.62 + 0.0977
     }
 
-    ## Count all diameter classes with empty tallies (empty = null or nan)
+    # Count the number of diameter classes with empty tallies (null or nan)
     dc_df['countEmpty'] = dc_df[[col for col in dc_df.columns if 'count' in col]].isnull().sum(axis=1)
 
-    # Replace NAN values with 0
+    # Replace np.nan values with 0 for further calculations
     dc_df = dc_df.replace(np.nan, 0)
 
-    ## These calculations should only happen if counts are missing in only 3 or fewer classes
+    # Calculate adjusted frequency and mid-class diameter for each diameter class
     for i, dc in enumerate(diam_classes):
         dc_str = str(dc).replace('.', '_')  # Remove decimal point for column names
         count_col = fnmatch.filter(list(dc_df.columns), f'count_{extension}_{dc_str}')
@@ -806,25 +890,27 @@ def _get_van_wagner_qmd(df, extension, diam_classes, trans_lengths):
         else:
             count_series = 0
         if i == 0:
+            # For the first class, use the class upper bound as denominator
             dc_df[f'adjFreq{dc}'] = (dc_df[f'tsct_length_max_{extension}'] * (
                     count_series / dc_df[f'tsct_length_total_{extension}_{trans_lengths[i]}']
             )) / dc
             dc_df[f'midClass{dc}'] = dc / 2
         else:
+            # For subsequent classes, use the width of the class
             dc_df[f'adjFreq{dc}'] = (dc_df[f'tsct_length_max_{extension}'] * (
                     count_series / dc_df[f'tsct_length_total_{extension}_{trans_lengths[i]}']
             )) / (dc - diam_classes[i - 1])
             dc_df[f'midClass{dc}'] = (dc + diam_classes[i - 1]) / 2
-        dc_df[f'adjFreq{dc}'] = dc_df[f'adjFreq{dc}'].replace(0, np.nan)  # Replace 0 values with np.nan
+        # Replace zero adjusted frequencies with np.nan to avoid log(0)
+        dc_df[f'adjFreq{dc}'] = dc_df[f'adjFreq{dc}'].replace(0, np.nan)
         dc_df[f'lnAdjFreq{dc}'] = np.log(dc_df[f'adjFreq{dc}'])
         dc_df[f'lnMidClass{dc}'] = np.log(dc_df[f'midClass{dc}'])
 
-    # Get X and Y elements to enable slope (linear regression) calculation
+    # Prepare X (lnMidClass) and Y (lnAdjFreq) for regression
     dc_df['slopeX'] = dc_df.apply(lambda x: x[[f'lnMidClass{dc}' for dc in diam_classes]].values.tolist(), axis=1)
     dc_df['slopeY'] = dc_df.apply(lambda x: x[[f'lnAdjFreq{dc}' for dc in diam_classes]].values.tolist(), axis=1)
 
-    # Delete infinite or null elements from slopeX and slopeY columns
-    # Must delete slopeX values first, otherwise you lose the reference for index matching
+    # Remove infinite or null values from slopeX and slopeY for regression
     dc_df['slopeX'], dc_df['slopeY'] = zip(*dc_df.apply(
         lambda x: zip(*[(xi, yi) for xi, yi in zip(x.slopeX, x.slopeY) if np.isfinite(xi) and np.isfinite(yi)]),
         axis=1
@@ -832,7 +918,7 @@ def _get_van_wagner_qmd(df, extension, diam_classes, trans_lengths):
     dc_df['slopeX'] = dc_df['slopeX'].apply(list)
     dc_df['slopeY'] = dc_df['slopeY'].apply(list)
 
-    # Calculate slope (b) by creating a regression against the points
+    # Linear regression to get slope (b) for each plot
     def getSlope(inX, inY):
         try:
             return linregress(inX, inY)[0]
@@ -844,17 +930,17 @@ def _get_van_wagner_qmd(df, extension, diam_classes, trans_lengths):
         axis=1
     )
 
-    # Handle situation where slope (b) == -1 or -3
+    # Adjust slope if it is exactly -1 or -3 to avoid division by zero in QMD formula
     dc_df['slopeB'] = np.where((dc_df.slopeB == -1) | (dc_df.slopeB == -3),
                               dc_df.slopeB + 0.01,
                               dc_df.slopeB)
 
-    ## Calculate QMD for each size class
-    ## Apply default plot-level QMD values if counts missing in at least four diameter classes
+    # Calculate QMD for each size class using Van Wagner equations or fallback values
     for i, dc in enumerate(diam_classes):
         dc_str = str(dc).replace('.', '_')  # Remove decimal point for column names
         try:
             if i == 0:
+                # First class: lower bound is 0.1 cm
                 dc_df[f'qmd{dc}'] = dc_df.apply(
                     lambda x: np.sqrt(((x.slopeB + 1) * (np.power(dc, x.slopeB + 3) - np.power(0.1, x.slopeB + 3))) /
                                       ((x.slopeB + 3) * (np.power(dc, x.slopeB + 1) - np.power(0.1, x.slopeB + 1))))
@@ -862,6 +948,7 @@ def _get_van_wagner_qmd(df, extension, diam_classes, trans_lengths):
                        (np.isfinite(x.slopeB))
                     else delisle_dict.get(f'{dc}', np.nan), axis=1)
             else:
+                # Subsequent classes: lower bound is previous class upper bound
                 dc_df[f'qmd{dc}'] = dc_df.apply(
                     lambda x: np.sqrt(
                         ((x.slopeB + 1) * (np.power(dc, x.slopeB + 3) -
@@ -874,16 +961,19 @@ def _get_van_wagner_qmd(df, extension, diam_classes, trans_lengths):
             dc_df[f'qmd{dc}'] = delisle_dict.get(f'{dc}', np.nan)
             pass
 
-        # Replace qmd values with np.nan if no count exists for the class
+        # Set QMD to np.nan if no tally count exists for the class
         dc_df[f'qmd{dc}'] = np.where(dc_df[f'count_{extension}_{dc_str}'] == 0, np.nan, dc_df[f'qmd{dc}'])
 
+    # Return DataFrame with QMD columns for each diameter class
     return dc_df[[f'qmd{dc}' for dc in diam_classes]]
 
 
-def _merge_spp_comp(plot_df: pd.DataFrame,
-                    df: pd.DataFrame,
-                    woody_merged_df: pd.DataFrame,
-                    spp_comp_df: pd.DataFrame, ) -> pd.DataFrame:
+def _merge_spp_comp(
+        plot_df: pd.DataFrame,
+        df: pd.DataFrame,
+        woody_merged_df: pd.DataFrame,
+        spp_comp_df: pd.DataFrame
+) -> pd.DataFrame:
     """
     Ensure all plots and species in woody_merged_df are represented in spp_comp_df.
     For any (plot, species) pair missing from spp_comp_df, add a row with the summed
@@ -939,10 +1029,12 @@ def _merge_spp_comp(plot_df: pd.DataFrame,
     return spp_comp_df
 
 
-def process_woody_debris(in_folder: str,
-                         out_folder: str,
-                         plot_df: pd.DataFrame,
-                         woody_debris_params: dict) -> tuple[pd.DataFrame, list]:
+def process_woody_debris(
+        in_folder: str,
+        out_folder: str,
+        plot_df: pd.DataFrame,
+        woody_debris_params: dict
+) -> tuple[pd.DataFrame, list]:
     """
     Process woody debris data from a CSV file and return an updated DataFrame.
 
