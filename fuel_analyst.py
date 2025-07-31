@@ -95,18 +95,40 @@ default_woody_debris_dict = {
             'class_extension': 'can',  # Extension for Canadian classes
             'diameter_cutoffs': [0.5, 1, 3, 5, 7],  # Diameter cutoffs for Canadian classes (cm)
             'transect_lengths': [4, 10, 10, 10, 10, 30],  # Transect lengths for Canadian classes (m)
+            # Output request for woody fuels
+            # Start at upper diameter limit of tallied data for diameter cutoffs
+            'output_request': [
+                # [column name extension, filter dictionary, diameter cutoffs]
+                ['default', {}, [0, 0.5, 1, 3, 5, 7, float('inf')]],
+                ['lt7cm', {}, [0, 7]],
+            ],  # Output diameter cutoffs for Canadian classes (cm)
         },
         'us': {
             'process_classes': True,  # Process U.S. woody debris classes
             'class_extension': 'us',  # Extension for U.S. classes
             'diameter_cutoffs': [0.635, 2.54, 7.62],  # Diameter cutoffs for U.S. classes (cm)
             'transect_lengths': [4, 10, 10, 30],  # Transect lengths for U.S. classes (m)
+            # Output request for woody fuels
+            # At a minimum, diameter cutoffs must start at the upper diameter limit of tallied data
+            'output_request': [
+                # [column name extension, filter dictionary, diameter cutoffs]
+                ['default', {}, [0, 0.635, 2.54, 7.62, float('inf')]],
+                ['fofemSound', {'woody_decay':'<=3'}, [0, 0.635, 2.54, 7.62, 15.24, 22.86, 50.8, float('inf')]],
+                ['fofemRotten', {'woody_decay':'>3'}, [0, 0.635, 2.54, 7.62, 15.24, 22.86, 50.8, float('inf')]],
+                ['gt762cm', {}, [7.62, float('inf')]],
+            ],  # Output diameter cutoffs for U.S. classes (cm)
         },
         'modified': {
             'process_classes': True,  # Process modified woody debris classes
             'class_extension': 'mod',  # Extension for modified classes
             'diameter_cutoffs': [0.5, 1, 2, 3, 4, 5, 6, 7],  # Diameter cutoffs for modified classes (cm)
             'transect_lengths': [4, 10, 10, 10, 10, 10, 10, 10, 30],  # Transect lengths for modified classes (m)
+            # Output request for woody fuels
+            # Start at upper diameter limit of tallied data for diameter cutoffs
+            'output_request': [
+                # [column name extension, filter dictionary, diameter cutoffs]
+                ['default', {}, [0, 0.5, 1, 2, 3, 4, 5, 6, 7, float('inf')]],
+            ],
         },
     },
     'measure_vs_tally_qmd_comparison': False,  # Compare differences (QMD, biomass) between measured and tallied data
