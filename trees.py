@@ -70,60 +70,6 @@ attribute_weighting_dict = {
 }
 
 
-def _get_temesgen_tree_height(model: int,
-                              param_df: pd.DataFrame,
-                              spp: str,
-                              dbh: float,
-                              bal: float = None,
-                              sph=None,
-                              ba=None):
-    """
-    Calculates tree height using the Temesgen height model (Model 2 or 7).
-
-    :param model: Integer, 2 or 7, specifying which Temesgen model to use.
-    :param param_df: DataFrame containing species-specific model parameters.
-    :param spp: Species code (string) for the target ttree.
-    :param dbh: Diameter at Breast Height of the target tree (cm).
-    :param bal: Total basal area of trees larger than the target tree in stand (m^2/ha), required for Model 7.
-    :param sph: Total number of trees per hectare in stand, required for Model 7.
-    :param ba: Total basal area per hectare in stand (m^2/ha), required for Model 7.
-    :return: Estimated tree height (m) or np.nan if 'model' is invalid.
-    """
-    if model == 2:
-        # Temesgen Model 2: Height = 1.3 + a * (1 - exp(-b * dbh^c))
-        return 1.3 + param_df.loc[spp, 'Temesgen_M2a'] * \
-               (1 - np.exp(-param_df.loc[spp, 'Temesgen_M2b'] * np.power(dbh, param_df.loc[spp, 'Temesgen_M2c'])))
-    elif model == 7:
-        # Temesgen Model 7: Height = 1.3 + a * (1 - exp(-b * dbh^c))
-        # a and c are functions of bal, sph, and ba
-        a = param_df.loc[spp, 'Temesgen_M7a1'] + \
-            param_df.loc[spp, 'Temesgen_M7a2'] * bal + \
-            param_df.loc[spp, 'Temesgen_M7a3'] * sph + \
-            param_df.loc[spp, 'Temesgen_M7a4'] * ba
-        c = param_df.loc[spp, 'Temesgen_M7a5'] + \
-            param_df.loc[spp, 'Temesgen_M7a6'] * bal
-        return 1.3 + a * (1 - np.exp(-param_df.loc[spp, 'Temesgen_M7b'] * np.power(dbh, c)))
-    else:
-        # If incorrect model number entered, return np.nan
-        return np.nan
-
-
-def _round_plot_data(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Rounds plot data columns to appropriate decimal places.
-
-    :param df: DataFrame containing plot data.
-    :return: Updated DataFrame with rounded values.
-    """
-    print('\tRounding plot variables')
-    # Round DBH, height, cbh, and dcbh to 1 decimal place
-    df['lgtree_plot_radius'] = df['lgtree_plot_radius'].round(2)
-    df['smtree_plot_radius'] = df['smtree_plot_radius'].round(2)
-    df['sapling_plot_radius'] = df['sapling_plot_radius'].round(2)
-
-    return df
-
-
 def _calc_plot_multipliers(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate multipliers for tree data based on plot radii.
@@ -303,638 +249,6 @@ def _calc_sapling_ht(sapling_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> 
         )
 
     return sapling_df
-
-
-def _merge_saplings_to_trees(tree_df: pd.DataFrame, sapling_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Calculate sapling density for each plot based on the number of saplings per hectare.
-
-    :param tree_df: DataFrame containing individual tree data.
-    :param sapling_df: DataFrame containing small sapling data.
-    :return: Updated tree_df with a new 'tree_sapling_dens' column for sapling density.
-    """
-    print('\tMerging sapling data into tree DataFrame')
-    # Assign a default value of 1 to all trees in the tree DataFrame
-    tree_df['tree_count'] = 1
-
-    # Ensure all DBH values are > 0
-    sapling_df['sapling_live_dbh'] = sapling_df['sapling_live_dbh'].replace(0, 0.1)
-    sapling_df['sapling_dead_dbh'] = sapling_df['sapling_dead_dbh'].replace(0, 0.1)
-
-    # For each row in sapling_df, create new rows for live and dead saplings in tree_df
-    sapling_rows = []
-    for _, row in sapling_df.iterrows():
-        # Live saplings
-        if row['sapling_live_count'] > 0:
-            sapling_rows.append({
-                'tree_count': row['sapling_live_count'],
-                'tree_species': row['sapling_species'],
-                'tree_status': 'L',
-                'tree_dbh': row['sapling_live_dbh'],
-                'tree_ht': row['sapling_live_ht'],
-                'tree_cbh': row['sapling_live_cbh'],
-                'tree_dcy_class_cnfr': 1 if row['tree_type'] == 'conifer' else np.nan,
-                'tree_dcy_class_brdlf': 1 if row['tree_type'] == 'broadleaf' else np.nan,
-                'tree_note': '[Fuel Analyst Note] Tree merged from sapling data; ',
-                'ParentGlobalID': row['ParentGlobalID'] if 'ParentGlobalID' in row else None,
-                'CreationDate': row['CreationDate'] if 'CreationDate' in row else None,
-                'Creator': row['Creator'] if 'Creator' in row else None,
-                'EditDate': row['EditDate'] if 'EditDate' in row else None,
-                'Editor': row['Editor'] if 'Editor' in row else None,
-            })
-        # Dead saplings
-        if row['sapling_dead_count'] > 0:
-            sapling_rows.append({
-                'tree_count': row['sapling_dead_count'],
-                'tree_species': row['sapling_species'],
-                'tree_status': 'D',
-                'tree_dbh': row['sapling_dead_dbh'],
-                'tree_ht': row['sapling_dead_ht'],
-                'tree_cbh': np.nan,
-                'tree_dcy_class_cnfr': 3 if row['tree_type'] == 'conifer' else np.nan,
-                'tree_dcy_class_brdlf': 3 if row['tree_type'] == 'broadleaf' else np.nan,
-                'tree_note': '[Fuel Analyst Note] Tree merged from sapling data; ',
-                'ParentGlobalID': row['ParentGlobalID'] if 'ParentGlobalID' in row else None,
-                'CreationDate': row['CreationDate'] if 'CreationDate' in row else None,
-                'Creator': row['Creator'] if 'Creator' in row else None,
-                'EditDate': row['EditDate'] if 'EditDate' in row else None,
-                'Editor': row['Editor'] if 'Editor' in row else None,
-            })
-    # Convert sapling_rows to DataFrame and append to tree_df
-    if sapling_rows:
-        sapling_tree_df = pd.DataFrame(sapling_rows)
-        tree_df = pd.concat([tree_df, sapling_tree_df], ignore_index=True)
-
-
-    return tree_df, sapling_df
-
-
-def _round_tree_data(tree_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Rounds tree data columns to appropriate decimal places.
-
-    :param tree_df: DataFrame containing individual tree data.
-    :return: Updated DataFrame with rounded values.
-    """
-    print('\tRounding tree variables')
-    # Round DBH, height, cbh, and dcbh to 1 decimal place
-    tree_df['tree_dbh'] = tree_df['tree_dbh'].round(1)
-    tree_df['tree_ht'] = tree_df['tree_ht'].round(1)
-    tree_df['tree_cbh'] = tree_df['tree_cbh'].round(1)
-    tree_df['tree_dcbh'] = tree_df['tree_dcbh'].round(1)
-    # Round bark char height to 2 decimal places
-    tree_df['tree_bark_char_high'] = tree_df['tree_bark_char_high'].round(2)
-    tree_df['tree_bark_char_low'] = tree_df['tree_bark_char_low'].round(2)
-    tree_df['tree_bark_char_azim'] = tree_df['tree_bark_char_azim'].round(2)
-
-    return tree_df
-
-
-def _calc_tree_dbh_classes(tree_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Assigns DBH (Diameter at Breast Height) class labels to each tree based on its DBH value.
-
-    Classes:
-        - '1D': DBH >= 30 cm
-        - '1M': 12.5 cm <= DBH < 30 cm
-        - '2' : 7.5 cm <= DBH < 12.5 cm
-        - '3' : DBH < 7.5 cm
-
-    :param tree_df: DataFrame containing individual tree data with a 'tree_dbh' column.
-    :return: DataFrame with a new 'tree_dbh_class' column.
-    """
-    print('\tCalculating tree DBH classes')
-    # Assign DBH class based on DBH value
-    tree_df['tree_dbh_class_bc'] = np.select(
-        condlist=[
-            (tree_df.tree_dbh >= 30),
-            ((tree_df.tree_dbh >= 12.5) & (tree_df.tree_dbh < 30)),
-            ((tree_df.tree_dbh >= 7.5) & (tree_df.tree_dbh < 12.5)),
-            (tree_df.tree_dbh < 7.5),
-        ],
-        choicelist=['1D', '1M', '2', '3'],
-        default='')
-
-    return tree_df
-
-
-def _calc_tree_decay_classes(tree_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calculate the combined decay class for each tree based on conifer and broadleaf decay classes.
-
-    The function sums the values of 'tree_dcy_class_cnfr' and 'tree_dcy_class_brdlf' for each row.
-    If the sum is 0, it is replaced with NaN, indicating no decay class is assigned.
-
-    :param tree_df: DataFrame containing individual tree data with conifer and broadleaf decay class columns.
-    :return: DataFrame with a new 'tree_dcy_class' column representing the combined decay class.
-    """
-    print('\tCalculating tree decay classes')
-    # Calculate decay class for conifer and broadleaf trees by summing their respective columns
-    # Replace 0 with NaN to indicate missing or unassigned decay class
-    tree_df['tree_dcy_class'] = tree_df[
-        ['tree_dcy_class_cnfr', 'tree_dcy_class_brdlf']
-    ].sum(axis=1).replace(0, np.nan)
-
-    return tree_df
-
-
-def _calc_tree_type(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Assigns tree type (e.g., conifer or broadleaf) to each tree in the DataFrame
-    based on species codes and a parameter DataFrame.
-
-    :param tree_df: DataFrame containing individual tree data, including species codes.
-    :param tree_params_df: DataFrame containing species parameters, including 'TreeType'.
-    :return: Updated tree_df with a new 'tree_type' column.
-    """
-    print('\tCalculating tree types (conifer or broadleaf)')
-    # Create a mapping from species code to tree type
-    tree_type_map = tree_params_df['TreeType'].to_dict()
-    # Map tree species to their type and assign to new column
-    tree_df['tree_type'] = tree_df['tree_species'].map(tree_type_map)
-
-    return tree_df
-
-
-def _calc_tree_density(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Assigns tree density multipliers to each tree based on its DBH class.
-
-    For each tree:
-    - If DBH >= 12.5 cm, use the large tree multiplier.
-    - If 5 cm <= DBH < 12.5 cm, use the small tree multiplier.
-    - If DBH < 5 cm, use the sapling multiplier.
-
-    :param df: DataFrame containing plot-level multipliers.
-    :param tree_df: DataFrame containing individual tree data, including DBH.
-    :return: Updated tree_df with a new 'tree_dens' column for tree density multiplier.
-    """
-    print('\tCalculating tree density (per hectare)')
-    # Assign density multiplier based on DBH class
-    tree_df['tree_dens_ha'] = np.where(
-        tree_df.tree_dbh >= 12.5,
-        tree_df.ParentGlobalID.map(df.set_index('GlobalID')['plot_lgtree_mult'].to_dict()),
-        np.where(
-            (tree_df.tree_dbh >= 5) & (tree_df.tree_dbh < 12.5),
-            tree_df.ParentGlobalID.map(df.set_index('GlobalID')['plot_smtree_mult'].to_dict()),
-            tree_df.ParentGlobalID.map(df.set_index('GlobalID')['plot_sapling_mult'].to_dict()),
-        )
-    )
-
-    # Multiply the density by the tree count to get total density per hectare
-    tree_df['tree_dens_ha'] *= tree_df['tree_count']
-
-    return tree_df
-
-
-def _calc_tree_basal_area(tree_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calculate the basal area and weighted basal area for each tree.
-
-    :param tree_df: DataFrame containing individual tree data, including DBH and density.
-    :return: DataFrame with 'tree_ba' (basal area in m^2) and 'tree_ba_ha' (density-weighted basal area) columns added.
-    """
-    print('\tCalculating tree basal area (m^2) and basal area per hectare (m^2/ha)')
-    # Calculate basal area (m^2) for each tree: BA = π * (DBH/200)^2
-    tree_df['tree_ba'] = np.pi * np.power(tree_df.tree_dbh / 200, 2)
-    # Calculate weighted basal area: tree density * basal area
-    tree_df['tree_ba_ha'] = tree_df['tree_dens_ha'] * tree_df['tree_ba']
-
-    return tree_df
-
-
-def _calc_tree_missing_heights(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Model and assign tree heights for trees in the DataFrame using the Temesgen height model.
-    Heights are estimated for live trees missing height values and for all dead trees.
-
-    :param tree_df: DataFrame containing individual tree data.
-    :param tree_params_df: DataFrame containing tree species parameters for height modeling.
-    :return: Updated DataFrame with modeled tree heights.
-    """
-    print('\tCalculating missing tree heignts')
-    # Function to model height using Temesgen Model 2 for a given row
-    def model_height(row):
-        if row['tree_species'] in spp_set:
-            return _get_temesgen_tree_height(2, tree_params_df, row['tree_species'], row['tree_dbh'])
-        return np.nan
-
-    # Set of valid species codes present in the data
-    spp_set = set(tree_df['tree_species'].dropna())
-
-    # Mask for trees missing heights (decay class conifer < 6 or broadleaf < 5, and valid DBH)
-    mask_missing = (
-        (tree_df['tree_dens_ha'] > 0) &
-        (
-            (tree_df['tree_dcy_class_cnfr'] < 6) |
-            (tree_df['tree_dcy_class_brdlf'] < 5)
-        ) &
-        tree_df['tree_ht'].isnull() &
-        tree_df['tree_dbh'].notnull()
-    )
-    # Assign modeled heights to trees missing height values
-    tree_df.loc[mask_missing, 'tree_ht_modeled'] = tree_df[mask_missing].apply(model_height, axis=1)
-
-    # Assign modeled heights to dead trees with missing height values
-    tree_df.loc[mask_missing, 'tree_ht'] = tree_df.loc[mask_missing, 'tree_ht_modeled']
-
-    # Mask for dead trees (decay class conifer >= 6 or broadleaf >= 5, and valid DBH)
-    mask_dead = (
-        (
-            (tree_df['tree_dcy_class_cnfr'] >= 6) |
-            (tree_df['tree_dcy_class_brdlf'] >= 5)
-        ) &
-        tree_df['tree_dbh'].notnull()
-    )
-    # Initialize modeled height column for dead trees
-    tree_df['tree_ht_modeled'] = 0.0
-    # Assign modeled heights to dead trees
-    tree_df.loc[mask_dead, 'tree_ht_modeled'] = tree_df[mask_dead].apply(model_height, axis=1).astype(float)
-
-    return tree_df
-
-
-def _calc_tree_cbh(tree_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Converts crown base height (CBH) to NaN for trees with CBH of 99.
-
-    :param tree_df: DataFrame containing individual tree data.
-    :return: Updated DataFrame with revised 'tree_cbh' column.
-    """
-    print('\tCleaning tree CBH values')
-    mask = (tree_df['tree_cbh'] == 99) & (tree_df['tree_status'] == 'L')
-
-    # Set CBH for live trees to NaN where CBH is 99
-    tree_df.loc[mask, 'tree_cbh'] = np.nan
-
-    # Append message to tree note if CBH was set to NaN
-    if 'tree_note' not in tree_df.columns:
-        tree_df['tree_note'] = ''
-    tree_df.loc[mask, 'tree_note'] = (
-        tree_df.loc[mask, 'tree_note'].astype(str) +
-        ' [Fuel Analyst Note] Crown base height entered as 99. Value set to NaN; '
-    )
-
-    return tree_df
-
-
-def _calc_tree_fsg(tree_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calculates the fuel strata gap (FSG) for each tree in the DataFrame.
-
-    The FSG is the vertical distance between the top of the surface fuel bed and the base of the tree crown.
-    The calculation depends on tree status (live or dead), crown base height (CBH), dead crown base height (DCBH),
-    and the height of the fuel bed. The result is stored in the 'tree_fsg' column.
-
-    Rules:
-        - If the tree is dead or has no fuel bed height, FSG is NaN.
-        - For live trees:
-            - If CBH < DCBH and (CBH - fuel bed height) > 0, FSG = CBH - fuel bed height.
-            - If DCBH < CBH and (DCBH - fuel bed height) > 0, FSG = DCBH - fuel bed height.
-            - If the fuel bed is above either CBH or DCBH, FSG = 0.
-
-    :param tree_df: DataFrame containing tree attributes, including status, CBH, DCBH, and fuel bed height.
-    :return: Updated DataFrame with a new 'tree_fsg' column.
-    """
-    print('\tCalculating tree fuel strata gap (FSG)')
-    # Mask for dead trees or missing fuel bed height
-    is_dead_or_no_fuel_bed = (tree_df['tree_status'] == 'D') | (tree_df['tree_fuel_bed_ht'].isnull())
-
-    # Mask for live trees where CBH < DCBH and CBH is above the fuel bed
-    cbh_lt_dcbh = (
-        (tree_df['tree_status'] == 'L') &
-        (tree_df['tree_cbh'] < tree_df['tree_dcbh']) &
-        ((tree_df['tree_cbh'] - tree_df['tree_fuel_bed_ht']) > 0)
-    )
-
-    # Mask for live trees where DCBH < CBH and DCBH is above the fuel bed
-    dcbh_lt_cbh = (
-        (tree_df['tree_status'] == 'L') &
-        (tree_df['tree_dcbh'] < tree_df['tree_cbh']) &
-        ((tree_df['tree_dcbh'] - tree_df['tree_fuel_bed_ht']) > 0)
-    )
-
-    # Mask for live trees where the fuel bed is above either CBH or DCBH
-    fuel_bed_above_crown = (
-        (tree_df['tree_status'] == 'L') &
-        (
-            (tree_df['tree_fuel_bed_ht'] > tree_df['tree_cbh']) |
-            (tree_df['tree_fuel_bed_ht'] > tree_df['tree_dcbh'])
-        )
-    )
-
-    # Assign FSG values based on the above conditions
-    tree_df['tree_fsg'] = np.select(
-        condlist=[is_dead_or_no_fuel_bed, cbh_lt_dcbh, dcbh_lt_cbh, fuel_bed_above_crown],
-        choicelist=[
-            np.nan,
-            tree_df['tree_cbh'] - tree_df['tree_fuel_bed_ht'],
-            tree_df['tree_dcbh'] - tree_df['tree_fuel_bed_ht'],
-            0
-        ]
-    )
-    return tree_df
-
-
-def _calc_tree_crwn_dpth(tree_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calculates the crown depth for each tree and adds it as a new column 'tree_crwn_dpth'.
-
-    Crown depth is defined as the difference between tree height and crown base height (CBH)
-    for live trees, where height exceeds CBH. For all other cases, the value is set to NaN.
-
-    :param tree_df: DataFrame containing individual tree data, including 'tree_status', 'tree_ht', and 'tree_cbh'.
-    :return: DataFrame with a new 'tree_crwn_dpth' column.
-    """
-    print('\tCalculating tree crown depths')
-    # Calculate crown depth for live trees where height > CBH; otherwise, set as NaN
-    tree_df['tree_crwn_dpth'] = np.where(
-        (tree_df['tree_status'] == 'L') & (tree_df['tree_ht'] > tree_df['tree_cbh']),
-        tree_df['tree_ht'] - tree_df['tree_cbh'],
-        np.nan
-    )
-    return tree_df
-
-
-def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calculates tree component biomass (wood, bark, branches, foliage) per hectare using CNBE allometric equations,
-    accounting for decay class and live/dead status.
-
-    For each species and component, applies the appropriate decay reduction factor and allometric parameters.
-    Uses measured height for live/less decayed trees, and modeled height for dead/more decayed trees.
-
-    :param tree_df: DataFrame with tree attributes, including species, DBH, height, density, and decay class.
-    :param tree_params_df: DataFrame with species-specific allometric parameters.
-    :return: Updated tree_df with biomass columns for each component.
-    """
-    print('\tCalculating tree biomass (wood, bark, branches, foliage) using the Canadian National Biomass Equations (CNBE)')
-    # Initialize biomass columns to zero
-    for col in ['tree_wood_cnbe', 'tree_bark_cnbe', 'tree_branches_cnbe', 'tree_foliage_cnbe']:
-        tree_df[col] = 0.0
-
-    spp_list = [n for n in tree_df['tree_species'].unique() if not pd.isnull(n)]
-
-    # Assign combined decay class (conifer or broadleaf) to each tree
-    tree_df['tree_dcy_class'] = np.where(
-        tree_df.tree_type == 'conifer',
-        tree_df.tree_dcy_class_cnfr,
-        np.where(tree_df.tree_type == 'broadleaf', tree_df.tree_dcy_class_brdlf, np.nan)
-    )
-
-    for spp in spp_list:
-        # Select decay class dictionary based on species type
-        decay_dict = tree_conifer_decay_class_dict if spp in conifer_list else tree_broadleaf_decay_class_dict
-        for component in tree_component_list:
-            comp_idx = tree_component_index_dict[component]
-            param1 = tree_params_df.loc[spp, f'BIOMASS_CNBE_DBH-HT_B{component}1']
-            param2 = tree_params_df.loc[spp, f'BIOMASS_CNBE_DBH-HT_B{component}2']
-            param3 = tree_params_df.loc[spp, f'BIOMASS_CNBE_DBH-HT_B{component}3']
-
-            # Masks for live/less decayed and dead/more decayed trees
-            mask_live = (
-                (tree_df.tree_species == spp) &
-                (tree_df.tree_dcy_class > 0) &
-                ((tree_df.tree_dcy_class_cnfr < 6) | (tree_df.tree_dcy_class_brdlf < 5)) &
-                (tree_df.tree_dbh > 0) &
-                (tree_df.tree_ht > 0)
-            )
-            mask_dead = (
-                (tree_df.tree_species == spp) &
-                (tree_df.tree_dcy_class > 0) &
-                ((tree_df.tree_dcy_class_cnfr >= 6) | (tree_df.tree_dcy_class_brdlf >= 5)) &
-                (tree_df.tree_dbh > 0) &
-                (tree_df.tree_ht > 0)
-            )
-
-            # Calculate biomass for live/less decayed trees
-            if mask_live.any():
-                tree_df.loc[mask_live, f'tree_{component}_cnbe'] = (
-                    tree_df.loc[mask_live, 'tree_dens_ha'] *
-                    tree_df.loc[mask_live, 'tree_dcy_class'].map(decay_dict).apply(lambda x: x[comp_idx]) *
-                    param1 *
-                    tree_df.loc[mask_live, 'tree_dbh'] ** param2 *
-                    tree_df.loc[mask_live, 'tree_ht'] ** param3
-                ) / 10000
-
-            # Calculate biomass for dead/more decayed trees (using modeled height)
-            if mask_dead.any():
-                tree_df.loc[mask_dead, f'tree_{component}_cnbe'] = (
-                    tree_df.loc[mask_dead, 'tree_dens_ha'] *
-                    tree_df.loc[mask_dead, 'tree_dcy_class'].map(decay_dict).apply(lambda x: x[comp_idx]) *
-                    param1 *
-                    tree_df.loc[mask_dead, 'tree_dbh'] ** param2 *
-                    tree_df.loc[mask_dead, 'tree_ht_modeled'] ** param3
-                ) / 10000
-
-    return tree_df
-
-
-def _calc_tree_crown_fuels(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calculates canopy fuel load and bulk density for live conifer trees using allometric equations.
-
-    For each conifer species present, computes:
-
-    Crown fuel load (CFL) using Canadian National Biomass Equations (CNBE)
-        - Equations per Ung et al. (2008) and Lambert et al. (2005), using DBH and height.
-
-    Canopy bulk density (CBD), calculated as CFL divided by crown depth.
-
-    Initializes output columns to zero and only processes live trees with valid DBH, height, and density.
-    Results are stored in new columns for each tree.
-
-    :param tree_df: DataFrame with individual tree data, including DBH, height, and status.
-    :param tree_params_df: DataFrame with species-specific allometric parameters.
-    :return: Updated tree_df with canopy fuel and bulk density columns.
-    """
-    print('\tCalculating tree crown fuels (CFL and CBD) using the Canadian National Biomass Equations (CNBE)')
-    # Initialize columns
-    for col in ['tree_cfl_cnbe', 'tree_cbd_cnbe']:
-        tree_df[col] = 0.0
-
-    # Process all species present in the DataFrame
-    spp_set = set(tree_df['tree_species'].dropna())
-    for spp in spp_set:
-        # Mask for live trees of the current species with valid DBH and height
-        spp_mask = (
-                (tree_df['tree_species'] == spp) &
-                (tree_df['tree_status'] == 'L') &
-                (tree_df['tree_dbh'] > 0) &
-                (tree_df['tree_ht'] > 0)
-        )
-
-        # Use existing foliage biomass as CFL
-        tree_df.loc[spp_mask, 'tree_cfl_cnbe'] = tree_df.loc[spp_mask, 'tree_foliage_cnbe']
-        tree_df.loc[spp_mask, 'tree_cfl_cnbe_ha'] = (
-                tree_df.loc[spp_mask, 'tree_dens_ha'] * tree_df.loc[spp_mask, 'tree_cfl_cnbe']
-        )
-        # Calculate CBD (CFL / crown depth)
-        cbd_mask = spp_mask & (tree_df['tree_crwn_dpth'] > 0)
-        tree_df.loc[cbd_mask, 'tree_cbd_cnbe'] = (
-                tree_df.loc[cbd_mask, 'tree_cfl_cnbe'] / tree_df.loc[cbd_mask, 'tree_crwn_dpth']
-        )
-        tree_df.loc[cbd_mask, 'tree_cbd_cnbe_ha'] = (
-                tree_df.loc[spp_mask, 'tree_dens_ha'] * tree_df.loc[spp_mask, 'tree_cbd_cnbe']
-        )
-
-    return tree_df
-
-
-def _calc_tree_fofem_attributes(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Assigns FOFEM species codes and calculates bark thickness for each tree.
-
-    - Maps each tree's species to its FOFEM code using the parameter DataFrame.
-    - Calculates bark thickness as DBH multiplied by the species-specific bark thickness factor,
-      only if tree density is non-negative.
-
-    :param tree_df: DataFrame with individual tree data.
-    :param tree_params_df: DataFrame with species parameters, including 'FOFEM_sppCD' and 'FOFEM_BrkThck_Vsp'.
-    :return: Updated DataFrame with 'tree_species_fofem' and 'tree_bark_thick' columns.
-    """
-    # Create mapping dictionaries for FOFEM species code and bark thickness factor
-    spp_map = tree_params_df['FOFEM_sppCD'].to_dict()
-    bark_map = tree_params_df['FOFEM_BrkThck_Vsp'].to_dict()
-
-    # Map FOFEM species code
-    tree_df['tree_species_fofem'] = tree_df['tree_species'].map(spp_map)
-
-    # Calculate bark thickness where tree density is valid, else NaN
-    tree_df['tree_bark_thick'] = np.where(
-        tree_df['tree_dens_ha'] >= 0,
-        tree_df['tree_dbh'] * tree_df['tree_species'].map(bark_map),
-        np.nan
-    )
-
-    return tree_df
-
-
-def _calc_tree_fire_attributes(tree_df: pd.DataFrame, surface_fire_intensity_model: str = 'Byram') -> pd.DataFrame:
-    """
-    Calculates fire-related attributes for each tree in the DataFrame.
-
-    This function computes:
-    - Flame length based on bark char height.
-    - Fireline intensity (FLI) based on tree density and basal area.
-        - Byram (1959) or Thomas (1963) model for surface fire intensity.
-        - Butler's model for crown fire intensity.
-
-    :param tree_df: DataFrame containing individual tree data, including density, basal area, crown base height,
-                    dead crown base height, and fuel bed height.
-    :param surface_fire_intensity_model: Model to use for calculating surface fireline intensity (default is 'Byram').
-        Options: ['Byram', 'Thomas']
-    :return: Updated DataFrame with new columns for FLI, CFP, and CBD.
-    """
-    print('\tCalculating fire metrics (Fireline Intensity, Flame Length)')
-
-    # ### ESTIMATE FLAME LENGTH ###
-    # Invert the FOFEM char height equation to solve for flame length
-    tree_df['tree_flame_length'] = tree_df['tree_bark_char_high'] * 1.8
-
-    # ### CALCULATE VARIOUS FIRELINE INTENSITY OPTIONS ###
-    if surface_fire_intensity_model == 'Byram':
-        # Use the Byram (1959) flame length model to estimate fireline intensity (kW/m)
-        surface_model = (tree_df['tree_flame_length'] / 0.0775) ** (1 / 0.46)
-    elif surface_fire_intensity_model == 'Thomas':
-        # Use the Thomas (1963) flame length model to estimate fireline intensity (kW/m)
-        surface_model = (tree_df['tree_flame_length'] / 0.026700) ** (3 / 2)
-    else:
-        print('Invalid surface fireline intensity model specified. Using Byram (1959) as default.')
-        # Use the Byram (1959) flame length model to estimate fireline intensity (kW/m)
-        surface_model = (tree_df['tree_flame_length'] / 0.0775) ** (1 / 0.46)
-
-    # Use the Butler et al. (2004) crown fire flame length model to estimate crown fireline intensity
-    # (must add value to average stand height)
-    crown_model = (tree_df['tree_flame_length'] / 0.017500) ** (3 / 2)
-
-    # ### ESTIMATE FIRELINE INTENSITY ###
-    # Set bark char heights of 444 to the tree height
-    full_ht_mask = tree_df['tree_bark_char_high'] == 444
-    # Estimate fireline intensity based on the full_ht_mask
-    tree_df['tree_fire_intensity'] = np.where(full_ht_mask, crown_model, surface_model)
-
-    return tree_df
-
-
-def _calc_tree_weighted_attributes(tree_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calculate weighted attributes for each tree based on its density and basal area.
-
-    This function computes the weighted DBH, height, crown base height (CBH), dead crown base height (DCBH),
-    and fuel bed height for each tree, using the tree's density and basal area.
-
-    :param tree_df: DataFrame containing individual tree data, including DBH, height, CBH, DCBH, and fuel bed height.
-    :return: Updated DataFrame with new columns for weighted attributes.
-    """
-    print('\tCalculating tree weighted attributes')
-    # Initialize weighted attribute columns
-    attribute_list = list(attribute_weighting_dict.keys())
-
-    for att in attribute_list:
-        # Get the column names for the attribute and its weight multiplier
-        att_col = f'tree_{att}'
-        wtd_col = f'tree_{att}_wtd'
-        att_wt_mult = attribute_weighting_dict.get(att, 'dens')
-
-        # Calculate the weighted attribute
-        tree_df[wtd_col] = tree_df[att_col] * tree_df[f'tree_{att_wt_mult}_ha']
-
-    return tree_df
-
-
-def _gen_master_tree_df(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Generate a master tree DataFrame with selected and renamed columns for export.
-
-    - Maps group IDs to unique IDs.
-    - Converts tree height class codes to descriptive labels.
-    - Selects and renames relevant columns.
-    - Filters out trees with non-positive live density.
-
-    :param df: DataFrame containing plot-level data with 'group' and 'unique_id' columns.
-    :param tree_df: DataFrame containing individual tree data.
-    :return: Master tree DataFrame ready for export.
-    """
-    # Map group to unique_id
-    tree_df['unique_id'] = tree_df['ParentGlobalID'].map(df.set_index('GlobalID')['unique_id'].to_dict())
-
-    # Map tree height class codes to labels
-    ht_class_dict = {1: 'D', 2: 'CD', 3: 'I', 4: 'S'}
-    tree_df['tree_ht_class_cd'] = tree_df['tree_ht_class'].map(ht_class_dict)
-
-    # Calculate live tree density per hectare
-    live_mask = tree_df['tree_status'] == 'L'
-    tree_df['tree_dens_live_ha'] = np.where(live_mask, tree_df['tree_dens_ha'], 0)
-
-    # Calculate live basal area per hectare
-    tree_df['tree_ba_live_ha'] = np.where(live_mask, tree_df['tree_ba_ha'], 0)
-
-    # Columns to keep and their new names
-    tree_cols = [
-        'unique_id', 'tree_species', 'tree_species_fofem', 'tree_dcy_class_cnfr', 'tree_dcy_class_brdlf',
-        'tree_ht_class_cd', 'tree_dens_live_ha', 'tree_dbh', 'tree_ba_live_ha',
-        'tree_ht', 'tree_crwn_dpth', 'tree_bark_thick'
-    ]
-    tree_cols_dict = {
-        'tree_species': 'spp',
-        'tree_species_fofem': 'spp_fofem',
-        'tree_dcy_class_cnfr': 'decay_cnfr',
-        'tree_dcy_class_brdlf': 'decay_brdlf',
-        'tree_ht_class_cd': 'crown_class',
-        'tree_dens_live_ha': 'dens_live_ha',
-        'tree_dbh': 'dbh',
-        'tree_ba_live_ha': 'ba_live_ha',
-        'tree_ht': 'ht',
-        'tree_crwn_dpth': 'crown_depth',
-        'tree_bark_thick': 'bark_thick'
-    }
-
-    # Select, filter, and rename columns
-    temp_df = tree_df.loc[tree_df['tree_dens_live_ha'] > 0, tree_cols].rename(columns=tree_cols_dict)
-
-    # Return the master DataFrame
-    return temp_df.reset_index(drop=True)
 
 
 def _calc_stand_attributes(df: pd.DataFrame,
@@ -1285,6 +599,692 @@ def _calc_stand_composition(df: pd.DataFrame, tree_df: pd.DataFrame) -> tuple[pd
     return df, keep_columns
 
 
+def _calc_tree_basal_area(tree_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate the basal area and weighted basal area for each tree.
+
+    :param tree_df: DataFrame containing individual tree data, including DBH and density.
+    :return: DataFrame with 'tree_ba' (basal area in m^2) and 'tree_ba_ha' (density-weighted basal area) columns added.
+    """
+    print('\tCalculating tree basal area (m^2) and basal area per hectare (m^2/ha)')
+    # Calculate basal area (m^2) for each tree: BA = π * (DBH/200)^2
+    tree_df['tree_ba'] = np.pi * np.power(tree_df.tree_dbh / 200, 2)
+    # Calculate weighted basal area: tree density * basal area
+    tree_df['tree_ba_ha'] = tree_df['tree_dens_ha'] * tree_df['tree_ba']
+
+    return tree_df
+
+
+def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculates tree component biomass (wood, bark, branches, foliage) per hectare using CNBE allometric equations,
+    accounting for decay class and live/dead status.
+
+    For each species and component, applies the appropriate decay reduction factor and allometric parameters.
+    Uses measured height for live/less decayed trees, and modeled height for dead/more decayed trees.
+
+    :param tree_df: DataFrame with tree attributes, including species, DBH, height, density, and decay class.
+    :param tree_params_df: DataFrame with species-specific allometric parameters.
+    :return: Updated tree_df with biomass columns for each component.
+    """
+    print('\tCalculating tree biomass (wood, bark, branches, foliage) using the Canadian National Biomass Equations (CNBE)')
+    # Initialize biomass columns to zero
+    for col in ['tree_wood_cnbe', 'tree_bark_cnbe', 'tree_branches_cnbe', 'tree_foliage_cnbe']:
+        tree_df[col] = 0.0
+
+    spp_list = [n for n in tree_df['tree_species'].unique() if not pd.isnull(n)]
+
+    # Assign combined decay class (conifer or broadleaf) to each tree
+    tree_df['tree_dcy_class'] = np.where(
+        tree_df.tree_type == 'conifer',
+        tree_df.tree_dcy_class_cnfr,
+        np.where(tree_df.tree_type == 'broadleaf', tree_df.tree_dcy_class_brdlf, np.nan)
+    )
+
+    for spp in spp_list:
+        # Select decay class dictionary based on species type
+        decay_dict = tree_conifer_decay_class_dict if spp in conifer_list else tree_broadleaf_decay_class_dict
+        for component in tree_component_list:
+            comp_idx = tree_component_index_dict[component]
+            param1 = tree_params_df.loc[spp, f'BIOMASS_CNBE_DBH-HT_B{component}1']
+            param2 = tree_params_df.loc[spp, f'BIOMASS_CNBE_DBH-HT_B{component}2']
+            param3 = tree_params_df.loc[spp, f'BIOMASS_CNBE_DBH-HT_B{component}3']
+
+            # Masks for live/less decayed and dead/more decayed trees
+            mask_live = (
+                (tree_df.tree_species == spp) &
+                (tree_df.tree_dcy_class > 0) &
+                ((tree_df.tree_dcy_class_cnfr < 6) | (tree_df.tree_dcy_class_brdlf < 5)) &
+                (tree_df.tree_dbh > 0) &
+                (tree_df.tree_ht > 0)
+            )
+            mask_dead = (
+                (tree_df.tree_species == spp) &
+                (tree_df.tree_dcy_class > 0) &
+                ((tree_df.tree_dcy_class_cnfr >= 6) | (tree_df.tree_dcy_class_brdlf >= 5)) &
+                (tree_df.tree_dbh > 0) &
+                (tree_df.tree_ht > 0)
+            )
+
+            # Calculate biomass for live/less decayed trees
+            if mask_live.any():
+                tree_df.loc[mask_live, f'tree_{component}_cnbe'] = (
+                    tree_df.loc[mask_live, 'tree_dens_ha'] *
+                    tree_df.loc[mask_live, 'tree_dcy_class'].map(decay_dict).apply(lambda x: x[comp_idx]) *
+                    param1 *
+                    tree_df.loc[mask_live, 'tree_dbh'] ** param2 *
+                    tree_df.loc[mask_live, 'tree_ht'] ** param3
+                ) / 10000
+
+            # Calculate biomass for dead/more decayed trees (using modeled height)
+            if mask_dead.any():
+                tree_df.loc[mask_dead, f'tree_{component}_cnbe'] = (
+                    tree_df.loc[mask_dead, 'tree_dens_ha'] *
+                    tree_df.loc[mask_dead, 'tree_dcy_class'].map(decay_dict).apply(lambda x: x[comp_idx]) *
+                    param1 *
+                    tree_df.loc[mask_dead, 'tree_dbh'] ** param2 *
+                    tree_df.loc[mask_dead, 'tree_ht_modeled'] ** param3
+                ) / 10000
+
+    return tree_df
+
+
+def _calc_tree_cbh(tree_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Converts crown base height (CBH) to NaN for trees with CBH of 99.
+
+    :param tree_df: DataFrame containing individual tree data.
+    :return: Updated DataFrame with revised 'tree_cbh' column.
+    """
+    print('\tCleaning tree CBH values')
+    mask = (tree_df['tree_cbh'] == 99) & (tree_df['tree_status'] == 'L')
+
+    # Set CBH for live trees to NaN where CBH is 99
+    tree_df.loc[mask, 'tree_cbh'] = np.nan
+
+    # Append message to tree note if CBH was set to NaN
+    if 'tree_note' not in tree_df.columns:
+        tree_df['tree_note'] = ''
+    tree_df.loc[mask, 'tree_note'] = (
+        tree_df.loc[mask, 'tree_note'].astype(str) +
+        ' [Fuel Analyst Note] Crown base height entered as 99. Value set to NaN; '
+    )
+
+    return tree_df
+
+
+def _calc_tree_crown_depth(tree_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculates the crown depth for each tree and adds it as a new column 'tree_crwn_dpth'.
+
+    Crown depth is defined as the difference between tree height and crown base height (CBH)
+    for live trees, where height exceeds CBH. For all other cases, the value is set to NaN.
+
+    :param tree_df: DataFrame containing individual tree data, including 'tree_status', 'tree_ht', and 'tree_cbh'.
+    :return: DataFrame with a new 'tree_crwn_dpth' column.
+    """
+    print('\tCalculating tree crown depths')
+    # Calculate crown depth for live trees where height > CBH; otherwise, set as NaN
+    tree_df['tree_crwn_dpth'] = np.where(
+        (tree_df['tree_status'] == 'L') & (tree_df['tree_ht'] > tree_df['tree_cbh']),
+        tree_df['tree_ht'] - tree_df['tree_cbh'],
+        np.nan
+    )
+    return tree_df
+
+
+def _calc_tree_crown_fuels(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculates canopy fuel load and bulk density for live conifer trees using allometric equations.
+
+    For each conifer species present, computes:
+
+    Crown fuel load (CFL) using Canadian National Biomass Equations (CNBE)
+        - Equations per Ung et al. (2008) and Lambert et al. (2005), using DBH and height.
+
+    Canopy bulk density (CBD), calculated as CFL divided by crown depth.
+
+    Initializes output columns to zero and only processes live trees with valid DBH, height, and density.
+    Results are stored in new columns for each tree.
+
+    :param tree_df: DataFrame with individual tree data, including DBH, height, and status.
+    :param tree_params_df: DataFrame with species-specific allometric parameters.
+    :return: Updated tree_df with canopy fuel and bulk density columns.
+    """
+    print('\tCalculating tree crown fuels (CFL and CBD) using the Canadian National Biomass Equations (CNBE)')
+    # Initialize columns
+    for col in ['tree_cfl_cnbe', 'tree_cbd_cnbe']:
+        tree_df[col] = 0.0
+
+    # Process all species present in the DataFrame
+    spp_set = set(tree_df['tree_species'].dropna())
+    for spp in spp_set:
+        # Mask for live trees of the current species with valid DBH and height
+        spp_mask = (
+                (tree_df['tree_species'] == spp) &
+                (tree_df['tree_status'] == 'L') &
+                (tree_df['tree_dbh'] > 0) &
+                (tree_df['tree_ht'] > 0)
+        )
+
+        # Use existing foliage biomass as CFL
+        tree_df.loc[spp_mask, 'tree_cfl_cnbe'] = tree_df.loc[spp_mask, 'tree_foliage_cnbe']
+        tree_df.loc[spp_mask, 'tree_cfl_cnbe_ha'] = (
+                tree_df.loc[spp_mask, 'tree_dens_ha'] * tree_df.loc[spp_mask, 'tree_cfl_cnbe']
+        )
+        # Calculate CBD (CFL / crown depth)
+        cbd_mask = spp_mask & (tree_df['tree_crwn_dpth'] > 0)
+        tree_df.loc[cbd_mask, 'tree_cbd_cnbe'] = (
+                tree_df.loc[cbd_mask, 'tree_cfl_cnbe'] / tree_df.loc[cbd_mask, 'tree_crwn_dpth']
+        )
+        tree_df.loc[cbd_mask, 'tree_cbd_cnbe_ha'] = (
+                tree_df.loc[spp_mask, 'tree_dens_ha'] * tree_df.loc[spp_mask, 'tree_cbd_cnbe']
+        )
+
+    return tree_df
+
+
+def _calc_tree_dbh_classes(tree_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Assigns DBH (Diameter at Breast Height) class labels to each tree based on its DBH value.
+
+    Classes:
+        - '1D': DBH >= 30 cm
+        - '1M': 12.5 cm <= DBH < 30 cm
+        - '2' : 7.5 cm <= DBH < 12.5 cm
+        - '3' : DBH < 7.5 cm
+
+    :param tree_df: DataFrame containing individual tree data with a 'tree_dbh' column.
+    :return: DataFrame with a new 'tree_dbh_class' column.
+    """
+    print('\tCalculating tree DBH classes')
+    # Assign DBH class based on DBH value
+    tree_df['tree_dbh_class_bc'] = np.select(
+        condlist=[
+            (tree_df.tree_dbh >= 30),
+            ((tree_df.tree_dbh >= 12.5) & (tree_df.tree_dbh < 30)),
+            ((tree_df.tree_dbh >= 7.5) & (tree_df.tree_dbh < 12.5)),
+            (tree_df.tree_dbh < 7.5),
+        ],
+        choicelist=['1D', '1M', '2', '3'],
+        default='')
+
+    return tree_df
+
+
+def _calc_tree_decay_classes(tree_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate the combined decay class for each tree based on conifer and broadleaf decay classes.
+
+    The function sums the values of 'tree_dcy_class_cnfr' and 'tree_dcy_class_brdlf' for each row.
+    If the sum is 0, it is replaced with NaN, indicating no decay class is assigned.
+
+    :param tree_df: DataFrame containing individual tree data with conifer and broadleaf decay class columns.
+    :return: DataFrame with a new 'tree_dcy_class' column representing the combined decay class.
+    """
+    print('\tCalculating tree decay classes')
+    # Calculate decay class for conifer and broadleaf trees by summing their respective columns
+    # Replace 0 with NaN to indicate missing or unassigned decay class
+    tree_df['tree_dcy_class'] = tree_df[
+        ['tree_dcy_class_cnfr', 'tree_dcy_class_brdlf']
+    ].sum(axis=1).replace(0, np.nan)
+
+    return tree_df
+
+
+def _calc_tree_density(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Assigns tree density multipliers to each tree based on its DBH class.
+
+    For each tree:
+    - If DBH >= 12.5 cm, use the large tree multiplier.
+    - If 5 cm <= DBH < 12.5 cm, use the small tree multiplier.
+    - If DBH < 5 cm, use the sapling multiplier.
+
+    :param df: DataFrame containing plot-level multipliers.
+    :param tree_df: DataFrame containing individual tree data, including DBH.
+    :return: Updated tree_df with a new 'tree_dens' column for tree density multiplier.
+    """
+    print('\tCalculating tree density (per hectare)')
+    # Assign density multiplier based on DBH class
+    tree_df['tree_dens_ha'] = np.where(
+        tree_df.tree_dbh >= 12.5,
+        tree_df.ParentGlobalID.map(df.set_index('GlobalID')['plot_lgtree_mult'].to_dict()),
+        np.where(
+            (tree_df.tree_dbh >= 5) & (tree_df.tree_dbh < 12.5),
+            tree_df.ParentGlobalID.map(df.set_index('GlobalID')['plot_smtree_mult'].to_dict()),
+            tree_df.ParentGlobalID.map(df.set_index('GlobalID')['plot_sapling_mult'].to_dict()),
+        )
+    )
+
+    # Multiply the density by the tree count to get total density per hectare
+    tree_df['tree_dens_ha'] *= tree_df['tree_count']
+
+    return tree_df
+
+
+def _calc_tree_fire_attributes(tree_df: pd.DataFrame, surface_fire_intensity_model: str = 'Byram') -> pd.DataFrame:
+    """
+    Calculates fire-related attributes for each tree in the DataFrame.
+
+    This function computes:
+    - Flame length based on bark char height.
+    - Fireline intensity (FLI) based on tree density and basal area.
+        - Byram (1959) or Thomas (1963) model for surface fire intensity.
+        - Butler's model for crown fire intensity.
+
+    :param tree_df: DataFrame containing individual tree data, including density, basal area, crown base height,
+                    dead crown base height, and fuel bed height.
+    :param surface_fire_intensity_model: Model to use for calculating surface fireline intensity (default is 'Byram').
+        Options: ['Byram', 'Thomas']
+    :return: Updated DataFrame with new columns for FLI, CFP, and CBD.
+    """
+    print('\tCalculating fire metrics (Fireline Intensity, Flame Length)')
+
+    # ### ESTIMATE FLAME LENGTH ###
+    # Invert the FOFEM char height equation to solve for flame length
+    tree_df['tree_flame_length'] = tree_df['tree_bark_char_high'] * 1.8
+
+    # ### CALCULATE VARIOUS FIRELINE INTENSITY OPTIONS ###
+    if surface_fire_intensity_model == 'Byram':
+        # Use the Byram (1959) flame length model to estimate fireline intensity (kW/m)
+        surface_model = (tree_df['tree_flame_length'] / 0.0775) ** (1 / 0.46)
+    elif surface_fire_intensity_model == 'Thomas':
+        # Use the Thomas (1963) flame length model to estimate fireline intensity (kW/m)
+        surface_model = (tree_df['tree_flame_length'] / 0.026700) ** (3 / 2)
+    else:
+        print('Invalid surface fireline intensity model specified. Using Byram (1959) as default.')
+        # Use the Byram (1959) flame length model to estimate fireline intensity (kW/m)
+        surface_model = (tree_df['tree_flame_length'] / 0.0775) ** (1 / 0.46)
+
+    # Use the Butler et al. (2004) crown fire flame length model to estimate crown fireline intensity
+    # (must add value to average stand height)
+    crown_model = (tree_df['tree_flame_length'] / 0.017500) ** (3 / 2)
+
+    # ### ESTIMATE FIRELINE INTENSITY ###
+    # Set bark char heights of 444 to the tree height
+    full_ht_mask = tree_df['tree_bark_char_high'] == 444
+    # Estimate fireline intensity based on the full_ht_mask
+    tree_df['tree_fire_intensity'] = np.where(full_ht_mask, crown_model, surface_model)
+
+    return tree_df
+
+
+def _calc_tree_fofem_attributes(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Assigns FOFEM species codes and calculates bark thickness for each tree.
+
+    - Maps each tree's species to its FOFEM code using the parameter DataFrame.
+    - Calculates bark thickness as DBH multiplied by the species-specific bark thickness factor,
+      only if tree density is non-negative.
+
+    :param tree_df: DataFrame with individual tree data.
+    :param tree_params_df: DataFrame with species parameters, including 'FOFEM_sppCD' and 'FOFEM_BrkThck_Vsp'.
+    :return: Updated DataFrame with 'tree_species_fofem' and 'tree_bark_thick' columns.
+    """
+    # Create mapping dictionaries for FOFEM species code and bark thickness factor
+    spp_map = tree_params_df['FOFEM_sppCD'].to_dict()
+    bark_map = tree_params_df['FOFEM_BrkThck_Vsp'].to_dict()
+
+    # Map FOFEM species code
+    tree_df['tree_species_fofem'] = tree_df['tree_species'].map(spp_map)
+
+    # Calculate bark thickness where tree density is valid, else NaN
+    tree_df['tree_bark_thick'] = np.where(
+        tree_df['tree_dens_ha'] >= 0,
+        tree_df['tree_dbh'] * tree_df['tree_species'].map(bark_map),
+        np.nan
+    )
+
+    return tree_df
+
+
+def _calc_tree_fsg(tree_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculates the fuel strata gap (FSG) for each tree in the DataFrame.
+
+    The FSG is the vertical distance between the top of the surface fuel bed and the base of the tree crown.
+    The calculation depends on tree status (live or dead), crown base height (CBH), dead crown base height (DCBH),
+    and the height of the fuel bed. The result is stored in the 'tree_fsg' column.
+
+    Rules:
+        - If the tree is dead or has no fuel bed height, FSG is NaN.
+        - For live trees:
+            - If CBH < DCBH and (CBH - fuel bed height) > 0, FSG = CBH - fuel bed height.
+            - If DCBH < CBH and (DCBH - fuel bed height) > 0, FSG = DCBH - fuel bed height.
+            - If the fuel bed is above either CBH or DCBH, FSG = 0.
+
+    :param tree_df: DataFrame containing tree attributes, including status, CBH, DCBH, and fuel bed height.
+    :return: Updated DataFrame with a new 'tree_fsg' column.
+    """
+    print('\tCalculating tree fuel strata gap (FSG)')
+    # Mask for dead trees or missing fuel bed height
+    is_dead_or_no_fuel_bed = (tree_df['tree_status'] == 'D') | (tree_df['tree_fuel_bed_ht'].isnull())
+
+    # Mask for live trees where CBH < DCBH and CBH is above the fuel bed
+    cbh_lt_dcbh = (
+        (tree_df['tree_status'] == 'L') &
+        (tree_df['tree_cbh'] < tree_df['tree_dcbh']) &
+        ((tree_df['tree_cbh'] - tree_df['tree_fuel_bed_ht']) > 0)
+    )
+
+    # Mask for live trees where DCBH < CBH and DCBH is above the fuel bed
+    dcbh_lt_cbh = (
+        (tree_df['tree_status'] == 'L') &
+        (tree_df['tree_dcbh'] < tree_df['tree_cbh']) &
+        ((tree_df['tree_dcbh'] - tree_df['tree_fuel_bed_ht']) > 0)
+    )
+
+    # Mask for live trees where the fuel bed is above either CBH or DCBH
+    fuel_bed_above_crown = (
+        (tree_df['tree_status'] == 'L') &
+        (
+            (tree_df['tree_fuel_bed_ht'] > tree_df['tree_cbh']) |
+            (tree_df['tree_fuel_bed_ht'] > tree_df['tree_dcbh'])
+        )
+    )
+
+    # Assign FSG values based on the above conditions
+    tree_df['tree_fsg'] = np.select(
+        condlist=[is_dead_or_no_fuel_bed, cbh_lt_dcbh, dcbh_lt_cbh, fuel_bed_above_crown],
+        choicelist=[
+            np.nan,
+            tree_df['tree_cbh'] - tree_df['tree_fuel_bed_ht'],
+            tree_df['tree_dcbh'] - tree_df['tree_fuel_bed_ht'],
+            0
+        ]
+    )
+    return tree_df
+
+
+def _calc_tree_missing_heights(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Model and assign tree heights for trees in the DataFrame using the Temesgen height model.
+    Heights are estimated for live trees missing height values and for all dead trees.
+
+    :param tree_df: DataFrame containing individual tree data.
+    :param tree_params_df: DataFrame containing tree species parameters for height modeling.
+    :return: Updated DataFrame with modeled tree heights.
+    """
+    print('\tCalculating missing tree heignts')
+    # Function to model height using Temesgen Model 2 for a given row
+    def model_height(row):
+        if row['tree_species'] in spp_set:
+            return _get_temesgen_tree_height(2, tree_params_df, row['tree_species'], row['tree_dbh'])
+        return np.nan
+
+    # Set of valid species codes present in the data
+    spp_set = set(tree_df['tree_species'].dropna())
+
+    # Mask for trees missing heights (decay class conifer < 6 or broadleaf < 5, and valid DBH)
+    mask_missing = (
+        (tree_df['tree_dens_ha'] > 0) &
+        (
+            (tree_df['tree_dcy_class_cnfr'] < 6) |
+            (tree_df['tree_dcy_class_brdlf'] < 5)
+        ) &
+        tree_df['tree_ht'].isnull() &
+        tree_df['tree_dbh'].notnull()
+    )
+    # Assign modeled heights to trees missing height values
+    tree_df.loc[mask_missing, 'tree_ht_modeled'] = tree_df[mask_missing].apply(model_height, axis=1)
+
+    # Assign modeled heights to dead trees with missing height values
+    tree_df.loc[mask_missing, 'tree_ht'] = tree_df.loc[mask_missing, 'tree_ht_modeled']
+
+    # Mask for dead trees (decay class conifer >= 6 or broadleaf >= 5, and valid DBH)
+    mask_dead = (
+        (
+            (tree_df['tree_dcy_class_cnfr'] >= 6) |
+            (tree_df['tree_dcy_class_brdlf'] >= 5)
+        ) &
+        tree_df['tree_dbh'].notnull()
+    )
+    # Initialize modeled height column for dead trees
+    tree_df['tree_ht_modeled'] = 0.0
+    # Assign modeled heights to dead trees
+    tree_df.loc[mask_dead, 'tree_ht_modeled'] = tree_df[mask_dead].apply(model_height, axis=1).astype(float)
+
+    return tree_df
+
+
+def _calc_tree_type(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Assigns tree type (e.g., conifer or broadleaf) to each tree in the DataFrame
+    based on species codes and a parameter DataFrame.
+
+    :param tree_df: DataFrame containing individual tree data, including species codes.
+    :param tree_params_df: DataFrame containing species parameters, including 'TreeType'.
+    :return: Updated tree_df with a new 'tree_type' column.
+    """
+    print('\tCalculating tree types (conifer or broadleaf)')
+    # Create a mapping from species code to tree type
+    tree_type_map = tree_params_df['TreeType'].to_dict()
+    # Map tree species to their type and assign to new column
+    tree_df['tree_type'] = tree_df['tree_species'].map(tree_type_map)
+
+    return tree_df
+
+
+def _calc_tree_weighted_attributes(tree_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate weighted attributes for each tree based on its density and basal area.
+
+    This function computes the weighted DBH, height, crown base height (CBH), dead crown base height (DCBH),
+    and fuel bed height for each tree, using the tree's density and basal area.
+
+    :param tree_df: DataFrame containing individual tree data, including DBH, height, CBH, DCBH, and fuel bed height.
+    :return: Updated DataFrame with new columns for weighted attributes.
+    """
+    print('\tCalculating tree weighted attributes')
+    # Initialize weighted attribute columns
+    attribute_list = list(attribute_weighting_dict.keys())
+
+    for att in attribute_list:
+        # Get the column names for the attribute and its weight multiplier
+        att_col = f'tree_{att}'
+        wtd_col = f'tree_{att}_wtd'
+        att_wt_mult = attribute_weighting_dict.get(att, 'dens')
+
+        # Calculate the weighted attribute
+        tree_df[wtd_col] = tree_df[att_col] * tree_df[f'tree_{att_wt_mult}_ha']
+
+    return tree_df
+
+
+def _gen_master_tree_df(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Generate a master tree DataFrame with selected and renamed columns for export.
+
+    - Maps group IDs to unique IDs.
+    - Converts tree height class codes to descriptive labels.
+    - Selects and renames relevant columns.
+    - Filters out trees with non-positive live density.
+
+    :param df: DataFrame containing plot-level data with 'group' and 'unique_id' columns.
+    :param tree_df: DataFrame containing individual tree data.
+    :return: Master tree DataFrame ready for export.
+    """
+    # Map group to unique_id
+    tree_df['unique_id'] = tree_df['ParentGlobalID'].map(df.set_index('GlobalID')['unique_id'].to_dict())
+
+    # Map tree height class codes to labels
+    ht_class_dict = {1: 'D', 2: 'CD', 3: 'I', 4: 'S'}
+    tree_df['tree_ht_class_cd'] = tree_df['tree_ht_class'].map(ht_class_dict)
+
+    # Calculate live tree density per hectare
+    live_mask = tree_df['tree_status'] == 'L'
+    tree_df['tree_dens_live_ha'] = np.where(live_mask, tree_df['tree_dens_ha'], 0)
+
+    # Calculate live basal area per hectare
+    tree_df['tree_ba_live_ha'] = np.where(live_mask, tree_df['tree_ba_ha'], 0)
+
+    # Columns to keep and their new names
+    tree_cols = [
+        'unique_id', 'tree_species', 'tree_species_fofem', 'tree_dcy_class_cnfr', 'tree_dcy_class_brdlf',
+        'tree_ht_class_cd', 'tree_dens_live_ha', 'tree_dbh', 'tree_ba_live_ha',
+        'tree_ht', 'tree_crwn_dpth', 'tree_bark_thick'
+    ]
+    tree_cols_dict = {
+        'tree_species': 'spp',
+        'tree_species_fofem': 'spp_fofem',
+        'tree_dcy_class_cnfr': 'decay_cnfr',
+        'tree_dcy_class_brdlf': 'decay_brdlf',
+        'tree_ht_class_cd': 'crown_class',
+        'tree_dens_live_ha': 'dens_live_ha',
+        'tree_dbh': 'dbh',
+        'tree_ba_live_ha': 'ba_live_ha',
+        'tree_ht': 'ht',
+        'tree_crwn_dpth': 'crown_depth',
+        'tree_bark_thick': 'bark_thick'
+    }
+
+    # Select, filter, and rename columns
+    temp_df = tree_df.loc[tree_df['tree_dens_live_ha'] > 0, tree_cols].rename(columns=tree_cols_dict)
+
+    # Return the master DataFrame
+    return temp_df.reset_index(drop=True)
+
+
+def _get_temesgen_tree_height(model: int,
+                              param_df: pd.DataFrame,
+                              spp: str,
+                              dbh: float,
+                              bal: float = None,
+                              sph=None,
+                              ba=None):
+    """
+    Calculates tree height using the Temesgen height model (Model 2 or 7).
+
+    :param model: Integer, 2 or 7, specifying which Temesgen model to use.
+    :param param_df: DataFrame containing species-specific model parameters.
+    :param spp: Species code (string) for the target ttree.
+    :param dbh: Diameter at Breast Height of the target tree (cm).
+    :param bal: Total basal area of trees larger than the target tree in stand (m^2/ha), required for Model 7.
+    :param sph: Total number of trees per hectare in stand, required for Model 7.
+    :param ba: Total basal area per hectare in stand (m^2/ha), required for Model 7.
+    :return: Estimated tree height (m) or np.nan if 'model' is invalid.
+    """
+    if model == 2:
+        # Temesgen Model 2: Height = 1.3 + a * (1 - exp(-b * dbh^c))
+        return 1.3 + param_df.loc[spp, 'Temesgen_M2a'] * \
+               (1 - np.exp(-param_df.loc[spp, 'Temesgen_M2b'] * np.power(dbh, param_df.loc[spp, 'Temesgen_M2c'])))
+    elif model == 7:
+        # Temesgen Model 7: Height = 1.3 + a * (1 - exp(-b * dbh^c))
+        # a and c are functions of bal, sph, and ba
+        a = param_df.loc[spp, 'Temesgen_M7a1'] + \
+            param_df.loc[spp, 'Temesgen_M7a2'] * bal + \
+            param_df.loc[spp, 'Temesgen_M7a3'] * sph + \
+            param_df.loc[spp, 'Temesgen_M7a4'] * ba
+        c = param_df.loc[spp, 'Temesgen_M7a5'] + \
+            param_df.loc[spp, 'Temesgen_M7a6'] * bal
+        return 1.3 + a * (1 - np.exp(-param_df.loc[spp, 'Temesgen_M7b'] * np.power(dbh, c)))
+    else:
+        # If incorrect model number entered, return np.nan
+        return np.nan
+
+
+def _merge_saplings_to_trees(tree_df: pd.DataFrame, sapling_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Calculate sapling density for each plot based on the number of saplings per hectare.
+
+    :param tree_df: DataFrame containing individual tree data.
+    :param sapling_df: DataFrame containing small sapling data.
+    :return: Updated tree_df with a new 'tree_sapling_dens' column for sapling density.
+    """
+    print('\tMerging sapling data into tree DataFrame')
+    # Assign a default value of 1 to all trees in the tree DataFrame
+    tree_df['tree_count'] = 1
+
+    # Ensure all DBH values are > 0
+    sapling_df['sapling_live_dbh'] = sapling_df['sapling_live_dbh'].replace(0, 0.1)
+    sapling_df['sapling_dead_dbh'] = sapling_df['sapling_dead_dbh'].replace(0, 0.1)
+
+    # For each row in sapling_df, create new rows for live and dead saplings in tree_df
+    sapling_rows = []
+    for _, row in sapling_df.iterrows():
+        # Live saplings
+        if row['sapling_live_count'] > 0:
+            sapling_rows.append({
+                'tree_count': row['sapling_live_count'],
+                'tree_species': row['sapling_species'],
+                'tree_status': 'L',
+                'tree_dbh': row['sapling_live_dbh'],
+                'tree_ht': row['sapling_live_ht'],
+                'tree_cbh': row['sapling_live_cbh'],
+                'tree_dcy_class_cnfr': 1 if row['tree_type'] == 'conifer' else np.nan,
+                'tree_dcy_class_brdlf': 1 if row['tree_type'] == 'broadleaf' else np.nan,
+                'tree_note': '[Fuel Analyst Note] Tree merged from sapling data; ',
+                'ParentGlobalID': row['ParentGlobalID'] if 'ParentGlobalID' in row else None,
+                'CreationDate': row['CreationDate'] if 'CreationDate' in row else None,
+                'Creator': row['Creator'] if 'Creator' in row else None,
+                'EditDate': row['EditDate'] if 'EditDate' in row else None,
+                'Editor': row['Editor'] if 'Editor' in row else None,
+            })
+        # Dead saplings
+        if row['sapling_dead_count'] > 0:
+            sapling_rows.append({
+                'tree_count': row['sapling_dead_count'],
+                'tree_species': row['sapling_species'],
+                'tree_status': 'D',
+                'tree_dbh': row['sapling_dead_dbh'],
+                'tree_ht': row['sapling_dead_ht'],
+                'tree_cbh': np.nan,
+                'tree_dcy_class_cnfr': 3 if row['tree_type'] == 'conifer' else np.nan,
+                'tree_dcy_class_brdlf': 3 if row['tree_type'] == 'broadleaf' else np.nan,
+                'tree_note': '[Fuel Analyst Note] Tree merged from sapling data; ',
+                'ParentGlobalID': row['ParentGlobalID'] if 'ParentGlobalID' in row else None,
+                'CreationDate': row['CreationDate'] if 'CreationDate' in row else None,
+                'Creator': row['Creator'] if 'Creator' in row else None,
+                'EditDate': row['EditDate'] if 'EditDate' in row else None,
+                'Editor': row['Editor'] if 'Editor' in row else None,
+            })
+    # Convert sapling_rows to DataFrame and append to tree_df
+    if sapling_rows:
+        sapling_tree_df = pd.DataFrame(sapling_rows)
+        tree_df = pd.concat([tree_df, sapling_tree_df], ignore_index=True)
+
+
+    return tree_df, sapling_df
+
+
+def _round_plot_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Rounds plot data columns to appropriate decimal places.
+
+    :param df: DataFrame containing plot data.
+    :return: Updated DataFrame with rounded values.
+    """
+    print('\tRounding plot variables')
+    # Round DBH, height, cbh, and dcbh to 1 decimal place
+    df['lgtree_plot_radius'] = df['lgtree_plot_radius'].round(2)
+    df['smtree_plot_radius'] = df['smtree_plot_radius'].round(2)
+    df['sapling_plot_radius'] = df['sapling_plot_radius'].round(2)
+
+    return df
+
+
+def _round_tree_data(tree_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Rounds tree data columns to appropriate decimal places.
+
+    :param tree_df: DataFrame containing individual tree data.
+    :return: Updated DataFrame with rounded values.
+    """
+    print('\tRounding tree variables')
+    # Round DBH, height, cbh, and dcbh to 1 decimal place
+    tree_df['tree_dbh'] = tree_df['tree_dbh'].round(1)
+    tree_df['tree_ht'] = tree_df['tree_ht'].round(1)
+    tree_df['tree_cbh'] = tree_df['tree_cbh'].round(1)
+    tree_df['tree_dcbh'] = tree_df['tree_dcbh'].round(1)
+    # Round bark char height to 2 decimal places
+    tree_df['tree_bark_char_high'] = tree_df['tree_bark_char_high'].round(2)
+    tree_df['tree_bark_char_low'] = tree_df['tree_bark_char_low'].round(2)
+    tree_df['tree_bark_char_azim'] = tree_df['tree_bark_char_azim'].round(2)
+
+    return tree_df
+
+
 def process_trees(in_folder: str,
                   out_folder: str,
                   surface_fire_intensity_model: str,
@@ -1346,10 +1346,9 @@ def process_trees(in_folder: str,
     tree_df = _calc_tree_missing_heights(tree_df, tree_params_df)
     tree_df = _calc_tree_cbh(tree_df)
     tree_df = _calc_tree_fsg(tree_df)
-    tree_df = _calc_tree_crwn_dpth(tree_df)
+    tree_df = _calc_tree_crown_depth(tree_df)
     tree_df = _calc_tree_biomass(tree_df, tree_params_df)
     tree_df = _calc_tree_crown_fuels(tree_df, tree_params_df)
-    # TODO - Verify that the tree_df and master_tree_df functions work correctly
     # Calculate FOFEM tree attributes
     tree_df = _calc_tree_fofem_attributes(tree_df, tree_params_df)
     # Calculate fire behavior attributes
@@ -1371,4 +1370,4 @@ def process_trees(in_folder: str,
     helper.export_csv(sapling_df, os.path.join(out_folder, 'sapling_1.csv'))
     helper.export_csv(tree_df, os.path.join(out_folder, 'tree_plot_2.csv'))
 
-    return df, keep_columns, master_tree_df
+    return df, helper.sort_list(keep_columns), master_tree_df
