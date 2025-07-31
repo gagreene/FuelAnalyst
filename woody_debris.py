@@ -474,175 +474,175 @@ def _calc_tallied_woody_biomass(
         df: pd.DataFrame,
         woody_merged_df: pd.DataFrame,
         woody_debris_params: dict
-    ) -> tuple[pd.DataFrame, list]:
-        """
-        Calculate plot-level tallied woody debris biomass (kg/m^2) for each woody debris class.
+) -> tuple[pd.DataFrame, list]:
+    """
+    Calculate plot-level tallied woody debris biomass (kg/m^2) for each woody debris class.
 
-        This function processes tallied woody fuel data for each plot and woody debris class,
-        calculates counts, theoretical and actual QMD (quadratic mean diameter), and computes
-        biomass using the Van Wagner approach and measured values if requested.
+    This function processes tallied woody fuel data for each plot and woody debris class,
+    calculates counts, theoretical and actual QMD (quadratic mean diameter), and computes
+    biomass using the Van Wagner approach and measured values if requested.
 
-        :param df: DataFrame containing plot-level data.
-        :param woody_merged_df: DataFrame containing merged woody debris transect data.
-        :param woody_debris_params: Dictionary containing parameters for woody debris processing.
-        :return: Tuple of updated DataFrame and list of columns to keep.
-        """
-        print(f'\tProcessing tallied woody fuels')
+    :param df: DataFrame containing plot-level data.
+    :param woody_merged_df: DataFrame containing merged woody debris transect data.
+    :param woody_debris_params: Dictionary containing parameters for woody debris processing.
+    :return: Tuple of updated DataFrame and list of columns to keep.
+    """
+    print(f'\tProcessing tallied woody fuels')
 
-        # Initialize list of columns to keep
-        keep_columns = []
+    # Initialize list of columns to keep
+    keep_columns = []
 
-        # Check if QMD comparison between measured and tallied is enabled
-        measure_tally_qmd_compare = woody_debris_params['measure_vs_tally_qmd_comparison']
+    # Check if QMD comparison between measured and tallied is enabled
+    measure_tally_qmd_compare = woody_debris_params['measure_vs_tally_qmd_comparison']
 
-        # Loop through each woody debris class defined in parameters
-        for woody_class, woody_class_dict in woody_debris_params['woody_debris_classes'].items():
-            print(f'\t\tProcessing {woody_class.upper()} class')
+    # Loop through each woody debris class defined in parameters
+    for woody_class, woody_class_dict in woody_debris_params['woody_debris_classes'].items():
+        print(f'\t\tProcessing {woody_class.upper()} class')
 
-            if woody_class_dict['process_classes']:
-                # Get the class extension, diameter cutoffs, and transect lengths
-                woody_class_ext = woody_class_dict['class_extension']
-                diameter_cutoffs = woody_class_dict['diameter_cutoffs']
-                transect_lengths = woody_class_dict['transect_lengths']
+        if woody_class_dict['process_classes']:
+            # Get the class extension, diameter cutoffs, and transect lengths
+            woody_class_ext = woody_class_dict['class_extension']
+            diameter_cutoffs = woody_class_dict['diameter_cutoffs']
+            transect_lengths = woody_class_dict['transect_lengths']
 
-                # Calculate total and max transect lengths for each plot
-                for i, lngth in enumerate(np.unique(transect_lengths)):
-                    df[f'tsct_length_total_{woody_class_ext}_{lngth}'] = df['num_transects'] * lngth
-                df[f'tsct_length_max_{woody_class_ext}'] = df['num_transects'] * max(transect_lengths)
+            # Calculate total and max transect lengths for each plot
+            for i, lngth in enumerate(np.unique(transect_lengths)):
+                df[f'tsct_length_total_{woody_class_ext}_{lngth}'] = df['num_transects'] * lngth
+            df[f'tsct_length_max_{woody_class_ext}'] = df['num_transects'] * max(transect_lengths)
 
-                # Calculate corrected slope lengths for each transect and sum for each plot
-                for i, lngth in enumerate(np.unique(transect_lengths)):
-                    for tsct in [1, 2]:
-                        df[f't{tsct}_length_cor_{woody_class_ext}_{lngth}'] = (
-                            lngth / df[f't{tsct}_slope_cor']
-                        )
-                    df[f'tsct_length_cor_{woody_class_ext}_{lngth}'] = (
-                        df[f't1_length_cor_{woody_class_ext}_{lngth}'].replace(np.nan, 0) +
-                        df[f't2_length_cor_{woody_class_ext}_{lngth}'].replace(np.nan, 0)
+            # Calculate corrected slope lengths for each transect and sum for each plot
+            for i, lngth in enumerate(np.unique(transect_lengths)):
+                for tsct in [1, 2]:
+                    df[f't{tsct}_length_cor_{woody_class_ext}_{lngth}'] = (
+                        lngth / df[f't{tsct}_slope_cor']
                     )
+                df[f'tsct_length_cor_{woody_class_ext}_{lngth}'] = (
+                    df[f't1_length_cor_{woody_class_ext}_{lngth}'].replace(np.nan, 0) +
+                    df[f't2_length_cor_{woody_class_ext}_{lngth}'].replace(np.nan, 0)
+                )
 
-                # Get counts of woody fuel tallies for each diameter class
-                prior_dc = 0
-                for i, dc in enumerate(diameter_cutoffs):
+            # Get counts of woody fuel tallies for each diameter class
+            prior_dc = 0
+            for i, dc in enumerate(diameter_cutoffs):
+                dc_str = str(dc).replace('.', '_')
+                # Count the number of measured woody fuels within each diameter class
+                df[f'count_{woody_class_ext}_{dc_str}'] = df.GlobalID.map(
+                    woody_merged_df[
+                        (woody_merged_df['woody_diam_cm'] > prior_dc) &
+                        (woody_merged_df['woody_diam_cm'] <= dc)
+                    ].groupby('ParentGlobalID')['woody_diam_cm'].count()
+                )
+                # For the first diameter class, add the fine woody fuel count to the measured woody fuel count
+                if i == 0:
+                    # The measured woody fuel count should be 0 for Canadian and modified fuel classes,
+                    # assuming the fine woody fuel count encompasses the upper limit of the first diameter class.
+                    df[f'count_{woody_class_ext}_{dc_str}'] = (
+                        df[f'count_{woody_class_ext}_{dc_str}'].replace(np.nan, 0) +
+                        df['woody_fine_count'].replace(np.nan, 0)
+                    )
+                # Assign prior diameter cutoff for next iteration
+                prior_dc = dc
+            del prior_dc
+
+            # Calculate theoretical QMD of woody fuel tallies using Van Wagner approach
+            df = pd.concat([
+                df,
+                _get_van_wagner_qmd(
+                    df[[f'tsct_length_max_{woody_class_ext}'] +
+                       [f'tsct_length_total_{woody_class_ext}_{lngth}'
+                        for lngth in sorted(np.unique(transect_lengths))] +
+                       [f'count_{woody_class_ext}_{str(dc).replace('.', '_')}'
+                        for dc in sorted(diameter_cutoffs)]],
+                    woody_class_ext,
+                    diameter_cutoffs,
+                    transect_lengths
+                ).set_axis(
+                    [f'qmd_vanwagner_{woody_class_ext}_{str(dc).replace('.', '_')}'
+                     for dc in sorted(diameter_cutoffs)],
+                    axis=1)
+            ], axis=1)
+
+            # Calculate actual QMD of woody fuel tallies (if comparing measure vs tally)
+            if measure_tally_qmd_compare:
+                prior_dc = diameter_cutoffs[0]
+                for i, dc in enumerate(diameter_cutoffs[1:]):
                     dc_str = str(dc).replace('.', '_')
-                    # Count the number of measured woody fuels within each diameter class
-                    df[f'count_{woody_class_ext}_{dc_str}'] = df.GlobalID.map(
+                    # Sum of squared diameters for each class
+                    df[f'diamSquared_sum_{woody_class_ext}_{dc_str}'] = df.GlobalID.map(
                         woody_merged_df[
                             (woody_merged_df['woody_diam_cm'] > prior_dc) &
                             (woody_merged_df['woody_diam_cm'] <= dc)
-                        ].groupby('ParentGlobalID')['woody_diam_cm'].count()
+                        ].groupby('ParentGlobalID')['woody_diamSquared'].sum()
                     )
-                    # For the first diameter class, add the fine woody fuel count to the measured woody fuel count
-                    if i == 0:
-                        # The measured woody fuel count should be 0 for Canadian and modified fuel classes,
-                        # assuming the fine woody fuel count encompasses the upper limit of the first diameter class.
-                        df[f'count_{woody_class_ext}_{dc_str}'] = (
-                            df[f'count_{woody_class_ext}_{dc_str}'].replace(np.nan, 0) +
-                            df['woody_fine_count'].replace(np.nan, 0)
-                        )
+                    # Calculate QMD for each class
+                    df[f'qmd_calculated_{woody_class_ext}_{dc_str}'] = np.where(
+                        df[f'count_{woody_class_ext}_{dc_str}'] > 0,
+                        np.sqrt(df[f'diamSquared_sum_{woody_class_ext}_{dc_str}'] /
+                                df[f'count_{woody_class_ext}_{dc_str}']),
+                        np.nan
+                    )
                     # Assign prior diameter cutoff for next iteration
                     prior_dc = dc
                 del prior_dc
 
-                # Calculate theoretical QMD of woody fuel tallies using Van Wagner approach
-                df = pd.concat([
-                    df,
-                    _get_van_wagner_qmd(
-                        df[[f'tsct_length_max_{woody_class_ext}'] +
-                           [f'tsct_length_total_{woody_class_ext}_{lngth}'
-                            for lngth in sorted(np.unique(transect_lengths))] +
-                           [f'count_{woody_class_ext}_{str(dc).replace('.', '_')}'
-                            for dc in sorted(diameter_cutoffs)]],
-                        woody_class_ext,
-                        diameter_cutoffs,
-                        transect_lengths
-                    ).set_axis(
-                        [f'qmd_vanwagner_{woody_class_ext}_{str(dc).replace('.', '_')}'
-                         for dc in sorted(diameter_cutoffs)],
-                        axis=1)
-                ], axis=1)
+            # Calculate tallied woody fuel biomass for each diameter class
+            for i, dc in enumerate(diameter_cutoffs):
+                dc_str = str(dc).replace('.', '_')
 
-                # Calculate actual QMD of woody fuel tallies (if comparing measure vs tally)
-                if measure_tally_qmd_compare:
-                    prior_dc = diameter_cutoffs[0]
-                    for i, dc in enumerate(diameter_cutoffs[1:]):
-                        dc_str = str(dc).replace('.', '_')
-                        # Sum of squared diameters for each class
-                        df[f'diamSquared_sum_{woody_class_ext}_{dc_str}'] = df.GlobalID.map(
-                            woody_merged_df[
-                                (woody_merged_df['woody_diam_cm'] > prior_dc) &
-                                (woody_merged_df['woody_diam_cm'] <= dc)
-                            ].groupby('ParentGlobalID')['woody_diamSquared'].sum()
-                        )
-                        # Calculate QMD for each class
-                        df[f'qmd_calculated_{woody_class_ext}_{dc_str}'] = np.where(
-                            df[f'count_{woody_class_ext}_{dc_str}'] > 0,
-                            np.sqrt(df[f'diamSquared_sum_{woody_class_ext}_{dc_str}'] /
-                                    df[f'count_{woody_class_ext}_{dc_str}']),
-                            np.nan
-                        )
-                        # Assign prior diameter cutoff for next iteration
-                        prior_dc = dc
-                    del prior_dc
+                # Convert to volumes and biomass
+                if i == 0:
+                    # Calculate volume using Van Wagner QMD for smallest size class
+                    df[f'woody_volume_{woody_class_ext}_{dc_str}'] = (
+                        10000 * df[f'count_{woody_class_ext}_{dc_str}'] *
+                        ((np.pi**2 / 8) / df[f'tsct_length_cor_{woody_class_ext}_{transect_lengths[i]}']) *
+                        np.power(df[f'qmd_vanwagner_{woody_class_ext}_{dc_str}'] / 100, 2)
+                    )
+                    # Calculate biomass
+                    df[f'woody_kgpm2_{woody_class_ext}_{dc_str}'] = (
+                        df[f'tsct_slope_cor'] *
+                        df[f'woody_sg_{dc_str}cm'] *
+                        df[f'woody_volume_{woody_class_ext}_{dc_str}'] /
+                        10
+                    )
+                    # Add to keep columns
+                    keep_columns.append(f'woody_kgpm2_{woody_class_ext}_{dc_str}')
 
-                # Calculate tallied woody fuel biomass for each diameter class
-                for i, dc in enumerate(diameter_cutoffs):
-                    dc_str = str(dc).replace('.', '_')
+                elif measure_tally_qmd_compare:
+                    # Calculate volumes and biomass using Van Wagner QMD
+                    df[f'woody_volume_vanwagner_{woody_class_ext}_{dc_str}'] = (
+                        10000 * df[f'count_{woody_class_ext}_{dc_str}'] *
+                        ((np.pi**2 / 8) / df[f'tsct_length_cor_{woody_class_ext}_{transect_lengths[i]}']) *
+                        np.power(df[f'qmd_vanwagner_{woody_class_ext}_{dc_str}'] / 100, 2)
+                    )
+                    df[f'woody_kgpm2_vanwagner_{woody_class_ext}_{dc_str}'] = (
+                        df[f'tsct_slope_cor'] *
+                        df[f'woody_sg_{dc_str}cm'] *
+                        df[f'woody_volume_vanwagner_{woody_class_ext}_{dc_str}'] /
+                        10
+                    )
+                    # Calculate volumes and biomass using calculated QMD
+                    df[f'woody_volume_calculated_{woody_class_ext}_{dc_str}'] = (
+                        10000 * df[f'count_{woody_class_ext}_{dc_str}'] *
+                        ((np.pi**2 / 8) / df[f'tsct_length_cor_{woody_class_ext}_{transect_lengths[i]}']) *
+                        np.power(df[f'qmd_calculated_{woody_class_ext}_{dc_str}'] / 100, 2)
+                    )
+                    df[f'woody_kgpm2_calculated_{woody_class_ext}_{dc_str}'] = (
+                        df[f'tsct_slope_cor'] *
+                        df[f'woody_sg_{dc_str}cm'] *
+                        df[f'woody_volume_calculated_{woody_class_ext}_{dc_str}'] /
+                        10
+                    )
+                else:
+                    break
 
-                    # Convert to volumes and biomass
-                    if i == 0:
-                        # Calculate volume using Van Wagner QMD for smallest size class
-                        df[f'woody_volume_{woody_class_ext}_{dc_str}'] = (
-                            10000 * df[f'count_{woody_class_ext}_{dc_str}'] *
-                            ((np.pi**2 / 8) / df[f'tsct_length_cor_{woody_class_ext}_{transect_lengths[i]}']) *
-                            np.power(df[f'qmd_vanwagner_{woody_class_ext}_{dc_str}'] / 100, 2)
-                        )
-                        # Calculate biomass
-                        df[f'woody_kgpm2_{woody_class_ext}_{dc_str}'] = (
-                            df[f'tsct_slope_cor'] *
-                            df[f'woody_sg_{dc_str}cm'] *
-                            df[f'woody_volume_{woody_class_ext}_{dc_str}'] /
-                            10
-                        )
-                        # Add to keep columns
-                        keep_columns.append(f'woody_kgpm2_{woody_class_ext}_{dc_str}')
+    # Add QMD and biomass columns to keep_columns if QMD comparison is enabled
+    if measure_tally_qmd_compare:
+        keep_columns.extend([col for col in df if 'qmd_vanwagner' in col])
+        keep_columns.extend([col for col in df if 'qmd_calculated' in col])
+        keep_columns.extend([col for col in df if 'kgpm2_vanwagner' in col])
+        keep_columns.extend([col for col in df if 'kgpm2_calculated' in col])
 
-                    elif measure_tally_qmd_compare:
-                        # Calculate volumes and biomass using Van Wagner QMD
-                        df[f'woody_volume_vanwagner_{woody_class_ext}_{dc_str}'] = (
-                            10000 * df[f'count_{woody_class_ext}_{dc_str}'] *
-                            ((np.pi**2 / 8) / df[f'tsct_length_cor_{woody_class_ext}_{transect_lengths[i]}']) *
-                            np.power(df[f'qmd_vanwagner_{woody_class_ext}_{dc_str}'] / 100, 2)
-                        )
-                        df[f'woody_kgpm2_vanwagner_{woody_class_ext}_{dc_str}'] = (
-                            df[f'tsct_slope_cor'] *
-                            df[f'woody_sg_{dc_str}cm'] *
-                            df[f'woody_volume_vanwagner_{woody_class_ext}_{dc_str}'] /
-                            10
-                        )
-                        # Calculate volumes and biomass using calculated QMD
-                        df[f'woody_volume_calculated_{woody_class_ext}_{dc_str}'] = (
-                            10000 * df[f'count_{woody_class_ext}_{dc_str}'] *
-                            ((np.pi**2 / 8) / df[f'tsct_length_cor_{woody_class_ext}_{transect_lengths[i]}']) *
-                            np.power(df[f'qmd_calculated_{woody_class_ext}_{dc_str}'] / 100, 2)
-                        )
-                        df[f'woody_kgpm2_calculated_{woody_class_ext}_{dc_str}'] = (
-                            df[f'tsct_slope_cor'] *
-                            df[f'woody_sg_{dc_str}cm'] *
-                            df[f'woody_volume_calculated_{woody_class_ext}_{dc_str}'] /
-                            10
-                        )
-                    else:
-                        break
-
-        # Add QMD and biomass columns to keep_columns if QMD comparison is enabled
-        if measure_tally_qmd_compare:
-            keep_columns.extend([col for col in df if 'qmd_vanwagner' in col])
-            keep_columns.extend([col for col in df if 'qmd_calculated' in col])
-            keep_columns.extend([col for col in df if 'kgpm2_vanwagner' in col])
-            keep_columns.extend([col for col in df if 'kgpm2_calculated' in col])
-
-        return df, keep_columns
+    return df, keep_columns
 
 
 def _calc_woody_corrected_tsct_lengths(
@@ -918,11 +918,22 @@ def _get_van_wagner_qmd(
     dc_df['slopeX'] = dc_df['slopeX'].apply(list)
     dc_df['slopeY'] = dc_df['slopeY'].apply(list)
 
-    # Linear regression to get slope (b) for each plot
     def getSlope(inX, inY):
+        """
+        Calculate the slope (b) of the linear regression line for the given X and Y values.
+
+        Uses scipy.stats.linregress to compute the slope (first return value).
+        If a RuntimeWarning occurs (e.g., due to insufficient or invalid data), returns np.nan.
+
+        :param inX: List or array-like of X values (e.g., lnMidClass for diameter classes).
+        :param inY: List or array-like of Y values (e.g., lnAdjFreq for diameter classes).
+        :return: Slope of the regression line, or np.nan if regression fails.
+        """
         try:
+            # linregress returns (slope, intercept, rvalue, pvalue, stderr)
             return linregress(inX, inY)[0]
         except RuntimeWarning:
+            # Return NaN if regression cannot be performed
             return np.nan
 
     dc_df['slopeB'] = dc_df.apply(
