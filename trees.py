@@ -1304,6 +1304,9 @@ def process_trees(in_folder: str,
     """
     print('\nProcessing Tree data')
 
+    # Initialize list of columns to keep
+    keep_columns = []
+
     # Load tree parameters and set index
     tree_params_df = helper.get_df(
         os.path.join(os.path.dirname(__file__), 'Supporting_Data\\tree_parameters.csv')
@@ -1357,8 +1360,10 @@ def process_trees(in_folder: str,
     master_tree_df = _gen_master_tree_df(df, tree_df)
 
     # ### PROCESS STAND_LEVEL (PER HA) ATTRIBUTES
-    df, keep_columns = _calc_stand_composition(df, tree_df)
-    df, keep_columns = _calc_stand_attributes(df, tree_df, stand_summary_params)
+    df, add_columns = _calc_stand_composition(df, tree_df)
+    keep_columns.extend(add_columns)
+    df, add_columns = _calc_stand_attributes(df, tree_df, stand_summary_params)
+    keep_columns.extend(add_columns)
 
     # ### SAVE DATASETS TO OUTPUT FOLDER
     os.makedirs(out_folder, exist_ok=True)
