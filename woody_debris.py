@@ -28,8 +28,8 @@ woody_tally_map = [
 
 specific_gravity_map = [
     # (output sg column, input sg column, tree parameters column, lower diam limit, upper diam limit)
-    ('woody_sg_05cm', 'SG_0.5', 0, 0.5),
-    ('woody_sg_0635cm', 'SG_0.635', 0, 0.635),      # 1hr woody fuels
+    ('woody_sg_0_5cm', 'SG_0.5', 0, 0.5),
+    ('woody_sg_0_635cm', 'SG_0.635', 0, 0.635),      # 1hr woody fuels
     ('woody_sg_1cm', 'SG_1', 0.5, 1),
     ('woody_sg_2cm', 'SG_2', 1, 2),
     ('woody_sg_3cm', 'SG_3', 1, 3),
@@ -38,9 +38,9 @@ specific_gravity_map = [
     ('woody_sg_6cm', 'SG_6', 5, 6),
     ('woody_sg_7cm', 'SG_7', 5, 7),
     ('woody_sg_gt7cm', 'SG_7+', 7, 9999),
-    ('woody_sg_254cm', 'SG_2.54', 0.635, 2.54),     # 10hr woody fuels
-    ('woody_sg_762cm', 'SG_7.62', 2.54, 7.62),      # 100hr woody fuels
-    ('woody_sg_gt762cm', 'SG_7.62+', 7.62, 9999),     # 1000hr woody fuels
+    ('woody_sg_2_54cm', 'SG_2.54', 0.635, 2.54),     # 10hr woody fuels
+    ('woody_sg_7_62cm', 'SG_7.62', 2.54, 7.62),      # 100hr woody fuels
+    ('woody_sg_gt7_62cm', 'SG_7.62+', 7.62, 9999),     # 1000hr woody fuels
 ]
 
 
@@ -193,7 +193,7 @@ def _calc_plot_specific_gravity(df: pd.DataFrame,
     # Remove duplicate columns in keep_columns
     keep_columns = list(set(keep_columns))
 
-    return df, sorted(keep_columns)
+    return df, helper.sort_list(keep_columns)
 
 
 def _calc_plot_t2_azimuth(df: pd.DataFrame) -> pd.DataFrame:
@@ -280,9 +280,9 @@ def _calc_plot_woody_debris(df: pd.DataFrame,
             for i, (req_ext, req_filter, req_cutoffs) in enumerate(output_requests):
                     prior_out_dc = req_cutoffs[0]
                     for out_dc in req_cutoffs[1:]:
-                        out_dc_str = str(out_dc).replace('.', '')
+                        out_dc_str = str(out_dc).replace('.', '_')
                         if out_dc_str == 'inf':
-                            prior_out_dc_str = str(prior_out_dc).replace('.', '')
+                            prior_out_dc_str = str(prior_out_dc).replace('.', '_')
                             out_dc_str = f'gt{prior_out_dc_str}'
 
                         # Create a mask for the merged woody DataFrame (default to all True)
@@ -318,7 +318,7 @@ def _calc_plot_woody_debris(df: pd.DataFrame,
                         # Incorporate tallied woody fuels into outputs on first iteration
                         if i == 0:
                             dc = diameter_cutoffs[0]
-                            dc_str = str(dc).replace('.', '')
+                            dc_str = str(dc).replace('.', '_')
                             if dc == out_dc:
                                 # If the tallied diameter class matches the output diameter class,
                                 # copy the tallied woody value
@@ -340,8 +340,7 @@ def _calc_plot_woody_debris(df: pd.DataFrame,
                         # Assign the previous diameter class to the current one
                         prior_out_dc = out_dc
 
-
-    return df, sorted(keep_columns)
+    return df, helper.sort_list(keep_columns)
 
 
 def _calc_spp_comp_duff_litter_bulk_density(df: pd.DataFrame,
@@ -463,7 +462,7 @@ def _calc_tallied_woody_biomass(
                 # Get counts of woody fuel tallies for each diameter class
                 prior_dc = 0
                 for i, dc in enumerate(diameter_cutoffs):
-                    dc_str = str(dc).replace('.', '')
+                    dc_str = str(dc).replace('.', '_')
                     # Count the number of measured woody fuels within each diameter class
                     df[f'count_{woody_class_ext}_{dc_str}'] = df.GlobalID.map(
                         woody_merged_df[
@@ -488,15 +487,15 @@ def _calc_tallied_woody_biomass(
                     df,
                     _get_van_wagner_qmd(
                         df[[f'tsct_length_max_{woody_class_ext}'] +
-                           [f'tsct_length_total_{woody_class_ext}_{length}'
-                            for length in sorted(np.unique(transect_lengths))] +
-                           [f'count_{woody_class_ext}_{str(dc).replace(".", "")}'
+                           [f'tsct_length_total_{woody_class_ext}_{lngth}'
+                            for lngth in sorted(np.unique(transect_lengths))] +
+                           [f'count_{woody_class_ext}_{str(dc).replace('.', '_')}'
                             for dc in sorted(diameter_cutoffs)]],
                         woody_class_ext,
                         diameter_cutoffs,
                         transect_lengths
                     ).set_axis(
-                        [f'qmd_vanwagner_{woody_class_ext}_{str(dc).replace(".", "")}'
+                        [f'qmd_vanwagner_{woody_class_ext}_{str(dc).replace('.', '_')}'
                          for dc in sorted(diameter_cutoffs)],
                         axis=1)
                 ], axis=1)
@@ -505,7 +504,7 @@ def _calc_tallied_woody_biomass(
                 if measure_tally_qmd_compare:
                     prior_dc = diameter_cutoffs[0]
                     for i, dc in enumerate(diameter_cutoffs[1:]):
-                        dc_str = str(dc).replace('.', '')
+                        dc_str = str(dc).replace('.', '_')
                         # Sum of squared diameters for each class
                         df[f'diamSquared_sum_{woody_class_ext}_{dc_str}'] = df.GlobalID.map(
                             woody_merged_df[
@@ -526,7 +525,7 @@ def _calc_tallied_woody_biomass(
 
                 # Calculate tallied woody fuel biomass for each diameter class
                 for i, dc in enumerate(diameter_cutoffs):
-                    dc_str = str(dc).replace('.', '')
+                    dc_str = str(dc).replace('.', '_')
 
                     # Convert to volumes and biomass
                     if i == 0:
@@ -800,7 +799,7 @@ def _get_van_wagner_qmd(df, extension, diam_classes, trans_lengths):
 
     ## These calculations should only happen if counts are missing in only 3 or fewer classes
     for i, dc in enumerate(diam_classes):
-        dc_str = str(dc).replace('.', '')  # Remove decimal point for column names
+        dc_str = str(dc).replace('.', '_')  # Remove decimal point for column names
         count_col = fnmatch.filter(list(dc_df.columns), f'count_{extension}_{dc_str}')
         if count_col:
             count_series = dc_df[count_col[0]]
@@ -853,7 +852,7 @@ def _get_van_wagner_qmd(df, extension, diam_classes, trans_lengths):
     ## Calculate QMD for each size class
     ## Apply default plot-level QMD values if counts missing in at least four diameter classes
     for i, dc in enumerate(diam_classes):
-        dc_str = str(dc).replace('.', '')  # Remove decimal point for column names
+        dc_str = str(dc).replace('.', '_')  # Remove decimal point for column names
         try:
             if i == 0:
                 dc_df[f'qmd{dc}'] = dc_df.apply(
