@@ -29,7 +29,6 @@ woody_tally_map = [
 specific_gravity_map = [
     # (output sg column, input sg column, tree parameters column, lower diam limit, upper diam limit)
     ('woody_sg_0_5cm', 'SG_0.5', 0, 0.5),
-    ('woody_sg_0_635cm', 'SG_0.635', 0, 0.635),      # 1hr woody fuels
     ('woody_sg_1cm', 'SG_1', 0.5, 1),
     ('woody_sg_2cm', 'SG_2', 1, 2),
     ('woody_sg_3cm', 'SG_3', 1, 3),
@@ -38,6 +37,7 @@ specific_gravity_map = [
     ('woody_sg_6cm', 'SG_6', 5, 6),
     ('woody_sg_7cm', 'SG_7', 5, 7),
     ('woody_sg_gt7cm', 'SG_7+', 7, 9999),
+    ('woody_sg_0_635cm', 'SG_0.635', 0, 0.635),      # 1hr woody fuels
     ('woody_sg_2_54cm', 'SG_2.54', 0.635, 2.54),     # 10hr woody fuels
     ('woody_sg_7_62cm', 'SG_7.62', 2.54, 7.62),      # 100hr woody fuels
     ('woody_sg_gt7_62cm', 'SG_7.62+', 7.62, 9999),     # 1000hr woody fuels
