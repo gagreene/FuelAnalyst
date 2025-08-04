@@ -21,9 +21,12 @@ bulk_density_map = [
 ]
 
 woody_tally_map = [
-    # (output tally column, transect 1 tally 0-2m column, transect 1 tally 28-30m column,
+    # (output tally column,
+    # transect 1 tally 0-2m column, transect 1 tally 28-30m column,
     # transect 2 tally 0-2m column, transect 2 tally 28-30m column)
-    ('woody_fine_count', 't1_woody_fine_0to2', 't1_woody_fine_28to30', 't2_woody_fine_0to2', 't2_woody_fine_28to30')
+    ('woody_tally_count',
+     't1_woody_tally_0to2', 't1_woody_tally_28to30',
+     't2_woody_tally_0to2', 't2_woody_tally_28to30')
 ]
 
 specific_gravity_map = [
@@ -532,13 +535,13 @@ def _calc_tallied_woody_biomass(
                         (woody_merged_df['woody_diam_cm'] <= dc)
                     ].groupby('ParentGlobalID')['woody_diam_cm'].count()
                 )
-                # For the first diameter class, add the fine woody fuel count to the measured woody fuel count
+                # For the first diameter class, add the tallied woody fuel count to the measured woody fuel count
                 if i == 0:
                     # The measured woody fuel count should be 0 for Canadian and modified fuel classes,
-                    # assuming the fine woody fuel count encompasses the upper limit of the first diameter class.
+                    # assuming the tallied woody fuel count encompasses the upper limit of the first diameter class.
                     df[f'count_{woody_class_ext}_{dc_str}'] = (
                         df[f'count_{woody_class_ext}_{dc_str}'].replace(np.nan, 0) +
-                        df['woody_fine_count'].replace(np.nan, 0)
+                        df['woody_tally_count'].replace(np.nan, 0)
                     )
                 # Assign prior diameter cutoff for next iteration
                 prior_dc = dc
@@ -1094,7 +1097,7 @@ def process_woody_debris(
     spp_comp_df = _assign_spp_comp_id_col(df, spp_comp_df)
     spp_comp_df = _add_spp_comp_type(spp_comp_df)
     spp_comp_df = _merge_spp_comp(plot_df, df, woody_merged_df, spp_comp_df)
-    spp_comp_df = _calc_spp_comp_duff_litter_bulk_density(df, spp_comp_df, tree_params_df)
+    spp_comp_df = _calc_spp_comp_duff_litter_bulk_density(spp_comp_df, tree_params_df)
     spp_comp_df = _calc_spp_comp_specific_gravity(spp_comp_df, tree_params_df)
 
     # ### PROCESS PLOT DUFF AND LITTER BULK DENSITY DATA
