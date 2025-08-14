@@ -16,8 +16,8 @@ import helper
 
 bulk_density_map = [
     # (output bd column, tree params column, duff/litter depth columm, output biomass column)
-    ('stand_duff_bd_kgpm3', 'Duff_BD', 'stand_duff_depth_m', 'ffl_duff_kgpm2'),
-    ('stand_litter_bd_kgpm3', 'Litter_BD', 'stand_litter_depth_m', 'ffl_litter_kgpm2'),
+    ('stand_duff_bd_kgpm3', 'Duff_BD', 'stand_duff_depth_cm', 'ffl_duff_kgpm2'),
+    ('stand_litter_bd_kgpm3', 'Litter_BD', 'stand_litter_depth_cm', 'ffl_litter_kgpm2'),
 ]
 
 woody_tally_map = [
@@ -113,7 +113,7 @@ def _calc_plot_duff_litter_biomass(plot_df: pd.DataFrame,
                 biomass = df['unique_id'].map(
                     spp_comp_df[spp_mask].groupby('unique_id')[bd_col].sum()
                 )
-                df.loc[plot_mask, out_col] = biomass * df.loc[plot_mask, depth_col]
+                df.loc[plot_mask, out_col] = biomass * df.loc[plot_mask, depth_col] / 100  # Convert depth from cm to m
 
     # Initialize list of columns to keep
     keep_columns = []
@@ -129,44 +129,23 @@ def _calc_plot_duff_litter_biomass(plot_df: pd.DataFrame,
     return df, keep_columns
 
 
-def _calc_plot_duff_litter_depths(df: pd.DataFrame) -> pd.DataFrame:
+def _calc_plot_duff_litter_depths(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     """
-    Calculate average stand-level duff, litter, and fuel bed depths (in meters)
-    for each plot by averaging measurements from two transects.
+    Calculate average stand-level duff and litter depths (in centimeters) for each plot
+    by averaging all available *_duff_75, *_duff_225, *_litter_75, *_litter_225 columns.
 
     :param df: DataFrame containing plot-level duff and litter measurements.
     :return: DataFrame with new columns for stand-level duff and litter depths in meters.
     """
-    # Create boolean masks for plots with one or two transects
-    one_transect_mask = df['num_transects'] == 1
-    two_transects_mask = df['num_transects'] == 2
+    # Find all columns for duff and litter measurements
+    duff_cols = [col for col in df.columns if '_duff_75' in col or '_duff_225' in col]
+    litter_cols = [col for col in df.columns if '_litter_75' in col or '_litter_225' in col]
 
-    # For plots with one transect, calculate average duff and litter depths (in meters)
-    df.loc[one_transect_mask, ['stand_duff_depth_m', 'stand_litter_depth_m']] = (
-        df.loc[one_transect_mask, ['t1_duff_75', 't1_duff_225', 't1_litter_75', 't1_litter_225']]
-        .assign(
-            # Average duff depth: sum of two measurements divided by 200 (to get average in m)
-            stand_duff_depth_m=lambda x: (x['t1_duff_75'] + x['t1_duff_225']) / 200,
-            # Average litter depth: sum of two measurements divided by 200 (to get average in m)
-            stand_litter_depth_m=lambda x: (x['t1_litter_75'] + x['t1_litter_225']) / 200
-        )[['stand_duff_depth_m', 'stand_litter_depth_m']]
-    )
+    # Calculate average depths and convert to meters
+    df['stand_duff_depth_cm'] = df[duff_cols].apply(pd.to_numeric, errors='coerce').mean(axis=1)
+    df['stand_litter_depth_cm'] = df[litter_cols].apply(pd.to_numeric, errors='coerce').mean(axis=1)
 
-    # For plots with two transects, calculate average duff and litter depths (in meters)
-    df.loc[two_transects_mask, ['stand_duff_depth_m', 'stand_litter_depth_m']] = (
-        df.loc[two_transects_mask, ['t1_duff_75', 't1_duff_225', 't2_duff_75', 't2_duff_225',
-                                    't1_litter_75', 't1_litter_225', 't2_litter_75', 't2_litter_225']]
-        .assign(
-            # Average duff depth: sum of four measurements divided by 400 (to get average in m)
-            stand_duff_depth_m=lambda x: (x['t1_duff_75'] + x['t1_duff_225'] +
-                                          x['t2_duff_75'] + x['t2_duff_225']) / 400,
-            # Average litter depth: sum of four measurements divided by 400 (to get average in m)
-            stand_litter_depth_m=lambda x: (x['t1_litter_75'] + x['t1_litter_225'] +
-                                            x['t2_litter_75'] + x['t2_litter_225']) / 400
-        )[['stand_duff_depth_m', 'stand_litter_depth_m']]
-    )
-
-    return df
+    return df, ['stand_duff_depth_cm', 'stand_litter_depth_cm']
 
 
 def _calc_plot_specific_gravity(
@@ -566,7 +545,7 @@ def _calc_tallied_woody_biomass(
             ], axis=1)
 
             # Calculate actual QMD of woody fuel tallies (if comparing measure vs tally)
-            if measure_tally_qmd_compare:
+            if measure_tally_qmd_compare and (woody_class_ext != 'fofem'):
                 prior_dc = diameter_cutoffs[0]
                 for i, dc in enumerate(diameter_cutoffs[1:]):
                     dc_str = str(dc).replace('.', '_')
@@ -610,7 +589,7 @@ def _calc_tallied_woody_biomass(
                     # Add to keep columns
                     keep_columns.append(f'woody_kgpm2_{woody_class_ext}_{dc_str}')
 
-                elif measure_tally_qmd_compare:
+                elif measure_tally_qmd_compare and (woody_class_ext != 'fofem'):
                     # Calculate volumes and biomass using Van Wagner QMD
                     df[f'compare_woody_volume_vanwagner_{woody_class_ext}_{dc_str}'] = (
                         10000 * df[f'woody_count_{woody_class_ext}_{dc_str}'] *
@@ -1075,7 +1054,8 @@ def process_woody_debris(
     df = helper.get_unique_id(df)
     # Process plot attributes
     df = _calc_plot_t2_azimuth(df)
-    df = _calc_plot_duff_litter_depths(df)
+    df, add_columns = _calc_plot_duff_litter_depths(df)
+    keep_columns.extend(add_columns)
     df = _calc_plot_tsct_slope_correction(df)
     df = _calc_plot_tsct_total_slope_correction(df, woody_debris_params)
 

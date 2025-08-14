@@ -21,66 +21,108 @@ default_stand_summary_dict = {
     'dens': {
         'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
         'metrics': ['sum'],  # These options are fixed
+        'units': 'tpha',  # This option is fixed
         'classes': {
-            'dbh': [5, 7.5, 12.5]
+            'dbh': [0, 5, 7.5, 12.5]
         },
     },
     'ba': {
         'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
         'metrics': ['sum'],  # These options are fixed
+        'units': 'm2pha',  # This option is fixed
         'classes': {
-            'dbh': [5, 7.5, 12.5]
+            'dbh': [0, 5, 7.5, 12.5]
         },
     },
     'ht': {
         'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
         'metrics': ['max', 'mean'],  # These are the only options
+        'units': 'm',  # This option is fixed
         'classes': {
-            'dbh': [5]
+            'dbh': [0, 5]
         },
     },
     'cbh': {
         'summary': ['total', 'live', 'conifer', 'broadleaf'],  # These are the only options
         'metrics': ['min', 'max', 'mean'],  # These are the only options
+        'units': 'm',  # This option is fixed
         'classes': {
-            'dbh': [5]
+            'dbh': [0, 5]
         },
     },
     'dcbh': {
         'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
         'metrics': ['min', 'max', 'mean'],  # These are the only options
+        'units': 'm',  # This option is fixed
         'classes': {
-            'dbh': [5]
+            'dbh': [0, 5]
         },
     },
     'fsg': {
         'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
         'metrics': ['min', 'max', 'mean'],  # These are the only options
+        'units': 'm',  # This option is fixed
         'classes': {
-            'dbh': [5]
+            'dbh': [0, 5]
         },
     },
     'cfl': {
         'summary': ['total', 'conifer', 'broadleaf'],  # These are all live trees
         'metrics': ['min', 'max', 'mean', 'sum'],  # These are the only options
+        'units': 'kgpm2',  # This option is fixed
         'classes': {
-            'dbh': [5]
+            'dbh': [0, 5]
         },
     },
     'cbd': {
         'summary': ['total', 'conifer', 'broadleaf'],  # These are all live trees
         'metrics': [],  # This is fixed as empty (no user options)
+        'units': 'kgpm3',  # This option is fixed
         'classes': {
-            'dbh': [5]
+            'dbh': [0, 5]
+        },
+    },
+    'foliage': {
+        'summary': ['total', 'conifer', 'broadleaf'],  # These are all live trees
+        'metrics': ['sum'],  # This is the only option
+        'units': 'kgpm2',  # This option is fixed
+        'classes': {
+            'dbh': [0]
+        },
+    },
+    'branches': {
+        'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'metrics': ['sum'],  # This is the only option
+        'units': 'kgpm2',  # This option is fixed
+        'classes': {
+            'dbh': [0]
+        },
+    },
+    'wood': {
+        'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'metrics': ['sum'],  # This is the only option
+        'units': 'kgpm2',  # This option is fixed
+        'classes': {
+            'dbh': [0]
+        },
+    },
+    'bark': {
+        'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'metrics': ['sum'],  # This is the only option
+        'units': 'kgpm2',  # This option is fixed
+        'classes': {
+            'dbh': [0]
         },
     },
     'flame_length': {
         'summary': ['total'],  # This is fixed (no user options)
         'metrics': ['min', 'max', 'mean'],  # These are the only options
+        'units': 'm',  # This option is fixed
     },
     'fire_intensity': {
         'summary': ['total'],  # This is fixed (no user options)
         'metrics': ['min', 'max', 'mean'],  # These are the only options
+        'units': 'kWpm2',  # This option is fixed
     },
 }
 
@@ -113,8 +155,6 @@ default_woody_debris_dict = {
             'output_request': [
                 # [output name extension, filter dictionary, diameter cutoffs]
                 ['default', {}, [0, 0.635, 2.54, 7.62, float('inf')]],
-                ['fofemSound', {'woody_decay':'<=3'}, [0, 0.635, 2.54, 7.62, 15.24, 22.86, 50.8, float('inf')]],
-                ['fofemRotten', {'woody_decay':'>3'}, [0, 0.635, 2.54, 7.62, 15.24, 22.86, 50.8, float('inf')]],
                 ['coarse', {}, [7.62, float('inf')]],
             ],  # Output diameter cutoffs for U.S. classes (cm)
         },
@@ -134,15 +174,57 @@ default_woody_debris_dict = {
     'measure_vs_tally_qmd_comparison': True,  # Compare differences (QMD, biomass) between measured and tallied data
 }
 
+default_fofem_consume_dict = {
+    'canopy_fuels': {
+        'foliage_fofem': {
+            'summary': ['total'],  # This is fixed as total (filtering is done in trees.py)
+            'metrics': ['sum'],  # This is fixed as sum (no user options)
+            'units': 'kgpm2',  # This option is fixed (no user options)
+            'classes': {
+                'dbh': []  # This option is fixed (no user options)
+            },
+        },
+        'branches_fofem': {
+            'summary': ['total'],  # This is fixed as total (filtering is done in trees.py)
+            'metrics': ['sum'],    # This is fixed as sum (no user options)
+            'units': 'kgpm2',  # This option is fixed (no user options)
+            'classes': {
+                'dbh': []  # This option is fixed (no user options)
+            },
+        },
+    },
+    'woody_debris_classes': {
+        'fofem': {
+            'process_classes': True,  # Process U.S. woody debris classes
+            'class_extension': 'fofem',  # Extension for U.S. classes
+            'diameter_cutoffs': [0.635, 2.54, 7.62],  # Diameter cutoffs for U.S. classes (cm)
+            'transect_lengths': [4, 10, 10, 30],  # Transect lengths for U.S. classes (m)
+            # Output request for woody fuels
+            # At a minimum, diameter cutoffs must start at the upper diameter limit of tallied data
+            'output_request': [
+                # [output name extension, filter dictionary, diameter cutoffs]
+                ['sound', {'woody_decay':'<=3'}, [0, 0.635, 2.54, 7.62, 15.24, 22.86, 50.8, float('inf')]],
+                ['rotten', {'woody_decay':'>3'}, [0, 0.635, 2.54, 7.62, 15.24, 22.86, 50.8, float('inf')]],
+            ],  # Output diameter cutoffs for U.S. classes (cm)
+        },
+    },
+    'region': 'InteriorWest',  # Default region (Options: InteriorWest, PacificWest, NorthEast, SouthEast)
+    'season': 'Summer',  # Default season (Options: Spring, Summer, Fall, Winter)
+    'moisture_regime': 'Very Dry',  # Default moisture regime (Options: Wet, Moderate, Dry, VeryDry)
+    'soil_heating': {
+        'use_soil_heating': False,  # Use soil heating calculations (requires soil family assignments)
+    },
+}
+
 
 def fuel_analyst(in_folder: str,
                  out_folder: str,
                  surface_fire_intensity_model: str,
                  stand_summary_params: Optional[dict] = None,
                  woody_debris_params: Optional[dict] = None,
+                 fofem_consume_params: Optional[dict] = None,
                  gen_fofem_tree_df: bool = False,
-                 gen_fofem_consume_df: bool = False,
-                 fofem_consume_moisture_var: str = 'Dry') -> None:
+                 gen_fofem_consume_df: bool = False) -> None:
     """
     Main Fuel Analyst function to process the fuel attributes and save the results.
 
@@ -151,9 +233,9 @@ def fuel_analyst(in_folder: str,
     :param surface_fire_intensity_model: Model to use for surface fire intensity calculations.
     :param stand_summary_params: Dictionary containing stand summary parameters.
     :param woody_debris_params: Dictionary containing parameters for woody debris processing.
+    :param fofem_consume_params: Dictionary containing FOFEM consumption parameters.
     :param gen_fofem_tree_df: Boolean indicating whether to generate the FOFEM tree DataFrame.
     :param gen_fofem_consume_df: Boolean indicating whether to generate the FOFEM consumption DataFrame.
-    :param fofem_consume_moisture_var: Moisture regime for FOFEM consumption (default is 'Dry').
     :return: None
     """
     # Create a dictionary to map form names to their respective folder names
@@ -179,6 +261,16 @@ def fuel_analyst(in_folder: str,
 
     if woody_debris_params is None:
         woody_debris_params = default_woody_debris_dict
+
+    if fofem_consume_params is None:
+        fofem_consume_params = default_fofem_consume_dict
+
+    if gen_fofem_consume_df:
+        stand_summary_params.update(
+            {k: v for k, v in fofem_consume_params['canopy_fuels'].items() if k != 'woody_debris_classes'}
+        )
+        woody_debris_params['woody_debris_classes'].update(fofem_consume_params['woody_debris_classes'])
+
 
     # Create the list of forms to process
     form_select_list = ['plants', 'trees', 'cover', 'woody']
@@ -253,7 +345,7 @@ def fuel_analyst(in_folder: str,
     if gen_fofem_tree_df:
         fofem_tree_df = fofem_attributes.gen_fofem_tree_df(plot_df, master_tree_df)
     if gen_fofem_consume_df:
-        fofem_consume_df = fofem_attributes.gen_fofem_consumption_df(plot_df, fofem_consume_moisture_var)
+        fofem_consume_df = fofem_attributes.gen_fofem_consumption_df(plot_df, fofem_consume_params)
 
     # ### PROCESS OUTPUTS
     # Make the out_folder if it does not exist
@@ -292,11 +384,11 @@ if __name__ == '__main__':
     _in_folder = r'E:\UBC_FuelAnalyst_Testing\Survey123_Data\Survey_Data'
     _out_folder = r'E:\UBC_FuelAnalyst_Testing\Survey123_Data\_Results'
     _surface_fire_intensity_model = 'Byram'
-    _stand_summary_dict = None  # Use default stand summary settings
-    _woody_debris_dict = None   # Use default woody debris settings
+    _stand_summary_dict = None  # Uses default stand summary settings if None
+    _woody_debris_dict = None   # Uses default woody debris settings if None
+    _fofem_consume_dict = None  # Uses default FOFEM woody debris settings if None
     _gen_fofem_tree_df = True   # Whether to generate the FOFEM tree DataFrame
-    _gen_fofem_consume_df = False  # Whether to generate the FOFEM consumption DataFrame
-    _fofem_consume_moisture_var = 'Very Dry'  # Moisture regime setting for FOFEM consumption
+    _gen_fofem_consume_df = True  # Whether to generate the FOFEM consumption DataFrame
 
     # Run the main fuel_analyst function
     fuel_analyst(in_folder=_in_folder,
@@ -304,5 +396,6 @@ if __name__ == '__main__':
                  surface_fire_intensity_model=_surface_fire_intensity_model,
                  stand_summary_params=_stand_summary_dict,
                  woody_debris_params=_woody_debris_dict,
+                 fofem_consume_params=_fofem_consume_dict,
                  gen_fofem_tree_df=_gen_fofem_tree_df,
                  gen_fofem_consume_df=_gen_fofem_consume_df)

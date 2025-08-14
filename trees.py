@@ -378,12 +378,15 @@ def _calc_stand_attributes(df: pd.DataFrame,
         for att, att_dict in stand_summary_params.items():
             summary_list = att_dict.get('summary', [])
             metrics = att_dict.get('metrics', [])
+            units = att_dict.get('units', '')
+            if units:
+                units = f'_{units}'
             classes = att_dict.get('classes', {})
 
             # Get the column name extension based on the attribute type
             if att in ['dens', 'ba']:
                 ext = '_ha'
-            elif att == 'cfl':
+            elif att in ['cfl', 'foliage', 'branches', 'wood', 'bark']:
                 ext = '_cnbe_ha'
             elif att in attribute_weighting_dict.keys():
                 ext = '_wtd'
@@ -422,7 +425,7 @@ def _calc_stand_attributes(df: pd.DataFrame,
                             value = unweight_value(att, value, tree_df[summary_mask])
 
                         # Assign data to new column
-                        colname = f'stand_{att}_{summary}_{metric}'.replace('_total', '')
+                        colname = f'stand_{att}{units}_{summary}_{metric}'.replace('_total', '')
                         new_columns[colname] = df.GlobalID.map(value)
                 else:
                     value = (
@@ -433,13 +436,13 @@ def _calc_stand_attributes(df: pd.DataFrame,
                     value = unweight_value(att, value, tree_df[summary_mask])
 
                     # Assign data to new column
-                    colname = f'stand_{att}_{summary}'.replace('_total', '')
+                    colname = f'stand_{att}{units}_{summary}'.replace('_total', '')
                     new_columns[colname] = df.GlobalID.map(value)
 
                 # Process class cutoffs if present
                 for class_var, cutoffs in classes.items():
-                    # Always start from 0
-                    bounds = [0] + cutoffs
+                    # Bounds start at first value in cutoffs
+                    bounds = cutoffs
                     for i in range(len(bounds)):
                         lower = bounds[i]
                         upper = bounds[i + 1] if i + 1 < len(bounds) else None
@@ -472,15 +475,18 @@ def _calc_stand_attributes(df: pd.DataFrame,
                                     value = unweight_value(att, value, tree_df[mask])
 
                                 # Assign data to new column
-                                colname = f'stand_{att}_{summary}_{class_label}_{metric}'.replace('_total', '')
+                                colname = f'stand_{att}{units}_{summary}_{class_label}_{metric}'.replace('_total', '')
                                 new_columns[colname] = df.GlobalID.map(value)
                         else:
-                            value = tree_df[mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum()
+                            value = (
+                                    tree_df[mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum() /
+                                    tree_df[mask].groupby('ParentGlobalID')[f'tree_crwn_dpth_wtd'].sum()
+                            )
                             # Unweight values
                             value = unweight_value(att, value, tree_df[mask])
 
                             # Assign data to new column
-                            colname = f'stand_{att}_{summary}_{class_label}'.replace('_total', '')
+                            colname = f'stand_{att}{units}_{summary}_{class_label}'.replace('_total', '')
                             new_columns[colname] = df.GlobalID.map(value)
 
             if new_columns:
@@ -627,9 +633,10 @@ def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> p
     :param tree_params_df: DataFrame with species-specific allometric parameters.
     :return: Updated tree_df with biomass columns for each component.
     """
-    print('\tCalculating tree biomass (wood, bark, branches, foliage) using the Canadian National Biomass Equations (CNBE)')
+    print('\tCalculating tree biomass (wood, bark, branches, foliage) using '
+          'the Canadian National Biomass Equations (CNBE)')
     # Initialize biomass columns to zero
-    for col in ['tree_wood_cnbe', 'tree_bark_cnbe', 'tree_branches_cnbe', 'tree_foliage_cnbe']:
+    for col in ['tree_wood_cnbe_ha', 'tree_bark_cnbe_ha', 'tree_branches_cnbe_ha', 'tree_foliage_cnbe_ha']:
         tree_df[col] = 0.0
 
     spp_list = [n for n in tree_df['tree_species'].unique() if not pd.isnull(n)]
@@ -668,7 +675,7 @@ def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> p
 
             # Calculate biomass for live/less decayed trees
             if mask_live.any():
-                tree_df.loc[mask_live, f'tree_{component}_cnbe'] = (
+                tree_df.loc[mask_live, f'tree_{component}_cnbe_ha'] = (
                     tree_df.loc[mask_live, 'tree_dens_ha'] *
                     tree_df.loc[mask_live, 'tree_dcy_class'].map(decay_dict).apply(lambda x: x[comp_idx]) *
                     param1 *
@@ -678,7 +685,7 @@ def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> p
 
             # Calculate biomass for dead/more decayed trees (using modeled height)
             if mask_dead.any():
-                tree_df.loc[mask_dead, f'tree_{component}_cnbe'] = (
+                tree_df.loc[mask_dead, f'tree_{component}_cnbe_ha'] = (
                     tree_df.loc[mask_dead, 'tree_dens_ha'] *
                     tree_df.loc[mask_dead, 'tree_dcy_class'].map(decay_dict).apply(lambda x: x[comp_idx]) *
                     param1 *
@@ -753,7 +760,7 @@ def _calc_tree_crown_fuels(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) 
     """
     print('\tCalculating tree crown fuels (CFL and CBD) using the Canadian National Biomass Equations (CNBE)')
     # Initialize columns
-    for col in ['tree_cfl_cnbe', 'tree_cbd_cnbe']:
+    for col in ['tree_cfl_cnbe_ha', 'tree_cbd_cnbe_ha']:
         tree_df[col] = 0.0
 
     # Process all species present in the DataFrame
@@ -768,17 +775,12 @@ def _calc_tree_crown_fuels(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) 
         )
 
         # Use existing foliage biomass as CFL
-        tree_df.loc[spp_mask, 'tree_cfl_cnbe'] = tree_df.loc[spp_mask, 'tree_foliage_cnbe']
-        tree_df.loc[spp_mask, 'tree_cfl_cnbe_ha'] = (
-                tree_df.loc[spp_mask, 'tree_dens_ha'] * tree_df.loc[spp_mask, 'tree_cfl_cnbe']
-        )
-        # Calculate CBD (CFL / crown depth)
+        tree_df.loc[spp_mask, 'tree_cfl_cnbe_ha'] = tree_df.loc[spp_mask, 'tree_foliage_cnbe_ha']
+
+        # Calculate individual tree (per ha) CBD (CFL / crown depth)
         cbd_mask = spp_mask & (tree_df['tree_crwn_dpth'] > 0)
-        tree_df.loc[cbd_mask, 'tree_cbd_cnbe'] = (
-                tree_df.loc[cbd_mask, 'tree_cfl_cnbe'] / tree_df.loc[cbd_mask, 'tree_crwn_dpth']
-        )
         tree_df.loc[cbd_mask, 'tree_cbd_cnbe_ha'] = (
-                tree_df.loc[spp_mask, 'tree_dens_ha'] * tree_df.loc[spp_mask, 'tree_cbd_cnbe']
+                tree_df.loc[cbd_mask, 'tree_cfl_cnbe_ha'] / tree_df.loc[cbd_mask, 'tree_crwn_dpth']
         )
 
     return tree_df
@@ -912,7 +914,8 @@ def _calc_tree_fire_attributes(tree_df: pd.DataFrame, surface_fire_intensity_mod
 
 def _calc_tree_fofem_attributes(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Assigns FOFEM species codes and calculates bark thickness for each tree.
+    Assigns FOFEM species codes and calculates bark thickness for each tree,
+    and assigns FOFEM foliage and branch biomass.
 
     - Maps each tree's species to its FOFEM code using the parameter DataFrame.
     - Calculates bark thickness as DBH multiplied by the species-specific bark thickness factor,
@@ -935,6 +938,19 @@ def _calc_tree_fofem_attributes(tree_df: pd.DataFrame, tree_params_df: pd.DataFr
         tree_df['tree_dbh'] * tree_df['tree_species'].map(bark_map),
         np.nan
     )
+
+    # Create masks for foliage and branch biomass assignments
+    # Foliage = live conifers only
+    foliage_map = tree_df['tree_status'].eq('L') & tree_df['tree_type'].eq('conifer')
+    # Branches = dead broadleaf and all conifers
+    branch_map = (tree_df['tree_type'].eq('conifer') |
+                  (tree_df['tree_status'].eq('D') & tree_df['tree_type'].eq('broadleaf')))
+
+    # Assign foliage and branch biomass to FOFEM columns
+    tree_df['tree_foliage_fofem'] = 0
+    tree_df['tree_foliage_fofem'] = tree_df[foliage_map]['tree_foliage_cnbe_ha']
+    tree_df['tree_branches_fofem'] = 0
+    tree_df['tree_branches_fofem'] = tree_df[branch_map]['tree_branches_cnbe_ha']
 
     return tree_df
 
