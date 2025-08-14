@@ -394,7 +394,7 @@ def _calc_stand_attributes(df: pd.DataFrame,
                 ext = ''
 
             new_columns = {}
-            # TODO - VERIFY ALL CALCS BELOW
+
             # Process all summary permutations
             summary_permutations = get_permutations(summary_list)
             for summary in summary_permutations:

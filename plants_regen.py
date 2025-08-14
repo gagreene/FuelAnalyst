@@ -341,7 +341,6 @@ def process_plants_regen(in_folder: str, out_folder: str) -> tuple[pd.DataFrame,
     keep_columns.extend(add_columns)
     df, add_columns = _get_dom_substrate(df)
     keep_columns.extend(add_columns)
-    # TODO - Finish shrub composition calculations
     df, add_columns = _calc_plants_fccs_fofem_attributes(df)
     keep_columns.extend(add_columns)
 
