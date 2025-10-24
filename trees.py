@@ -264,42 +264,48 @@ def _calc_stand_attributes(df: pd.DataFrame,
         :return: Updated plot-level DataFrame with stand density columns.
         """
         # Helper: get all permutations of summary types
-        def get_permutations(_summary_list: list) -> list:
-            """
-            Generate all valid permutations of summary types based on rules:
+        def get_permutations(_summary_list: list, _summary_permutation: str) -> list:
+                """
+                Generate valid permutations of summary types based on rules and permutation mode.
 
-            :param _summary_list: List of summary types to permute.
-            :return: List of valid summary permutations.
-            """
-            priority_order = {val: i for i, val in enumerate(_summary_list)}
+                :param _summary_list: List of summary types to permute.
+                :param _summary_permutation: 'all', 'exact', or 'combined'.
+                :return: List of valid summary permutations.
+                """
+                priority_order = {val: i for i, val in enumerate(_summary_list)}
 
-            # Initialize set to hold valid permutations
-            valid_permutations = set()
+                if _summary_permutation == 'exact':
+                    # Only return the exact order as a single permutation
+                    return _summary_list
+                elif _summary_permutation == 'combined':
+                    # Only return a single permutation that combines all variables (sorted by priority)
+                    sorted_list = sorted(_summary_list, key=lambda x: priority_order[x])
+                    return ['_'.join(sorted_list)]
+                else:
+                    # Default: all valid permutations as before
+                    valid_permutations = set()
+                    for r in range(1, 4):
+                        for combo in itertools.combinations(_summary_list, r):
+                            # Rule: total only allowed as a single-element
+                            if 'total' in combo and len(combo) > 1:
+                                continue
+                            # Rule: must follow priority order
+                            if list(combo) != sorted(combo, key=lambda x: priority_order[x]):
+                                continue
+                            # Rule: no live + dead
+                            if 'live' in combo and 'dead' in combo:
+                                continue
+                            # Rule: no conifer + broadleaf
+                            if 'conifer' in combo and 'broadleaf' in combo:
+                                continue
+                            # Passed all filters
+                            valid_permutations.add('_'.join(combo))
 
-            for r in range(1, 4):
-                for combo in itertools.combinations(summary_list, r):
-                    # Rule: total only allowed as a single-element
-                    if 'total' in combo and len(combo) > 1:
-                        continue
-                    # Rule: must follow priority order
-                    if list(combo) != sorted(combo, key=lambda x: priority_order[x]):
-                        continue
-                    # Rule: no live + dead
-                    if 'live' in combo and 'dead' in combo:
-                        continue
-                    # Rule: no conifer + broadleaf
-                    if 'conifer' in combo and 'broadleaf' in combo:
-                        continue
-                    # Passed all filters
-                    valid_permutations.add('_'.join(combo))
+                    def sort_key(_combo: str):
+                        parts = _combo.split('_')
+                        return (len(parts), [priority_order.get(p, len(priority_order)) for p in parts])
 
-            # Custom sort: by number of parts, then priority order
-            def sort_key(_combo: str):
-                parts = _combo.split('_')
-                return (len(parts), [priority_order.get(p, len(priority_order)) for p in parts])
-
-            # Sort using the sort key
-            return sorted(valid_permutations, key=sort_key)
+                    return sorted(valid_permutations, key=sort_key)
 
         def get_summary_mask(_tree_df: pd.DataFrame, _summary: str) -> pd.Series:
             """
@@ -375,8 +381,11 @@ def _calc_stand_attributes(df: pd.DataFrame,
         # Initialize a list of keep columns for the final master DataFrame
         keep_columns = []
 
-        for att, att_dict in stand_summary_params.items():
+        for att_name, att_dict in stand_summary_params.items():
+            att = att_dict.get('att_source', att_name)
+            override_field_name = att_dict.get('override_field_name', False)
             summary_list = att_dict.get('summary', [])
+            summary_permutation = att_dict.get('summary_permutation', 'all')
             metrics = att_dict.get('metrics', [])
             units = att_dict.get('units', '')
             if units:
@@ -396,7 +405,7 @@ def _calc_stand_attributes(df: pd.DataFrame,
             new_columns = {}
 
             # Process all summary permutations
-            summary_permutations = get_permutations(summary_list)
+            summary_permutations = get_permutations(summary_list, summary_permutation)
             for summary in summary_permutations:
                 summary_mask = get_summary_mask(tree_df, summary)
                 if att != 'cbd':
@@ -425,7 +434,10 @@ def _calc_stand_attributes(df: pd.DataFrame,
                             value = unweight_value(att, value, tree_df[summary_mask])
 
                         # Assign data to new column
-                        colname = f'stand_{att}{units}_{summary}_{metric}'.replace('_total', '')
+                        if override_field_name:
+                            colname = att_name
+                        else:
+                            colname = f'stand_{att_name}{units}_{summary}_{metric}'.replace('_total', '')
                         new_columns[colname] = df.GlobalID.map(value)
                 else:
                     value = (
@@ -436,7 +448,10 @@ def _calc_stand_attributes(df: pd.DataFrame,
                     value = unweight_value(att, value, tree_df[summary_mask])
 
                     # Assign data to new column
-                    colname = f'stand_{att}{units}_{summary}'.replace('_total', '')
+                    if override_field_name:
+                        colname = att_name
+                    else:
+                        colname = f'stand_{att_name}{units}_{summary}'.replace('_total', '')
                     new_columns[colname] = df.GlobalID.map(value)
 
                 # Process class cutoffs if present
@@ -446,7 +461,9 @@ def _calc_stand_attributes(df: pd.DataFrame,
                     for i in range(len(bounds)):
                         lower = bounds[i]
                         upper = bounds[i + 1] if i + 1 < len(bounds) else None
-                        class_label = f'{class_var}{lower}plus' if upper is None else f'{class_var}{lower}-{upper}'
+                        if upper is None:
+                            break
+                        class_label = f'{class_var}{lower}plus' if np.isinf(upper) else f'{class_var}{lower}-{upper}'
                         class_mask = get_class_mask(tree_df, class_var, lower, upper)
                         mask = summary_mask & class_mask
                         if att != 'cbd':
@@ -475,7 +492,10 @@ def _calc_stand_attributes(df: pd.DataFrame,
                                     value = unweight_value(att, value, tree_df[mask])
 
                                 # Assign data to new column
-                                colname = f'stand_{att}{units}_{summary}_{class_label}_{metric}'.replace('_total', '')
+                                if override_field_name:
+                                    colname = att_name
+                                else:
+                                    colname = f'stand_{att_name}{units}_{summary}_{class_label}_{metric}'.replace('_total', '')
                                 new_columns[colname] = df.GlobalID.map(value)
                         else:
                             value = (
@@ -486,7 +506,10 @@ def _calc_stand_attributes(df: pd.DataFrame,
                             value = unweight_value(att, value, tree_df[mask])
 
                             # Assign data to new column
-                            colname = f'stand_{att}{units}_{summary}_{class_label}'.replace('_total', '')
+                            if override_field_name:
+                                colname = att_name
+                            else:
+                                colname = f'stand_{att_name}{units}_{summary}_{class_label}'.replace('_total', '')
                             new_columns[colname] = df.GlobalID.map(value)
 
             if new_columns:
@@ -1325,7 +1348,7 @@ def process_trees(in_folder: str,
 
     # Load tree parameters and set index
     tree_params_df = helper.get_df(
-        os.path.join(os.path.dirname(__file__), 'Supporting_Data/tree_parameters.csv')
+        os.path.join(os.path.dirname(__file__), 'Supporting_Data', 'tree_parameters.csv')
     ).set_index('Species')
 
     # ### PROCESS PLOT-LEVEL ATTRIBUTES

@@ -43,7 +43,9 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     """
     print(f'\tProcessing data for plants')
     # Assign plant PhotoLoad CSV to dataframe
-    plant_photoload_df = helper.get_df(os.path.join(os.path.dirname(__file__), 'Supporting_Data/plant_photoload.csv'))
+    plant_photoload_df = helper.get_df(
+        os.path.join(os.path.dirname(__file__), 'Supporting_Data', 'plant_photoload.csv')
+    )
     plant_photoload_df.set_index('Code', inplace=True)
 
     # Initialize columns for plant species data

@@ -8,119 +8,163 @@ __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
 import os
 import pandas as pd
+
 import helper
 import plot_attributes as pa
 import plants_regen as pr
 import trees
 import canopy_cover as cc
 import woody_debris as wd
+import ccp_attributes
 import fofem_attributes
 from typing import Optional
 
 default_stand_summary_dict = {
     'dens': {
+        'att_source': 'dens',  # This could be user specified/adjusted
+        'override_field_name': False, # This is fixed as False for stand summaries
         'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
         'metrics': ['sum'],  # These options are fixed
         'units': 'tpha',  # This option is fixed
         'classes': {
-            'dbh': [0, 5, 7.5, 12.5]
+            'dbh': [0, 5, 7.5, 12.5, float('inf')]
         },
     },
     'ba': {
+        'att_source': 'ba',  # This could be user specified/adjusted
+        'override_field_name': False, # This is fixed as False for stand summaries
         'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
         'metrics': ['sum'],  # These options are fixed
         'units': 'm2pha',  # This option is fixed
         'classes': {
-            'dbh': [0, 5, 7.5, 12.5]
+            'dbh': [0, 5, 7.5, 12.5, float('inf')]
         },
     },
     'ht': {
+        'att_source': 'ht',  # This could be user specified/adjusted
+        'override_field_name': False, # This is fixed as False for stand summaries
         'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
         'metrics': ['max', 'mean'],  # These are the only options
         'units': 'm',  # This option is fixed
         'classes': {
-            'dbh': [0, 5]
+            'dbh': [0, 5, float('inf')]
         },
     },
     'cbh': {
+        'att_source': 'cbh',  # This could be user specified/adjusted
+        'override_field_name': False, # This is fixed as False for stand summaries
         'summary': ['total', 'live', 'conifer', 'broadleaf'],  # These are the only options
+        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
         'metrics': ['min', 'max', 'mean'],  # These are the only options
         'units': 'm',  # This option is fixed
         'classes': {
-            'dbh': [0, 5]
+            'dbh': [0, 5, float('inf')]
         },
     },
     'dcbh': {
+        'att_source': 'dcbh',  # This could be user specified/adjusted
+        'override_field_name': False, # This is fixed as False for stand summaries
         'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
         'metrics': ['min', 'max', 'mean'],  # These are the only options
         'units': 'm',  # This option is fixed
         'classes': {
-            'dbh': [0, 5]
+            'dbh': [0, 5, float('inf')]
         },
     },
     'fsg': {
+        'att_source': 'fsg',  # This could be user specified/adjusted
+        'override_field_name': False, # This is fixed as False for stand summaries
         'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
         'metrics': ['min', 'max', 'mean'],  # These are the only options
         'units': 'm',  # This option is fixed
         'classes': {
-            'dbh': [0, 5]
+            'dbh': [0, 5, float('inf')]
         },
     },
     'cfl': {
+        'att_source': 'cfl',  # This could be user specified/adjusted
+        'override_field_name': False, # This is fixed as False for stand summaries
         'summary': ['total', 'conifer', 'broadleaf'],  # These are all live trees
+        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
         'metrics': ['min', 'max', 'mean', 'sum'],  # These are the only options
         'units': 'kgpm2',  # This option is fixed
         'classes': {
-            'dbh': [0, 5]
+            'dbh': [0, 5, float('inf')]
         },
     },
     'cbd': {
+        'att_source': 'cbd',  # This could be user specified/adjusted
+        'override_field_name': False, # This is fixed as False for stand summaries
         'summary': ['total', 'conifer', 'broadleaf'],  # These are all live trees
+        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
         'metrics': [],  # This is fixed as empty (no user options)
         'units': 'kgpm3',  # This option is fixed
         'classes': {
-            'dbh': [0, 5]
+            'dbh': [0, 5, float('inf')]
         },
     },
     'foliage': {
+        'att_source': 'foliage',  # This could be user specified/adjusted
+        'override_field_name': False, # This is fixed as False for stand summaries
         'summary': ['total', 'conifer', 'broadleaf'],  # These are all live trees
+        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
         'metrics': ['sum'],  # This is the only option
         'units': 'kgpm2',  # This option is fixed
         'classes': {
-            'dbh': [0]
+            'dbh': [0, float('inf')]
         },
     },
     'branches': {
+        'att_source': 'branches',  # This could be user specified/adjusted
+        'override_field_name': False, # This is fixed as False for stand summaries
         'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
         'metrics': ['sum'],  # This is the only option
         'units': 'kgpm2',  # This option is fixed
         'classes': {
-            'dbh': [0]
+            'dbh': [0, float('inf')]
         },
     },
     'wood': {
+        'att_source': 'wood',  # This could be user specified/adjusted
+        'override_field_name': False, # This is fixed as False for stand summaries
         'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
         'metrics': ['sum'],  # This is the only option
         'units': 'kgpm2',  # This option is fixed
         'classes': {
-            'dbh': [0]
+            'dbh': [0, float('inf')]
         },
     },
     'bark': {
+        'att_source': 'bark',  # This could be user specified/adjusted
+        'override_field_name': False, # This is fixed as False for stand summaries
         'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
         'metrics': ['sum'],  # This is the only option
         'units': 'kgpm2',  # This option is fixed
         'classes': {
-            'dbh': [0]
+            'dbh': [0, float('inf')]
         },
     },
     'flame_length': {
+        'att_source': 'flame_length',  # This could be user specified/adjusted
+        'override_field_name': False, # This is fixed as False for stand summaries
         'summary': ['total'],  # This is fixed (no user options)
+        'summary_permutation': 'exact',  # This is fixed (no user options)
         'metrics': ['min', 'max', 'mean'],  # These are the only options
         'units': 'm',  # This option is fixed
     },
     'fire_intensity': {
+        'att_source': 'fire_intensity',  # This could be user specified/adjusted
+        'override_field_name': False, # This is fixed as False for stand summaries
         'summary': ['total'],  # This is fixed (no user options)
+        'summary_permutation': 'exact',  # This is fixed (no user options)
         'metrics': ['min', 'max', 'mean'],  # These are the only options
         'units': 'kWpm2',  # This option is fixed
     },
@@ -133,7 +177,7 @@ default_woody_debris_dict = {
     },
     'woody_debris_classes': {
         'canadian': {
-            'process_classes': True,  # Process Canadian woody debris classes
+            'process_classes': True,  # Process Canadian woody debris classes (options: True, False)
             'class_extension': 'can',  # Extension for Canadian classes
             'diameter_cutoffs': [0.5, 1, 3, 5, 7],  # Diameter cutoffs for Canadian classes (cm)
             'transect_lengths': [4, 10, 10, 10, 10, 30],  # Transect lengths for Canadian classes (m)
@@ -146,7 +190,7 @@ default_woody_debris_dict = {
             ],  # Output diameter cutoffs for Canadian classes (cm)
         },
         'us': {
-            'process_classes': True,  # Process U.S. woody debris classes
+            'process_classes': True,  # Process U.S. woody debris classes (options: True, False)
             'class_extension': 'us',  # Extension for U.S. classes
             'diameter_cutoffs': [0.635, 2.54, 7.62],  # Diameter cutoffs for U.S. classes (cm)
             'transect_lengths': [4, 10, 10, 30],  # Transect lengths for U.S. classes (m)
@@ -159,7 +203,7 @@ default_woody_debris_dict = {
             ],  # Output diameter cutoffs for U.S. classes (cm)
         },
         'modified': {
-            'process_classes': True,  # Process modified woody debris classes
+            'process_classes': True,  # Process modified woody debris classes (options: True, False)
             'class_extension': 'mod',  # Extension for modified classes
             'diameter_cutoffs': [0.5, 1, 2, 3, 4, 5, 6, 7],  # Diameter cutoffs for modified classes (cm)
             'transect_lengths': [4, 10, 10, 10, 10, 10, 10, 10, 30],  # Transect lengths for modified classes (m)
@@ -172,6 +216,182 @@ default_woody_debris_dict = {
         },
     },
     'measure_vs_tally_qmd_comparison': True,  # Compare differences (QMD, biomass) between measured and tallied data
+}
+
+default_ccp_dict = {
+    'stand_attributes': {  # All attributes must output a single column
+        'ccp_cfl_ovrstry': {  # This name is required for CCP
+            'att_source': 'cfl',  # This is fixed (no user options)
+            'override_field_name': True,  # This is fixed (no user options)
+            'summary': ['conifer'],  # This is fixed (no user options)
+            'summary_permutation': 'combined',  # This is fixed (no user options)
+            'metrics': ['sum'],  # This is fixed as empty (no user options)
+            'units': 'kgpm2',  # This option is fixed
+            'classes': {
+                'dbh': [5, float('inf')]  # All trees >= 5 cm DBH
+            },
+        },
+        'ccp_cbd_ovrstry': {  # This name is required for CCP
+            'att_source': 'cbd',  # This is fixed (no user options)
+            'override_field_name': True,  # This is fixed (no user options)
+            'summary': ['conifer'],  # This is fixed (no user options)
+            'summary_permutation': 'combined',  # This is fixed (no user options)
+            'metrics': [],  # This is fixed as empty (no user options for cbd)
+            'units': 'kgpm3',  # This option is fixed for cbd
+            'classes': {
+                'dbh': [5, float('inf')]  # All trees >= 5 cm DBH
+            },
+        },
+        'ccp_cfl_midstry': {  # This name is required for CCP
+            'att_source': 'cfl',  # This is fixed (no user options)
+            'override_field_name': True,  # This is fixed (no user options)
+            'summary': ['conifer'],  # This is fixed (no user options)
+            'summary_permutation': 'combined',  # This is fixed (no user options)
+            'metrics': ['sum'],  # This is fixed as empty (no user options)
+            'units': 'kgpm2',  # This option is fixed
+            'classes': {
+                'dbh': [0, 5]  # All trees < 5 cm DBH
+            },
+        },
+        'ccp_cbd_midstry': {  # This name is required for CCP
+            'att_source': 'cbd',  # This is fixed (no user options)
+            'override_field_name': True,  # This is fixed (no user options)
+            'summary': ['conifer'],  # This is fixed (no user options)
+            'summary_permutation': 'combined',  # This is fixed (no user options)
+            'metrics': [],  # This is fixed as empty (no user options for cbd)
+            'units': 'kgpm3',  # This option is fixed for cbd
+            'classes': {
+                'dbh': [0, 5]  # All trees < 5 cm DBH
+            },
+        },
+        'ccp_dead_branch_fl': {  # This name is required for CCP
+            'att_source': 'branches',  # This is fixed (no user options)
+            'override_field_name': True,  # This is fixed (no user options)
+            'summary': ['dead'],  # This is fixed (no user options)
+            'summary_permutation': 'combined',  # This is fixed (no user options)
+            'metrics': ['sum'],  # This is the only option
+            'units': 'kgpm2',  # This option is fixed
+            'classes': {
+                'dbh': [5, float('inf')]  # All trees >= 5 cm DBH
+            },
+        },
+        'ccp_ht_ovrstry_live': {  # This name is required for CCP
+            'att_source': 'ht',  # This is fixed (no user options)
+            'override_field_name': True,  # This is fixed (no user options)
+            'summary': ['live', 'conifer'],  # These are fixed (no user options)
+            'summary_permutation': 'combined',  # This is fixed (no user options)
+            'metrics': ['mean'],  # This is the default (options: min, max, mean)
+            'units': 'm',  # This option is fixed
+            'classes': {
+                'dbh': [5, float('inf')]  # All trees >= 5 cm DBH
+            },
+        },
+        'ccp_ht_midstry_live': {  # This name is required for CCP
+            'att_source': 'ht',  # This is fixed (no user options)
+            'override_field_name': True,  # This is fixed (no user options)
+            'summary': ['live', 'conifer'],  # These are fixed (no user options)
+            'summary_permutation': 'combined',  # This is fixed (no user options)
+            'metrics': ['mean'],  # This is the default (options: min, max, mean)
+            'units': 'm',  # This option is fixed
+            'classes': {
+                'dbh': [0, 5]  # All trees < 5 cm DBH
+            },
+        },
+        'ccp_ht_midstry_dead': {  # This name is required for CCP
+            'att_source': 'ht',  # This is fixed (no user options)
+            'override_field_name': True,  # This is fixed (no user options)
+            'summary': ['dead'],  # This is fixed for ht (no user options)
+            'summary_permutation': 'combined',  # This is fixed (no user options)
+            'metrics': ['mean'],  # This is the default (options: min, max, mean)
+            'units': 'm',  # This option is fixed
+            'classes': {
+                'dbh': [0, 5]  # All trees < 5 cm DBH
+            },
+        },
+        # """
+        # FSG-Based Attributes
+        #
+        # The available summary options are as follows:
+        #
+        # att_source: 'cbh'
+        # - ['total'] includes all live trees (conifer + broadleaf)
+        # - ['conifer'] includes all live conifer trees
+        # - ['broadleaf'] includes all live broadleaf trees
+        #
+        # att_source: 'fsg'
+        # - ['total'] includes all trees
+        # - ['live'] includes all live trees
+        # - ['dead'] includes all dead trees
+        # - ['conifer'] includes all conifer trees
+        # - ['broadleaf'] includes all broadleaf trees
+        # - ['live', 'conifer'] includes all live conifer trees
+        # - ['live', 'broadleaf'] includes all live broadleaf trees
+        # - ['dead', 'conifer'] includes all dead conifer trees
+        # - ['dead', 'broadleaf'] includes all dead broadleaf trees
+        # """
+        'ccp_fsg_ovrstry': {  # This name is required for CCP
+            'att_source': 'cbh',  # This is default (options: cbh, fsg)
+            'override_field_name': True,  # This is fixed (no user options)
+            'summary': ['conifer'],  # This is the default
+            'summary_permutation': 'combined',  # This is fixed (no user options)
+            'metrics': ['mean'],  # This is the default (options: min, max, mean)
+            'units': 'm',  # This option is fixed
+            'classes': {
+                'dbh': [5, float('inf')]  # All trees >= 5 cm DBH
+            },
+        },
+        'ccp_fsg_midstry': {  # This name is required for CCP
+            'att_source': 'cbh',  # This is default (options: cbh, fsg)
+            'override_field_name': True,  # This is fixed (no user options)
+            'summary': ['conifer'],  # This is the default
+            'summary_permutation': 'combined',  # This is fixed (no user options)
+            'metrics': ['mean'],  # This is the default (options: min, max, mean)
+            'units': 'm',  # This option is fixed
+            'classes': {
+                'dbh': [0, 5]  # All trees < 5 cm DBH
+            },
+        },
+        'ccp_fsg': {  # This name is required for CCP
+            'att_source': 'cbh',  # This is default (options: cbh, fsg)
+            'override_field_name': True,  # This is fixed (no user options)
+            'summary': ['conifer'],  # This is the default
+            'summary_permutation': 'combined',  # This is fixed (no user options)
+            'metrics': ['mean'],  # This is the default (options: min, max, mean)
+            'units': 'm',  # This option is fixed
+            'classes': {
+                'dbh': [0, float('inf')]  # All trees >= 0 cm DBH
+            },
+        },
+    },
+    # Plant Attributes
+    #
+    # The available herbaceous fuel load options are as follows:
+    # - [] no herbaceous fuels
+    # - ['grass'] grasses only
+    # - ['herb_forb'] herbs and forbs only
+    # - ['grass', 'herb_forb'] grasses, herbs, and forbs
+    # The available shrub fuel load options are as follows:
+    # - [] no shrub fuels
+    # - ['shrubs'] shrub fuels
+    'vegetative_fuels': {
+        'herbaceous_fuel_load': ['grass', 'herb_forb'],
+        'shrub_fuel_load': ['shrubs'],
+    },
+    'canopy_cover_attribute': 'cc', # This is default (options: cc, cc_cnfr, cc_brdlf)
+    'woody_debris_classes': {
+        'ccp': {
+            'process_classes': True,  # Process Canadian woody debris classes
+            'class_extension': 'ccp',  # Extension for Canadian classes
+            'diameter_cutoffs': [0.5, 1, 3, 5, 7],  # Diameter cutoffs for Canadian classes (cm)
+            'transect_lengths': [4, 10, 10, 10, 10, 30],  # Transect lengths for Canadian classes (m)
+            # Output request for woody fuels
+            # Start at upper diameter limit of tallied data for diameter cutoffs
+            'output_request': [
+                # [output name extension, filter dictionary, diameter cutoffs]
+                ['lt7cm', {}, [0, 7]],
+            ],  # Output diameter cutoffs for Canadian classes (cm)
+        },
+    },
 }
 
 default_fofem_consume_dict = {
@@ -222,7 +442,9 @@ def fuel_analyst(in_folder: str,
                  surface_fire_intensity_model: str,
                  stand_summary_params: Optional[dict] = None,
                  woody_debris_params: Optional[dict] = None,
+                 ccp_params: Optional[dict] = None,
                  fofem_consume_params: Optional[dict] = None,
+                 gen_ccp_df: bool = False,
                  gen_fofem_tree_df: bool = False,
                  gen_fofem_consume_df: bool = False) -> None:
     """
@@ -233,11 +455,16 @@ def fuel_analyst(in_folder: str,
     :param surface_fire_intensity_model: Model to use for surface fire intensity calculations.
     :param stand_summary_params: Dictionary containing stand summary parameters.
     :param woody_debris_params: Dictionary containing parameters for woody debris processing.
+    :param ccp_params: Dictionary containing CCP parameters.
     :param fofem_consume_params: Dictionary containing FOFEM consumption parameters.
+    :param gen_ccp_df: Boolean indicating whether to generate the CCP DataFrame.
     :param gen_fofem_tree_df: Boolean indicating whether to generate the FOFEM tree DataFrame.
     :param gen_fofem_consume_df: Boolean indicating whether to generate the FOFEM consumption DataFrame.
     :return: None
     """
+    # Create the list of forms to process
+    form_select_list = ['plants', 'trees', 'cover', 'woody']
+
     # Create a dictionary to map form names to their respective folder names
     folder_dict = {
         'plot': '1_Plot_Attributes',
@@ -262,8 +489,27 @@ def fuel_analyst(in_folder: str,
     if woody_debris_params is None:
         woody_debris_params = default_woody_debris_dict
 
+    if ccp_params is None:
+        ccp_params = default_ccp_dict
+
     if fofem_consume_params is None:
         fofem_consume_params = default_fofem_consume_dict
+
+    if gen_ccp_df:
+        # Verify all forms are present for CCP generation
+        for form in form_select_list:
+            in_path = os.path.join(in_folder, folder_dict.get(form))
+            missing_forms = [form for form in form_select_list if not os.path.exists(in_path)]
+            if missing_forms:
+                raise FileNotFoundError(
+                    f'All Survey123 forms are required to generate the CCP DataFrame. '
+                    f'The following forms are missing:\n{missing_forms}.'
+                )
+
+        stand_summary_params.update(
+            {k: v for k, v in ccp_params['stand_attributes'].items()}
+        )
+        woody_debris_params['woody_debris_classes'].update(ccp_params['woody_debris_classes'])
 
     if gen_fofem_consume_df:
         stand_summary_params.update(
@@ -271,14 +517,11 @@ def fuel_analyst(in_folder: str,
         )
         woody_debris_params['woody_debris_classes'].update(fofem_consume_params['woody_debris_classes'])
 
-
-    # Create the list of forms to process
-    form_select_list = ['plants', 'trees', 'cover', 'woody']
-
     # Generate a list of columns to keep, using all columns in plot_df to begin with
     keep_columns = ['unique_id']
     form_df = None
     master_tree_df = None
+    ccp_df = None
     fofem_tree_df = None
     fofem_consume_df = None
 
@@ -341,6 +584,10 @@ def fuel_analyst(in_folder: str,
             # Merge the form_df with plot_df based on unique_id
             plot_df = pd.merge(plot_df, form_df, on='unique_id', how='left')
 
+    # ### PROCESS CCP DATA
+    if gen_ccp_df:
+        ccp_df = ccp_attributes.gen_ccp_df(plot_df, ccp_params)
+
     # ### PROCESS FOFEM DATA
     if gen_fofem_tree_df:
         fofem_tree_df = fofem_attributes.gen_fofem_tree_df(plot_df, master_tree_df)
@@ -364,6 +611,12 @@ def fuel_analyst(in_folder: str,
         print(f'Saving the Master Tree DataFrame to: {master_tree_df_path}')
         helper.export_csv(master_tree_df, master_tree_df_path)
 
+    # Save the CCP DataFrame to the output folder if it exists
+    if ccp_df is not None:
+        ccp_df_path = os.path.join(out_folder, 'ccp_df.csv')
+        print(f'Saving the CCP DataFrame to: {ccp_df_path}')
+        helper.export_csv(ccp_df, ccp_df_path)
+
     # Save the FOFEM Tree DataFrame to the output folder if it exists
     if fofem_tree_df is not None:
         fofem_tree_df_path = os.path.join(out_folder, 'fofem_tree_df.csv')
@@ -384,11 +637,13 @@ if __name__ == '__main__':
     _in_folder = r'F:\Work\Forsite\Projects\FuelAnalyst\Supporting_Data\Survey123_Data\Survey_Data'
     _out_folder = r'F:\Work\Forsite\Projects\FuelAnalyst\output_fuel_analyst'
     _surface_fire_intensity_model = 'Byram'
-    _stand_summary_dict = None  # Uses default stand summary settings if None
-    _woody_debris_dict = None   # Uses default woody debris settings if None
-    _fofem_consume_dict = None  # Uses default FOFEM woody debris settings if None
-    _gen_fofem_tree_df = True   # Whether to generate the FOFEM tree DataFrame
-    _gen_fofem_consume_df = True  # Whether to generate the FOFEM consumption DataFrame
+    _stand_summary_dict = None      # Uses default stand summary settings if None
+    _woody_debris_dict = None       # Uses default woody debris settings if None
+    _ccp_dict = None                # Uses default CCP settings if None
+    _fofem_consume_dict = None      # Uses default FOFEM woody debris settings if None
+    _gen_ccp_df = True              # Whether to generate the CCP DataFrame
+    _gen_fofem_tree_df = True       # Whether to generate the FOFEM tree DataFrame
+    _gen_fofem_consume_df = True    # Whether to generate the FOFEM consumption DataFrame
 
     # Run the main fuel_analyst function
     fuel_analyst(in_folder=_in_folder,
@@ -396,6 +651,8 @@ if __name__ == '__main__':
                  surface_fire_intensity_model=_surface_fire_intensity_model,
                  stand_summary_params=_stand_summary_dict,
                  woody_debris_params=_woody_debris_dict,
+                 ccp_params=_ccp_dict,
                  fofem_consume_params=_fofem_consume_dict,
+                 gen_ccp_df=_gen_ccp_df,
                  gen_fofem_tree_df=_gen_fofem_tree_df,
                  gen_fofem_consume_df=_gen_fofem_consume_df)
