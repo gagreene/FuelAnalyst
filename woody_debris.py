@@ -984,24 +984,42 @@ def _merge_spp_comp(
     # Unpack species composition data from strings in tuples, formatted as
     # (spp_comp_code:spp_comp_percent, spp_comp_code:spp_comp_percent, etc)
     if 'stand_spp_comp_woody' in plot_df.columns:
-        # Split the string into tuples and create a DataFrame
-        plot_spp_comp = (
-            plot_df['stand_spp_comp_woody']
-            .str.split(',', expand=True)
-            .stack()
-            .str.split(':', expand=True)
-            .rename(columns={0: 'spp_comp_code', 1: 'spp_comp_percent'})
-            .assign(unique_id=lambda x: x.index.get_level_values(0).map(plot_df['unique_id']))
-            .reset_index(level=1, drop=True)
-        )
-        # Convert spp_comp_percent to numeric and fill NaN with 0
-        plot_spp_comp['spp_comp_percent'] = pd.to_numeric(plot_spp_comp['spp_comp_percent'], errors='coerce').fillna(0)
+        # Check if the column has any valid (non-null) data
+        valid_data = plot_df['stand_spp_comp_woody'].notna()
+        
+        if valid_data.any():
+            print(f'\t\tFound {valid_data.sum()} plots with tree species composition data')
+            print(f'\t\tSample data: {plot_df.loc[valid_data, "stand_spp_comp_woody"].iloc[0]}')
+            
+            # Filter to only rows with valid data before processing
+            valid_rows = plot_df[valid_data].copy()
+            
+            # Split the string into tuples and create a DataFrame
+            plot_spp_comp = (
+                valid_rows['stand_spp_comp_woody']
+                .str.split(',', expand=True)
+                .stack()
+                .str.split(':', expand=True)
+                .rename(columns={0: 'spp_comp_code', 1: 'spp_comp_percent'})
+                .assign(unique_id=lambda x: x.index.get_level_values(0).map(valid_rows['unique_id']))
+                .reset_index(level=1, drop=True)
+            )
+            
+            print(f'\t\tParsed {len(plot_spp_comp)} species entries from tree data')
 
-        # Add spp_comp_type column
-        plot_spp_comp['spp_comp_type'] = 'tree_data'
+            # Convert spp_comp_percent to numeric and fill NaN with 0
+            plot_spp_comp['spp_comp_percent'] = pd.to_numeric(plot_spp_comp['spp_comp_percent'], errors='coerce').fillna(0)
 
-        # Concatenate with existing spp_comp_df
-        spp_comp_df = pd.concat([spp_comp_df, plot_spp_comp], ignore_index=True)
+            # Add spp_comp_type column
+            plot_spp_comp['spp_comp_type'] = 'tree_data'
+
+            # Concatenate with existing spp_comp_df
+            spp_comp_df = pd.concat([spp_comp_df, plot_spp_comp], ignore_index=True)
+        else:
+            print('\t\tWarning: stand_spp_comp_woody column exists but contains no valid data')
+            print('\t\tThis is normal if trees were not processed or plots have no trees')
+    else:
+        print('\t\tNote: stand_spp_comp_woody column not found (trees may not have been processed)')
 
     # ### PROCESS TRANSECT SPECIES COMPOSITION DATA
     # All (plot, species) pairs in woody_merged_df with their summed percent
@@ -1018,7 +1036,7 @@ def _merge_spp_comp(
     # ### MERGE RESULTS
     if not transect_spp_comp.empty:
         spp_comp_df = pd.concat([spp_comp_df, transect_spp_comp], ignore_index=True)
-
+    
     return spp_comp_df
 
 
@@ -1044,7 +1062,7 @@ def process_woody_debris(
 
     # Load tree parameters and set index
     tree_params_df = helper.get_df(
-        os.path.join(os.path.dirname(__file__), 'Supporting_Data\\tree_parameters.csv')
+        os.path.join(os.path.dirname(__file__), 'Supporting_Data/tree_parameters.csv')
     ).set_index('Species')
 
     # ### PROCESS PLOT DATA

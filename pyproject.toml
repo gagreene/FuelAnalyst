@@ -1,0 +1,38 @@
+[project]
+name = "fuel-analyst"
+version = "1.0.0"
+description = "Fuel Analyst - Forest fuel load analysis and FOFEM data processing"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+license = {text = "MIT"}
+
+dependencies = [
+    "numpy>=2.3.0,<3.0.0",
+    "pandas>=2.3.0,<3.0.0",
+    "scipy>=1.16.0,<2.0.0",
+    "shiny>=1.0.0",
+    "rsconnect-python>=1.20.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_backend"
+
+[tool.setuptools]
+packages = ["fuel_analyst"]
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
