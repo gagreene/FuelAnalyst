@@ -43,6 +43,8 @@ jobs:
         run: |
           rsconnect deploy shiny . \
             --account ${{ secrets.SHINYAPPS_ACCOUNT }} \
+            --token ${{ secrets.SHINYAPPS_TOKEN }} \
+            --secret ${{ secrets.SHINYAPPS_SECRET }} \
             --title Fuel-Analysis-Test \
             --verbose
 
