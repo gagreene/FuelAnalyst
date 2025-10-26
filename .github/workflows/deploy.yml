@@ -40,11 +40,9 @@ jobs:
             --secret $SHINYAPPS_SECRET
 
       - name: Deploy to shinyapps.io
-        env:
-          SHINYAPPS_ACCOUNT: ${{ secrets.SHINYAPPS_ACCOUNT }}
         run: |
           rsconnect deploy shiny . \
-            --name $SHINYAPPS_ACCOUNT \
+            --account ${{ secrets.SHINYAPPS_ACCOUNT }} \
             --title Fuel-Analysis-Test \
             --verbose
 
