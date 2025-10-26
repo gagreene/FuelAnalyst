@@ -138,4 +138,3 @@ After setup, every time you:
 ---
 
 **Last Updated:** October 2025
-
