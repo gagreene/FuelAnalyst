@@ -1,7 +1,6 @@
 from shiny import App, render, ui, reactive
-import fuel_analyst as fa
+from fuel_analyst import fuel_analyst as fa
 import os
-from pathlib import Path
 import pandas as pd
 import traceback
 import shutil
