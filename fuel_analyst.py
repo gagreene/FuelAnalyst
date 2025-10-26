@@ -220,7 +220,7 @@ default_woody_debris_dict = {
 
 default_ccp_dict = {
     'stand_attributes': {  # All attributes must output a single column
-        'ccp_cfl_ovrstry': {  # This name is required for CCP
+        'ccp_cfl_ovrstry': {  # This name is fixed for CCP
             'att_source': 'cfl',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['conifer'],  # This is fixed (no user options)
@@ -231,7 +231,7 @@ default_ccp_dict = {
                 'dbh': [5, float('inf')]  # All trees >= 5 cm DBH
             },
         },
-        'ccp_cbd_ovrstry': {  # This name is required for CCP
+        'ccp_cbd_ovrstry': {  # This name is fixed for CCP
             'att_source': 'cbd',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['conifer'],  # This is fixed (no user options)
@@ -242,7 +242,7 @@ default_ccp_dict = {
                 'dbh': [5, float('inf')]  # All trees >= 5 cm DBH
             },
         },
-        'ccp_cfl_midstry': {  # This name is required for CCP
+        'ccp_cfl_midstry': {  # This name is fixed for CCP
             'att_source': 'cfl',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['conifer'],  # This is fixed (no user options)
@@ -253,7 +253,7 @@ default_ccp_dict = {
                 'dbh': [0, 5]  # All trees < 5 cm DBH
             },
         },
-        'ccp_cbd_midstry': {  # This name is required for CCP
+        'ccp_cbd_midstry': {  # This name is fixed for CCP
             'att_source': 'cbd',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['conifer'],  # This is fixed (no user options)
@@ -264,7 +264,7 @@ default_ccp_dict = {
                 'dbh': [0, 5]  # All trees < 5 cm DBH
             },
         },
-        'ccp_dead_branch_fl': {  # This name is required for CCP
+        'ccp_dead_branch_fl': {  # This name is fixed for CCP
             'att_source': 'branches',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['dead'],  # This is fixed (no user options)
@@ -275,7 +275,7 @@ default_ccp_dict = {
                 'dbh': [5, float('inf')]  # All trees >= 5 cm DBH
             },
         },
-        'ccp_ht_ovrstry_live': {  # This name is required for CCP
+        'ccp_ht_ovrstry_live': {  # This name is fixed for CCP
             'att_source': 'ht',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['live', 'conifer'],  # These are fixed (no user options)
@@ -286,7 +286,7 @@ default_ccp_dict = {
                 'dbh': [5, float('inf')]  # All trees >= 5 cm DBH
             },
         },
-        'ccp_ht_midstry_live': {  # This name is required for CCP
+        'ccp_ht_midstry_live': {  # This name is fixed for CCP
             'att_source': 'ht',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['live', 'conifer'],  # These are fixed (no user options)
@@ -297,7 +297,7 @@ default_ccp_dict = {
                 'dbh': [0, 5]  # All trees < 5 cm DBH
             },
         },
-        'ccp_ht_midstry_dead': {  # This name is required for CCP
+        'ccp_ht_midstry_dead': {  # This name is fixed for CCP
             'att_source': 'ht',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['dead'],  # This is fixed for ht (no user options)
@@ -328,11 +328,11 @@ default_ccp_dict = {
         # - ['live', 'broadleaf'] includes all live broadleaf trees
         # - ['dead', 'conifer'] includes all dead conifer trees
         # - ['dead', 'broadleaf'] includes all dead broadleaf trees
-        # """
-        'ccp_fsg_ovrstry': {  # This name is required for CCP
-            'att_source': 'cbh',  # This is default (options: cbh, fsg)
+        # ""
+        'ccp_cbh_ovrstry': {  # This name is fixed for CCP
+            'att_source': 'cbh',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
-            'summary': ['conifer'],  # This is the default
+            'summary': ['conifer'],  # This is the default (options: see above)
             'summary_permutation': 'combined',  # This is fixed (no user options)
             'metrics': ['mean'],  # This is the default (options: min, max, mean)
             'units': 'm',  # This option is fixed
@@ -340,10 +340,10 @@ default_ccp_dict = {
                 'dbh': [5, float('inf')]  # All trees >= 5 cm DBH
             },
         },
-        'ccp_fsg_midstry': {  # This name is required for CCP
-            'att_source': 'cbh',  # This is default (options: cbh, fsg)
+        'ccp_cbh_midstry': {  # This name is fixed for CCP
+            'att_source': 'cbh',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
-            'summary': ['conifer'],  # This is the default
+            'summary': ['conifer'],  # This is the default (options: see above)
             'summary_permutation': 'combined',  # This is fixed (no user options)
             'metrics': ['mean'],  # This is the default (options: min, max, mean)
             'units': 'm',  # This option is fixed
@@ -351,10 +351,10 @@ default_ccp_dict = {
                 'dbh': [0, 5]  # All trees < 5 cm DBH
             },
         },
-        'ccp_fsg': {  # This name is required for CCP
+        'ccp_fsg': {  # This name is fixed for CCP
             'att_source': 'cbh',  # This is default (options: cbh, fsg)
             'override_field_name': True,  # This is fixed (no user options)
-            'summary': ['conifer'],  # This is the default
+            'summary': ['conifer'],  # This is the default (options: see above)
             'summary_permutation': 'combined',  # This is fixed (no user options)
             'metrics': ['mean'],  # This is the default (options: min, max, mean)
             'units': 'm',  # This option is fixed
