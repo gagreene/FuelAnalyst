@@ -45,17 +45,16 @@ jobs:
         run: |
           rsconnect deploy shiny . \
             --name $SHINYAPPS_ACCOUNT \
-            --title FuelAnalyst \
+            --title Fuel-Analysis-Test \
             --verbose
 
       - name: Deployment Summary
         if: success()
         run: |
           echo "✅ Deployment successful!"
-          echo "🌐 App URL: https://${{ secrets.SHINYAPPS_ACCOUNT }}.shinyapps.io/fuelanalyst/"
+          echo "🌐 App URL: https://${{ secrets.SHINYAPPS_ACCOUNT }}.shinyapps.io/fuel-analysis-test/"
 
       - name: Notify on Failure
         if: failure()
         run: |
           echo "❌ Deployment failed. Check the logs above for details."
-
