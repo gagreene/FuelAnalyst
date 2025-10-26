@@ -118,7 +118,7 @@ def gen_ccp_df(df: pd.DataFrame, ccp_params: dict) -> pd.DataFrame:
     """
     # Load tree parameters and set index
     tree_params_df = helper.get_df(
-        os.path.join(os.path.dirname(__file__), 'Supporting_Data', 'tree_parameters.csv')
+        os.path.join(os.path.dirname(__file__), 'supporting_data', 'tree_parameters.csv')
     ).set_index('Species')
 
     df = _calc_stand_type(df, tree_params_df)

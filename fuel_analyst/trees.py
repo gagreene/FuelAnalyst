@@ -1348,7 +1348,7 @@ def process_trees(in_folder: str,
 
     # Load tree parameters and set index
     tree_params_df = helper.get_df(
-        os.path.join(os.path.dirname(__file__), 'Supporting_Data', 'tree_parameters.csv')
+        os.path.join(os.path.dirname(__file__), 'supporting_data', 'tree_parameters.csv')
     ).set_index('Species')
 
     # ### PROCESS PLOT-LEVEL ATTRIBUTES
