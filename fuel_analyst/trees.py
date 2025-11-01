@@ -625,6 +625,31 @@ def _calc_stand_composition(df: pd.DataFrame, tree_df: pd.DataFrame) -> tuple[pd
         )
         keep_columns.append(spp_comp_col_name)
 
+        # Add percent conifer and broadleaf columns for live trees
+        if status == ['L']:
+            total_ba = (
+                tree_df.loc[tree_mask]
+                .groupby('ParentGlobalID')['tree_ba_ha']
+                .sum()
+                .rename(unique_id_map)
+            )
+            conifer_ba = (
+                tree_df.loc[tree_mask & (tree_df['tree_type'] == 'conifer')]
+                .groupby('ParentGlobalID')['tree_ba_ha']
+                .sum()
+                .rename(unique_id_map)
+            )
+            broadleaf_ba = (
+                tree_df.loc[tree_mask & (tree_df['tree_type'] == 'broadleaf')]
+                .groupby('ParentGlobalID')['tree_ba_ha']
+                .sum()
+                .rename(unique_id_map)
+            )
+
+            df['stand_pct_cnfr_live'] = (100 * df['unique_id'].map(conifer_ba) / df['unique_id'].map(total_ba)).fillna(0).round(1)
+            df['stand_pct_brdlf_live'] = (100 * df['unique_id'].map(broadleaf_ba) / df['unique_id'].map(total_ba)).fillna(0).round(1)
+            keep_columns.extend(['stand_pct_cnfr_live', 'stand_pct_brdlf_live'])
+
     return df, keep_columns
 
 
