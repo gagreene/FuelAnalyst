@@ -40,22 +40,22 @@ jobs:
             --secret $SHINYAPPS_SECRET
 
       - name: Deploy to shinyapps.io
-        env:
-          SHINYAPPS_ACCOUNT: ${{ secrets.SHINYAPPS_ACCOUNT }}
         run: |
           rsconnect deploy shiny . \
-            --name $SHINYAPPS_ACCOUNT \
-            --title FuelAnalyst \
+            --account ${{ secrets.SHINYAPPS_ACCOUNT }} \
+            --token ${{ secrets.SHINYAPPS_TOKEN }} \
+            --secret ${{ secrets.SHINYAPPS_SECRET }} \
+            --entrypoint app.py \
+            --title Fuel-Analysis-Test \
             --verbose
 
       - name: Deployment Summary
         if: success()
         run: |
           echo "✅ Deployment successful!"
-          echo "🌐 App URL: https://${{ secrets.SHINYAPPS_ACCOUNT }}.shinyapps.io/fuelanalyst/"
+          echo "🌐 App URL: https://${{ secrets.SHINYAPPS_ACCOUNT }}.shinyapps.io/fuel-analysis-test/"
 
       - name: Notify on Failure
         if: failure()
         run: |
           echo "❌ Deployment failed. Check the logs above for details."
-

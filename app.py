@@ -12,6 +12,7 @@ import copy
 # Define the UI
 app_ui = ui.page_fluid(
     ui.panel_title("Fuel Analyst Dashboard"),
+    # test for github actions
     # Top-level tabs for different toolsets
     ui.navset_tab(
         # TAB 1: Fuel Analysis (existing functionality)
