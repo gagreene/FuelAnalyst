@@ -440,10 +440,9 @@ def _calc_stand_attributes(df: pd.DataFrame,
                             colname = f'stand_{att_name}{units}_{summary}_{metric}'.replace('_total', '')
                         new_columns[colname] = df.GlobalID.map(value)
                 else:
-                    value = (
-                            tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum() /
-                            tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_crwn_dpth_wtd'].sum()
-                    )
+                    # Get sum of cfl values by plot
+                    value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum()
+
                     # Unweight values
                     value = unweight_value(att, value, tree_df[summary_mask])
 
@@ -498,10 +497,7 @@ def _calc_stand_attributes(df: pd.DataFrame,
                                     colname = f'stand_{att_name}{units}_{summary}_{class_label}_{metric}'.replace('_total', '')
                                 new_columns[colname] = df.GlobalID.map(value)
                         else:
-                            value = (
-                                    tree_df[mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum() /
-                                    tree_df[mask].groupby('ParentGlobalID')[f'tree_crwn_dpth_wtd'].sum()
-                            )
+                            value = tree_df[mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum()
                             # Unweight values
                             value = unweight_value(att, value, tree_df[mask])
 
@@ -1134,21 +1130,27 @@ def _calc_tree_weighted_attributes(tree_df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate weighted attributes for each tree based on its density and basal area.
 
-    This function computes the weighted DBH, height, crown base height (CBH), dead crown base height (DCBH),
-    and fuel bed height for each tree, using the tree's density and basal area.
+    This function computes the weighted height, crown base height (CBH), dead crown base height (DCBH),
+    fuel strata gap, crown depth, flame length, and fire intensity for each tree,
+    using the tree's density or basal area as weighting factors.
 
-    :param tree_df: DataFrame containing individual tree data, including DBH, height, CBH, DCBH, and fuel bed height.
+    :param tree_df: DataFrame containing weighted values.
     :return: Updated DataFrame with new columns for weighted attributes.
     """
+    attribute_weighting_dict = {
+        'ht': 'ba',
+        'cbh': 'ba',
+        'dcbh': 'ba',
+        'fsg': 'ba',
+        'crwn_dpth': 'ba',
+        'flame_length': 'ba',
+        'fire_intensity': 'ba',
+    }
     print('\tCalculating tree weighted attributes')
-    # Initialize weighted attribute columns
-    attribute_list = list(attribute_weighting_dict.keys())
-
-    for att in attribute_list:
+    for att, att_wt_mult in attribute_weighting_dict.items():
         # Get the column names for the attribute and its weight multiplier
         att_col = f'tree_{att}'
         wtd_col = f'tree_{att}_wtd'
-        att_wt_mult = attribute_weighting_dict.get(att, 'dens')
 
         # Calculate the weighted attribute
         tree_df[wtd_col] = tree_df[att_col] * tree_df[f'tree_{att_wt_mult}_ha']
