@@ -201,6 +201,7 @@ def gen_ccp_df(df: pd.DataFrame, ccp_params: dict) -> pd.DataFrame:
         'stand_type': df['ccp_stand_type'],
         # 'fbp_fuel_type': df['fbp_fuel_type'].fillna(''),
         'pct_cnfr': df['stand_pct_cnfr_live'].fillna(0),
+        'canopy_cover': df[ccp_params['canopy_cover_attribute']].fillna(0),
         'cfl_ovrstry': df['ccp_cfl_ovrstry'].fillna(0),
         'cbd_ovrstry': df['ccp_cbd_ovrstry'].fillna(0),
         'cfl_midstry': df['ccp_cfl_midstry'].fillna(0),
