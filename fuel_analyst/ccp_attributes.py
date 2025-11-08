@@ -199,7 +199,7 @@ def gen_ccp_df(df: pd.DataFrame, ccp_params: dict) -> pd.DataFrame:
         'aspect': df['plot_aspect'],
         'stand_density': df['ccp_density_class'],
         'stand_type': df['ccp_stand_type'],
-        # 'fbp_fuel_type': df['fbp_fuel_type'].fillna(''),
+        'fbp_fuel_type': '',
         'pct_cnfr': df['stand_pct_cnfr_live'].fillna(0),
         'canopy_cover': df[ccp_params['canopy_cover_attribute']].fillna(0),
         'cfl_ovrstry': df['ccp_cfl_ovrstry'].fillna(0),
