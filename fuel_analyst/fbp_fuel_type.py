@@ -6,6 +6,7 @@ Created on Tue May 29, 8:30:00 2025
 """
 __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
+import helper
 import bcwft2018 as bcwft
 import numpy as np
 import pandas as pd
@@ -139,7 +140,7 @@ def process_fbp_fuel_type(master_fuel_df_path: str, fbp_prep_df_path: str, ccp_d
 
     # Replace ccp_df with updated DataFrame
     print('Saving updated CCP DataFrame with FBP fuel types')
-    ccp_df.to_csv(ccp_df_path, index=False)
+    helper.export_csv(ccp_df, ccp_df_path)
 
     return
 
