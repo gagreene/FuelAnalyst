@@ -121,7 +121,7 @@ default_stand_summary_dict = {
     'branches': {
         'att_source': 'branches',  # This could be user specified/adjusted
         'override_field_name': False, # This is fixed as False for stand summaries
-        'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'summary': ['live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
         'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
         'metrics': ['sum'],  # This is the only option
         'units': 'kgpm2',  # This option is fixed
@@ -132,7 +132,7 @@ default_stand_summary_dict = {
     'wood': {
         'att_source': 'wood',  # This could be user specified/adjusted
         'override_field_name': False, # This is fixed as False for stand summaries
-        'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'summary': ['live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
         'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
         'metrics': ['sum'],  # This is the only option
         'units': 'kgpm2',  # This option is fixed
@@ -143,7 +143,7 @@ default_stand_summary_dict = {
     'bark': {
         'att_source': 'bark',  # This could be user specified/adjusted
         'override_field_name': False, # This is fixed as False for stand summaries
-        'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
+        'summary': ['live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
         'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
         'metrics': ['sum'],  # This is the only option
         'units': 'kgpm2',  # This option is fixed
