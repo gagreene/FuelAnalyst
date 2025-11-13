@@ -8,10 +8,7 @@ __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
 import os
 import pandas as pd
-import numpy as np
 import helper
-from datetime import datetime as dt
-import bcwft2018 as bcwft
 
 
 def _calc_veg_fuel_loads(df: pd.DataFrame, veg_fuel_dict: dict) -> pd.DataFrame:
