@@ -8,7 +8,7 @@ __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
 import os
 import pandas as pd
-
+from typing import Optional
 import helper
 import plot_attributes as pa
 import plants_regen as pr
@@ -17,7 +17,6 @@ import canopy_cover as cc
 import woody_debris as wd
 import ccp_attributes
 import fofem_attributes
-from typing import Optional
 
 default_stand_summary_dict = {
     'dens': {
@@ -526,6 +525,7 @@ def fuel_analyst(in_folder: str,
     form_df = None
     master_tree_df = None
     ccp_df = None
+    fbp_df = None
     fofem_tree_df = None
     fofem_consume_df = None
 
@@ -560,7 +560,8 @@ def fuel_analyst(in_folder: str,
                  master_tree_df) = trees.process_trees(in_path,
                                                        out_path,
                                                        surface_fire_intensity_model,
-                                                       stand_summary_params)
+                                                       stand_summary_params,
+                                                       gen_ccp_df)
             elif form == 'cover':
                 form_df, add_columns = cc.process_canopy_cover(in_path, out_path)
             elif form == 'woody':
@@ -590,7 +591,7 @@ def fuel_analyst(in_folder: str,
 
     # ### PROCESS CCP DATA
     if gen_ccp_df:
-        ccp_df = ccp_attributes.gen_ccp_df(plot_df, ccp_params)
+        ccp_df, fbp_prep_df = ccp_attributes.gen_ccp_df(plot_df, ccp_params)
 
     # ### PROCESS FOFEM DATA
     if gen_fofem_tree_df:
@@ -620,6 +621,11 @@ def fuel_analyst(in_folder: str,
         ccp_df_path = os.path.join(out_folder, 'ccp_df.csv')
         print(f'Saving the CCP DataFrame to: {ccp_df_path}')
         helper.export_csv(ccp_df, ccp_df_path)
+
+    if fbp_prep_df is not None:
+        fbp_df_path = os.path.join(out_folder, 'fbp_prep_df.csv')
+        print(f'Saving the FBP Prep DataFrame to: {fbp_df_path}')
+        helper.export_csv(fbp_prep_df, fbp_df_path)
 
     # Save the FOFEM Tree DataFrame to the output folder if it exists
     if fofem_tree_df is not None:

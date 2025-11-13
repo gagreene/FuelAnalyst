@@ -11,79 +11,7 @@ import pandas as pd
 import numpy as np
 import helper
 from datetime import datetime as dt
-# import bcwft
-
-
-def _calc_fbp_fuel_type(df: pd.DataFrame) -> pd.DataFrame:
-    print('Processing CFFBPS Fuel Type')
-    bcFT = bcwft.BCFuelType()
-    fldList = bcFT.fldList
-    fldDType = bcFT.fldDTypes
-    fldDict = {fldList[i]: fldDType[i] for i in range(len(fldList))}
-    season = 'Growing'
-    
-    fbp_df = df.copy()
-    
-    fbp_df['_date'] = fbp_df['_date'].apply(lambda y: dt.strptime(y, '%m/%d/%Y %I:%M:%S %p').year)
-    fbp_df['BCWFT_rowRef'] = 0
-    fbp_df['FuelType'] = ''
-    fbp_df['FT_Modifier'] = 0
-    fbp_df['INVENTORY_STANDARD_CD'] = 'F'
-    fbp_df['COAST_INTERIOR_CD'] = 'I'
-    fbp_df['NON_PRODUCTIVE_CD'] = 64
-    fbp_df['BCLCS_LEVEL_1'] = 'V'
-    fbp_df['BCLCS_LEVEL_2'] = np.where(fbp_df.dens_live == 0, 'N', np.where(fbp_df.CC < 10, 'N', 'T'))
-    fbp_df['BCLCS_LEVEL_3'] = 'U'
-    fbp_df['LAND_COVER_CLASS_CD_1'] = np.where(fbp_df.BCLCS_LEVEL_2 == 'T',
-                                           np.where(fbp_df.pc > 75,
-                                                    'TC',
-                                                    np.where(fbp_df.ph > 75, 'TB', 'TM')),
-                                           fbp_df.domSubstrate)
-    fbp_df['BCLCS_LEVEL_4'] = fbp_df.LAND_COVER_CLASS_CD_1
-    fbp_df['BCLCS_LEVEL_5'] = np.where(fbp_df.CC < 10, np.nan, np.where(fbp_df.CC <= 25, 'SP', np.where(fbp_df.CC <= 60, 'OP', 'DE')))
-    if not 'EARLIEST_NONLOGGING_DIST_TYPE' in fbp_df.columns:
-        fbp_df['EARLIEST_NONLOGGING_DIST_TYPE'] = np.where(fbp_df.treatment_type.str.contains('burn|fire', case=False),
-                                                       'B',
-                                                       np.nan)
-    if not 'EARLIEST_NONLOGGING_DIST_DATE' in fbp_df.columns:
-        fbp_df['EARLIEST_NONLOGGING_DIST_DATE'] = np.nan
-        fbp_df['EARLIEST_NONLOGGING_DIST_DATE'] = pd.to_datetime(fbp_df['EARLIEST_NONLOGGING_DIST_DATE'])
-        fbp_df['_date'] = pd.to_datetime(fbp_df['_date'])
-        # Rover added the above line to address the DType conflict in the np.where below
-        fbp_df['EARLIEST_NONLOGGING_DIST_DATE'] = np.where(fbp_df.treatment_type.str.contains('burned', case=False),
-                                                       fbp_df['_date'],
-                                                       fbp_df.EARLIEST_NONLOGGING_DIST_DATE)
-    # fbp_df['HARVEST_DATE'] = np.nan
-    fbp_df['CROWN_CLOSURE'] = fbp_df.CC
-    fbp_df['PROJ_AGE_1'] = np.where(fbp_df.dens_live == 0, 0, fbp_df.PROJ_AGE_1)  # Assign stand age to 0 if no live trees
-    fbp_df['PROJ_HEIGHT_1'] = fbp_df.ht_ovrstry_live  # THIS SHOULD BE FOR LEADING SPECIES, NOT ALL LIVE
-    fbp_df['VRI_LIVE_STEMS_PER_HA'] = fbp_df.dens_live
-    fbp_df['VRI_DEAD_STEMS_PER_HA'] = fbp_df.dens_dead
-    fbp_df['STAND_PERCENTAGE_DEAD'] = 100 * fbp_df.ba_dead / fbp_df.ba
-
-    # Assign data types to columns
-    fbp_df = fbp_df.astype(fldDict)
-
-    # Convert dataframe to list containing only the rows needed for fbp fuel typing
-    dfList = df.reindex(columns=fldList).values.tolist()
-
-    for row in dfList:
-        fuelData = bcFT.getFuelType(season, row)
-        if fuelData is not None:
-            # Get bcwft line reference number (row[0]), fuel type code (row[1]), and fuel type modifier (row[2])
-            row[0], row[1], row[2] = fuelData
-            # Remove dash from fuel type code
-            row[1] = row[1].replace('-', '')
-        else:
-            row[0], row[1], row[2] = np.nan, 'NoMatchingFuelType_ERROR', np.nan
-
-    ft_df = pd.DataFrame(dfList, columns=fldList)
-
-    # Add new columns in ft_df to the original dataframe
-    df = df.merge(ft_df[['unique_id', 'FuelType', 'FT_Modifier']], on='unique_id', how='left')
-    df = df.rename(columns={'FuelType': 'fbp_fuel_type', 'FT_Modifier': 'fbp_ft_modifier'})
-
-    return df
+import bcwft2018 as bcwft
 
 
 def _calc_veg_fuel_loads(df: pd.DataFrame, veg_fuel_dict: dict) -> pd.DataFrame:
@@ -170,7 +98,37 @@ def _calc_stand_density(df: pd.DataFrame, cc_field: str) -> pd.DataFrame:
     return df
 
 
-def gen_ccp_df(df: pd.DataFrame, ccp_params: dict) -> pd.DataFrame:
+def _prep_fbp_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Prepare a DataFrame for CFFBPS fuel type assignment.
+
+    :param df: DataFrame containing plot-level data.
+    :return: DataFrame formatted for CFFBPS fuel type assignment.
+    """
+    print('Generating CFFBPS Fuel Type Prep DataFrame')
+
+    keep_columns = [
+        'unique_id', '_date',
+        'treatment_area', 'treatment_unit', 'treatment_unit_other', 'treatment_type',
+        'plot_id', 'BEC_Zone', 'BEC_Subzone', 'SPECIES_CD_1', 'SPECIES_CD_1_max_age',
+        'recent_clearcut_date_10_yrs', 'recent_fire_date_11_yrs'
+    ]
+
+    fbp_prep_df = df.copy()
+    fbp_prep_df['COAST_INTERIOR_CD'] = pd.NA
+    fbp_prep_df['BEC_Zone'] = pd.NA
+    fbp_prep_df['BEC_Subzone'] = pd.NA
+    fbp_prep_df['SPECIES_CD_1_max_age'] = pd.NA
+    fbp_prep_df['clearcut_date'] = pd.NaT
+    fbp_prep_df['last_fire_date'] = pd.NaT
+    fbp_prep_df['recent_clearcut_date_10_yrs'] = pd.NA
+    fbp_prep_df['recent_fire_date_11_yrs'] = pd.NA
+    fbp_prep_df = fbp_prep_df[keep_columns]
+
+    return fbp_prep_df
+
+
+def gen_ccp_df(df: pd.DataFrame, ccp_params: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Read CCP attributes from a CSV file into a pandas DataFrame.
 
@@ -186,7 +144,7 @@ def gen_ccp_df(df: pd.DataFrame, ccp_params: dict) -> pd.DataFrame:
     df = _calc_stand_type(df, tree_params_df)
     df = _calc_stand_density(df, ccp_params['canopy_cover_attribute'])
     df = _calc_veg_fuel_loads(df, ccp_params['vegetative_fuel_loads'])
-    # df = _calc_fbp_fuel_type(df)
+    fbp_prep_df = _prep_fbp_df(df)
 
     # Build DataFrame
     ccp_df = pd.DataFrame({
@@ -221,4 +179,4 @@ def gen_ccp_df(df: pd.DataFrame, ccp_params: dict) -> pd.DataFrame:
         'shrub_fuel_load': df['ccp_shrub_fuel_load'].fillna(0),
     })
 
-    return ccp_df
+    return ccp_df, fbp_prep_df
