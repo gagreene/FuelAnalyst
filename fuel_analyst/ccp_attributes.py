@@ -107,7 +107,7 @@ def _prep_fbp_df(df: pd.DataFrame) -> pd.DataFrame:
     keep_columns = [
         'unique_id', '_date',
         'treatment_area', 'treatment_unit', 'treatment_unit_other', 'treatment_type',
-        'plot_id', 'BEC_Zone', 'BEC_Subzone', 'SPECIES_CD_1', 'SPECIES_CD_1_max_age',
+        'plot_id', 'COAST_INTERIOR_CD', 'BEC_Zone', 'BEC_Subzone', 'SPECIES_CD_1', 'SPECIES_CD_1_max_age',
         'recent_clearcut_date_10_yrs', 'recent_fire_date_11_yrs'
     ]
 
