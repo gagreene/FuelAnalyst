@@ -368,7 +368,7 @@ def _calc_stand_attributes(df: pd.DataFrame,
             :return: Unweighted Series of values.
             """
             if _att in attribute_weighting_dict.keys():
-                field_name = f'tree_{attribute_weighting_dict.get(_att, 'dens')}_ha'
+                field_name = f"tree_{attribute_weighting_dict.get(_att, 'dens')}_ha"
                 denom = _tree_df.groupby('ParentGlobalID')[field_name].sum()
             elif _att == 'cbd':
                 field_name = f'tree_{attribute_weighting_dict['crwn_dpth']}_ha'
