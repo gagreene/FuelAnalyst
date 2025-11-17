@@ -10,7 +10,7 @@ import os
 import pandas as pd
 import numpy as np
 import itertools
-import helper
+from . import helper
 
 
 # GENERAL LIST OF CONIFER SPECIES IN BC

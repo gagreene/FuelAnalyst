@@ -200,4 +200,3 @@ The app generates these output files:
 ---
 
 **Last Updated:** October 2025
-

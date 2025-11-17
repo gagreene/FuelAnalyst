@@ -9,7 +9,7 @@ __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 import os
 import pandas as pd
 import numpy as np
-import helper
+from . import helper
 
 
 def _get_photoload_biomass(photoload_code: str, pct_cover: float, height: float):

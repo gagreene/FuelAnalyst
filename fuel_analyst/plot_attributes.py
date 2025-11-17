@@ -9,7 +9,7 @@ __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 import os
 import pandas as pd
 import numpy as np
-import helper
+from . import helper
 
 
 def process_plot_attributes(in_folder: str, out_folder: str) -> tuple[pd.DataFrame, list]:

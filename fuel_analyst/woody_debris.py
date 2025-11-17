@@ -12,7 +12,7 @@ import numpy as np
 import fnmatch
 from scipy.stats import linregress
 import operator
-import helper
+from . import helper
 
 bulk_density_map = [
     # (output bd column, tree params column, duff/litter depth columm, output biomass column)

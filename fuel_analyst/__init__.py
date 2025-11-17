@@ -1,15 +1,25 @@
 """
 Fuel Analyst Package
 
-This package provides tools for analyzing fuel data from forest surveys,
-including processing of plot attributes, trees, plants/regeneration,
-canopy cover, and woody debris.
+A forest fuel load analysis and FOFEM data processing package.
 """
 
 __version__ = "1.0.0"
+__author__ = "Gregory A. Greene"
 
-# Make the fuel_analyst module available at package level
+# Import main module for easy access
 from . import fuel_analyst
+from .fuel_analyst import (
+    fuel_analyst,
+    default_stand_summary_dict,
+    default_woody_debris_dict,
+    default_fofem_consume_dict,
+)
 
-__all__ = ['fuel_analyst']
+__all__ = [
+    "fuel_analyst",
+    "default_stand_summary_dict",
+    "default_woody_debris_dict",
+    "default_fofem_consume_dict",
+]
 
