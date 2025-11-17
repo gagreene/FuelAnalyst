@@ -440,10 +440,9 @@ def _calc_stand_attributes(df: pd.DataFrame,
                             colname = f'stand_{att_name}{units}_{summary}_{metric}'.replace('_total', '')
                         new_columns[colname] = df.GlobalID.map(value)
                 else:
-                    value = (
-                            tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum() /
-                            tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_crwn_dpth_wtd'].sum()
-                    )
+                    # Get sum of cfl values by plot
+                    value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum()
+
                     # Unweight values
                     value = unweight_value(att, value, tree_df[summary_mask])
 
@@ -498,10 +497,7 @@ def _calc_stand_attributes(df: pd.DataFrame,
                                     colname = f'stand_{att_name}{units}_{summary}_{class_label}_{metric}'.replace('_total', '')
                                 new_columns[colname] = df.GlobalID.map(value)
                         else:
-                            value = (
-                                    tree_df[mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum() /
-                                    tree_df[mask].groupby('ParentGlobalID')[f'tree_crwn_dpth_wtd'].sum()
-                            )
+                            value = tree_df[mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum()
                             # Unweight values
                             value = unweight_value(att, value, tree_df[mask])
 
@@ -520,14 +516,18 @@ def _calc_stand_attributes(df: pd.DataFrame,
         return df, keep_columns
 
 
-def _calc_stand_composition(df: pd.DataFrame, tree_df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
+def _calc_stand_composition(
+        df: pd.DataFrame,
+        tree_df: pd.DataFrame,
+        gen_ccp_df: bool,
+) -> tuple[pd.DataFrame, list]:
     """
     Calculates stand composition metrics for each plot based on tree basal area.
 
     For each plot, this function determines the top 6 species by their percentage of total basal area,
     both for live trees only and for all woody trees (live and dead). It adds columns to the plot-level
-    DataFrame for the species codes and their corresponding basal area percentages, as well as a summary
-    string for each stand. Returns the updated DataFrame and a list of new column names.
+    DataFrame for the species codes, their corresponding basal area percentages, and mean heights (if requested),
+    as well as a summary string for each stand. Returns the updated DataFrame and a list of new column names.
 
     :param df: DataFrame containing plot-level data, including 'GlobalID' and 'unique_id'.
     :param tree_df: DataFrame containing individual tree data, including 'tree_status', 'tree_ba_ha', and 'ParentGlobalID'.
@@ -576,6 +576,20 @@ def _calc_stand_composition(df: pd.DataFrame, tree_df: pd.DataFrame) -> tuple[pd
         agg['SPECIES_PCT'] = (100 * agg['species_ba'] / agg['stand_ba']).round(1)
         agg = agg[agg['species_ba'] > 0]
 
+        # If requested, calculate max height for each species in each plot
+        if gen_ccp_df:
+            # Get max height by plot and species
+            ht_agg = (
+                tree_df.loc[tree_mask]
+                .groupby(['ParentGlobalID', 'tree_species'], as_index=False)['tree_ht']
+                .max()
+                .rename(columns={'tree_species': 'SPECIES_CD', 'tree_ht': 'species_ht'})
+            )
+            ht_agg['unique_id'] = ht_agg['ParentGlobalID'].map(unique_id_map)
+            ht_agg = ht_agg.drop(columns=['ParentGlobalID'])
+            # Merge max height into agg
+            agg = pd.merge(agg, ht_agg, on=['unique_id', 'SPECIES_CD'], how='left')
+
         # Keep only the top 6 species by BA percent per stand
         agg = (
             agg.sort_values(['unique_id', 'SPECIES_PCT'], ascending=[True, False])
@@ -587,15 +601,21 @@ def _calc_stand_composition(df: pd.DataFrame, tree_df: pd.DataFrame) -> tuple[pd
         agg['rank'] = agg.groupby('unique_id')['SPECIES_PCT'].rank('first', ascending=False).astype(int)
         agg['code'] = 'SPECIES_CD_' + agg['rank'].astype(str)
         agg['percent'] = 'SPECIES_PCT_' + agg['rank'].astype(str)
+        if gen_ccp_df:
+            agg['height'] = 'PROJ_HEIGHT_' + agg['rank'].astype(str)
 
-        # Pivot to wide format for species codes and percentages
+        # Pivot to wide format for species codes, percentages, and heights
         spp_code_df = agg.pivot(index='unique_id', columns='code', values='SPECIES_CD').reset_index()
         spp_pct_df = agg.pivot(index='unique_id', columns='percent', values='SPECIES_PCT').reset_index()
+        if gen_ccp_df:
+            spp_ht_df = agg.pivot(index='unique_id', columns='height', values='species_ht').reset_index()
 
         spp_code_cols = [f'SPECIES_CD_{x}' for x in range(1, 7)]
         spp_pct_cols = [f'SPECIES_PCT_{x}' for x in range(1, 7)]
+        if gen_ccp_df:
+            spp_ht_code_cols = [f'PROJ_HEIGHT_{x}' for x in range(1, 7)]
 
-        # For live trees, add columns for top 6 species codes and percentages
+        # For live trees, add columns for top 6 species codes, percentages, and heights
         if status == ['L']:
             for col, df_src in [(spp_code_cols, spp_code_df), (spp_pct_cols, spp_pct_df)]:
                 map_dict = df_src.set_index('unique_id').to_dict()
@@ -607,6 +627,14 @@ def _calc_stand_composition(df: pd.DataFrame, tree_df: pd.DataFrame) -> tuple[pd
                     else:
                         df[c] = 0 if df_src is spp_pct_df else np.nan
                     keep_columns.append(c)
+            if gen_ccp_df:
+                map_dict = spp_ht_df.set_index('unique_id').to_dict()
+                for c in spp_ht_code_cols:
+                    if c in spp_ht_df.columns:
+                        df[c] = df['unique_id'].map(map_dict[c])
+                    else:
+                        df[c] = np.nan
+                    keep_columns.append(c)
 
         # Create a summary string column for each stand (live or woody)
         merged = pd.merge(spp_code_df, spp_pct_df, on='unique_id', how='outer')
@@ -615,7 +643,9 @@ def _calc_stand_composition(df: pd.DataFrame, tree_df: pd.DataFrame) -> tuple[pd
             pairs = [
                 f"{row.get(f'SPECIES_CD_{i}')}:{row.get(f'SPECIES_PCT_{i}')}"
                 for i in range(1, 7)
-                if pd.notnull(row.get(f'SPECIES_CD_{i}')) and pd.notnull(row.get(f'SPECIES_PCT_{i}')) and row.get(f'SPECIES_PCT_{i}') > 0
+                if (pd.notnull(row.get(f'SPECIES_CD_{i}')) and
+                    pd.notnull(row.get(f'SPECIES_PCT_{i}')) and
+                    row.get(f'SPECIES_PCT_{i}') > 0)
             ]
             return ', '.join(pairs) if pairs else None
 
@@ -624,6 +654,35 @@ def _calc_stand_composition(df: pd.DataFrame, tree_df: pd.DataFrame) -> tuple[pd
             merged.set_index('unique_id').apply(spp_tuple_str, axis=1)
         )
         keep_columns.append(spp_comp_col_name)
+
+        # Add percent conifer and broadleaf columns for live trees
+        if status == ['L']:
+            total_ba = (
+                tree_df.loc[tree_mask]
+                .groupby('ParentGlobalID')['tree_ba_ha']
+                .sum()
+                .rename(unique_id_map)
+            )
+            conifer_ba = (
+                tree_df.loc[tree_mask & (tree_df['tree_type'] == 'conifer')]
+                .groupby('ParentGlobalID')['tree_ba_ha']
+                .sum()
+                .rename(unique_id_map)
+            )
+            broadleaf_ba = (
+                tree_df.loc[tree_mask & (tree_df['tree_type'] == 'broadleaf')]
+                .groupby('ParentGlobalID')['tree_ba_ha']
+                .sum()
+                .rename(unique_id_map)
+            )
+
+            df['stand_pct_cnfr_live'] = (
+                    100 * df['unique_id'].map(conifer_ba) / df['unique_id'].map(total_ba)
+            ).fillna(0).round(1)
+            df['stand_pct_brdlf_live'] = (
+                    100 * df['unique_id'].map(broadleaf_ba) / df['unique_id'].map(total_ba)
+            ).fillna(0).round(1)
+            keep_columns.extend(['stand_pct_cnfr_live', 'stand_pct_brdlf_live'])
 
     return df, keep_columns
 
@@ -1109,21 +1168,27 @@ def _calc_tree_weighted_attributes(tree_df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate weighted attributes for each tree based on its density and basal area.
 
-    This function computes the weighted DBH, height, crown base height (CBH), dead crown base height (DCBH),
-    and fuel bed height for each tree, using the tree's density and basal area.
+    This function computes the weighted height, crown base height (CBH), dead crown base height (DCBH),
+    fuel strata gap, crown depth, flame length, and fire intensity for each tree,
+    using the tree's density or basal area as weighting factors.
 
-    :param tree_df: DataFrame containing individual tree data, including DBH, height, CBH, DCBH, and fuel bed height.
+    :param tree_df: DataFrame containing weighted values.
     :return: Updated DataFrame with new columns for weighted attributes.
     """
+    attribute_weighting_dict = {
+        'ht': 'ba',
+        'cbh': 'ba',
+        'dcbh': 'ba',
+        'fsg': 'ba',
+        'crwn_dpth': 'ba',
+        'flame_length': 'ba',
+        'fire_intensity': 'ba',
+    }
     print('\tCalculating tree weighted attributes')
-    # Initialize weighted attribute columns
-    attribute_list = list(attribute_weighting_dict.keys())
-
-    for att in attribute_list:
+    for att, att_wt_mult in attribute_weighting_dict.items():
         # Get the column names for the attribute and its weight multiplier
         att_col = f'tree_{att}'
         wtd_col = f'tree_{att}_wtd'
-        att_wt_mult = attribute_weighting_dict.get(att, 'dens')
 
         # Calculate the weighted attribute
         tree_df[wtd_col] = tree_df[att_col] * tree_df[f'tree_{att_wt_mult}_ha']
@@ -1327,7 +1392,8 @@ def _round_tree_data(tree_df: pd.DataFrame) -> pd.DataFrame:
 def process_trees(in_folder: str,
                   out_folder: str,
                   surface_fire_intensity_model: str,
-                  stand_summary_params: dict) -> tuple[pd.DataFrame, list, pd.DataFrame]:
+                  stand_summary_params: dict,
+                  gen_ccp_df: bool) -> tuple[pd.DataFrame, list, pd.DataFrame]:
     """
     Get the tree data from CSV files.
 
@@ -1336,6 +1402,7 @@ def process_trees(in_folder: str,
     :param surface_fire_intensity_model: Model to use for calculating surface fireline intensity (default is 'Byram').
         Options: ['Byram', 'Thomas']
     :param stand_summary_params: Dictionary containing stand summary parameters.
+    :param gen_ccp_df: Boolean indicating whether to generate CCP DataFrame.
     :return: Tuple containing:
         - Updated DataFrame with plot-level attributes.
         - List of columns to keep in the final DataFrame.
@@ -1398,7 +1465,7 @@ def process_trees(in_folder: str,
     master_tree_df = _gen_master_tree_df(df, tree_df)
 
     # ### PROCESS STAND_LEVEL (PER HA) ATTRIBUTES
-    df, add_columns = _calc_stand_composition(df, tree_df)
+    df, add_columns = _calc_stand_composition(df, tree_df, gen_ccp_df)
     keep_columns.extend(add_columns)
     df, add_columns = _calc_stand_attributes(df, tree_df, stand_summary_params)
     keep_columns.extend(add_columns)

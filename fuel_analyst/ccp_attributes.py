@@ -12,33 +12,19 @@ import numpy as np
 from . import helper
 
 
-def _calc_herbaceous_fuels(df: pd.DataFrame, fuel_fields: list) -> pd.DataFrame:
-    """
-    Calculate surface vegetation fuel loads based on CCP parameters.
-
-    :param df: DataFrame containing plot-level data.
-    :param ccp_params: Dictionary of CCP surface vegetation fuel load parameters.
-    :return: DataFrame with an added 'surface_veg_fuel_load' column.
-    """
-    df['ccp_herbaceous_fuel_load'] = 0
-    for field in fuel_fields:
-        if field not in df.columns:
-            df['ccp_herbaceous_fuel_load'] += df[f'{field}_kgpm2'].fillna(0)
-    return df
-
-
-def _calc_shrub_fuels(df: pd.DataFrame, fuel_fields: list) -> pd.DataFrame:
+def _calc_veg_fuel_loads(df: pd.DataFrame, veg_fuel_dict: dict) -> pd.DataFrame:
     """
     Calculate surface vegetation fuel loads based on CCP parameters.
 
     :param df: DataFrame containing plot-level data.
 
-    :return: DataFrame with an added 'surface_veg_fuel_load' column.
+    :return: DataFrame with an added 'ccp_shrub_fuel_load' column.
     """
-    df['ccp_shrub_fuel_load'] = 0
-    for field in fuel_fields:
-        if field not in df.columns:
-            df['ccp_shrub_fuel_load'] += df[f'{field}_kgpm2'].fillna(0)
+    for fuel_att, fuel_fields in veg_fuel_dict.items():
+        field_name = f'ccp_{fuel_att}_fuel_load'
+        df[field_name] = 0
+        for fuel_field in fuel_fields:
+            df[field_name] += df[f'{fuel_field}_kgpm2'].fillna(0)
     return df
 
 
@@ -48,7 +34,7 @@ def _calc_stand_type(df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataF
 
     :param df: DataFrame containing species codes and percentages.
     :param tree_params_df: DataFrame containing tree parameters indexed by species code.
-    :return: DataFrame with an added 'stand_type' column.
+    :return: DataFrame with an added 'ccp_stand_type' column.
     """
     spp_code_cols = [f'SPECIES_CD_{x}' for x in range(1, 7)]
 
@@ -87,9 +73,7 @@ def _calc_stand_type(df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataF
 
 def _calc_stand_density(df: pd.DataFrame, cc_field: str) -> pd.DataFrame:
     """
-    Calculate stand density based on tree counts and plot area.
-
-    # Estimate stand density class from canopy cover
+    Calculate stand density based on canopy cover.
         if 0 <= cc <= 45:
             density = 'L'  # low density
         elif cc <= 60:
@@ -98,22 +82,56 @@ def _calc_stand_density(df: pd.DataFrame, cc_field: str) -> pd.DataFrame:
             density = 'H'  # high density
 
     :param df: DataFrame containing tree counts and plot area.
-    :return: DataFrame with an added 'stand_density_tpha' column.
+    :return: DataFrame with an added 'ccp_density_class' column.
     """
-    # Calculate stand density (trees per hectare)
-    df['ccp_density_class'] = np.where(
-        df[cc_field] <= 45,
-        'L',
-        np.where(df[cc_field] <= 60, 'M', 'H')
-    )
+    # Calculate stand density class from canopy cover
+    mask_l = (df[cc_field] >= 0) & (df[cc_field] <= 45)
+    mask_m = (df[cc_field] > 45) & (df[cc_field] <= 60)
+    mask_h = (df[cc_field] > 60) & (df[cc_field] <= 100)
+
+    df['ccp_density_class'] = None
+    df.loc[mask_l, 'ccp_density_class'] = 'L'
+    df.loc[mask_m, 'ccp_density_class'] = 'M'
+    df.loc[mask_h, 'ccp_density_class'] = 'H'
     return df
 
 
-def gen_ccp_df(df: pd.DataFrame, ccp_params: dict) -> pd.DataFrame:
+def _prep_fbp_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Prepare a DataFrame for CFFBPS fuel type assignment.
+
+    :param df: DataFrame containing plot-level data.
+    :return: DataFrame formatted for CFFBPS fuel type assignment.
+    """
+    print('Generating CFFBPS Fuel Type Prep DataFrame')
+
+    keep_columns = [
+        'unique_id', '_date',
+        'treatment_area', 'treatment_unit', 'treatment_unit_other', 'treatment_type',
+        'plot_id', 'COAST_INTERIOR_CD', 'BEC_Zone', 'BEC_Subzone', 'SPECIES_CD_1', 'SPECIES_CD_1_max_age',
+        'recent_clearcut_date_10_yrs', 'recent_fire_date_11_yrs'
+    ]
+
+    fbp_prep_df = df.copy()
+    fbp_prep_df['COAST_INTERIOR_CD'] = pd.NA
+    fbp_prep_df['BEC_Zone'] = pd.NA
+    fbp_prep_df['BEC_Subzone'] = pd.NA
+    fbp_prep_df['SPECIES_CD_1_max_age'] = pd.NA
+    fbp_prep_df['clearcut_date'] = pd.NaT
+    fbp_prep_df['last_fire_date'] = pd.NaT
+    fbp_prep_df['recent_clearcut_date_10_yrs'] = pd.NA
+    fbp_prep_df['recent_fire_date_11_yrs'] = pd.NA
+    fbp_prep_df = fbp_prep_df[keep_columns]
+
+    return fbp_prep_df
+
+
+def gen_ccp_df(df: pd.DataFrame, ccp_params: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Read CCP attributes from a CSV file into a pandas DataFrame.
 
     :param df: DataFrame containing plot-level data.
+    :param ccp_params: Dictionary of CCP parameters.
     :return: DataFrame containing the CCP attributes.
     """
     # Load tree parameters and set index
@@ -123,8 +141,8 @@ def gen_ccp_df(df: pd.DataFrame, ccp_params: dict) -> pd.DataFrame:
 
     df = _calc_stand_type(df, tree_params_df)
     df = _calc_stand_density(df, ccp_params['canopy_cover_attribute'])
-    df = _calc_shrub_fuels(df, ccp_params['vegetative_fuels']['shrub_fuel_load'])
-    df = _calc_herbaceous_fuels(df, ccp_params['vegetative_fuels']['herbaceous_fuel_load'])
+    df = _calc_veg_fuel_loads(df, ccp_params['vegetative_fuel_loads'])
+    fbp_prep_df = _prep_fbp_df(df)
 
     # Build DataFrame
     ccp_df = pd.DataFrame({
@@ -137,6 +155,9 @@ def gen_ccp_df(df: pd.DataFrame, ccp_params: dict) -> pd.DataFrame:
         'aspect': df['plot_aspect'],
         'stand_density': df['ccp_density_class'],
         'stand_type': df['ccp_stand_type'],
+        'fbp_fuel_type': '',
+        'pct_cnfr': df['stand_pct_cnfr_live'].fillna(0),
+        'canopy_cover': df[ccp_params['canopy_cover_attribute']].fillna(0),
         'cfl_ovrstry': df['ccp_cfl_ovrstry'].fillna(0),
         'cbd_ovrstry': df['ccp_cbd_ovrstry'].fillna(0),
         'cfl_midstry': df['ccp_cfl_midstry'].fillna(0),
@@ -152,7 +173,8 @@ def gen_ccp_df(df: pd.DataFrame, ccp_params: dict) -> pd.DataFrame:
         'litter_fuel_load': df['ffl_litter_kgpm2'].fillna(0),
         'woody_fuel_load': df['woody_kgpm2_ccp_lt7cm_7'].fillna(0),
         'herbaceous_fuel_load': df['ccp_herbaceous_fuel_load'].fillna(0),
+        'grass_fuel_load': df['ccp_grass_fuel_load'].fillna(0),
         'shrub_fuel_load': df['ccp_shrub_fuel_load'].fillna(0),
     })
 
-    return ccp_df
+    return ccp_df, fbp_prep_df
