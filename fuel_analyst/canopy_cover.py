@@ -9,7 +9,13 @@ __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 import os
 import pandas as pd
 import numpy as np
-from . import helper
+
+try:
+    # Relative import for module usage
+    from . import helper
+except ImportError:
+    # Absolute import for script usage
+    import helper
 
 
 def _process_transect_data(transect_df: pd.DataFrame) -> pd.DataFrame:

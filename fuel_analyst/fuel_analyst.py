@@ -10,14 +10,26 @@ import os
 import pandas as pd
 from typing import Optional
 
-from . import helper
-from . import plot_attributes as pa
-from . import plants_regen as pr
-from . import trees
-from . import canopy_cover as cc
-from . import woody_debris as wd
-from . import ccp_attributes
-from . import fofem_attributes
+try:
+    # Relative imports for module usage
+    from . import helper
+    from . import plot_attributes as pa
+    from . import plants_regen as pr
+    from . import trees
+    from . import canopy_cover as cc
+    from . import woody_debris as wd
+    from . import ccp_attributes
+    from . import fofem_attributes
+except ImportError:
+    # Absolute imports for script usage
+    import helper
+    import plot_attributes as pa
+    import plants_regen as pr
+    import trees
+    import canopy_cover as cc
+    import woody_debris as wd
+    import ccp_attributes
+    import fofem_attributes
 
 default_stand_summary_dict = {
     'dens': {
