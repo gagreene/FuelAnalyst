@@ -1013,6 +1013,41 @@ def _calc_tree_fofem_attributes(tree_df: pd.DataFrame, tree_params_df: pd.DataFr
     :param tree_params_df: DataFrame with species parameters, including 'FOFEM_sppCD' and 'FOFEM_BrkThck_Vsp'.
     :return: Updated DataFrame with 'tree_species_fofem' and 'tree_bark_thick' columns.
     """
+    # PLACEHOLDER CODE FOR ALTERNATE BARK THICKNESS CALCULATION APPROACH (INCOMPLETE)
+    # def _get_bark_thick():
+    #     bark_model_map = tree_params_df['BrkThck_Model'].to_dict()
+    #     bc_mat_immat_bark_dbh_thresh = tree_params_df['BC_BrkThck_MI_DBH'].to_dict()
+    #     bc_coast_mat_bark_k = tree_params_df['BC_BrkThck_K_C_M'].to_dict()
+    #     bc_coast_immat_bark_k = tree_params_df['BC_BrkThck_K_C_I'].to_dict()
+    #     bc_southint_bark_k = tree_params_df['BC_BrkThck_K_SI'].to_dict()
+    #     bc_northint_bark_k = tree_params_df['BC_BrkThck_K_NI'].to_dict()
+    #     fofem_bark_map = tree_params_df['FOFEM_BrkThck_Vsp'].to_dict()
+    #
+    #     temp_bark_cols = {
+    #         'bark_thick_model': bark_model_map,
+    #         'bc_bark_dbh_thresh': bc_mat_immat_dbh_thresh,
+    #         'bc_bark_k_coast_mat': bc_coast_mat_bark_k,
+    #         'bc_bark_k_coast_immat': bc_coast_immat_bark_k,
+    #         'bc_bark_k_southint': bc_southint_bark_k,
+    #         'bc_bark_k_northint': bc_northint_bark_k,
+    #     }
+    #
+    #     for col in temp_bark_cols.keys():
+    #         new_col = col.replace('_k', '_vsp')
+    #         tree_df[new_col] = tree_df['tree_species'].map(temp_bark_cols[col])
+    #         if '_vsp' in new_col:
+    #             np.where(pd.isnull(tree_df[new_col]), np.nan, (1 - tree_df[new_col]) / 2)
+    #
+    #     # Apply Kozak/BC bark thickness models based on DBH thresholds and region (coast or south/north interior)
+    #     #
+    #
+    #     # Calculate bark thickness where tree density is valid, else NaN
+    #     tree_df['tree_bark_thick'] = np.where(
+    #         (tree_df ['bark_thick_model'] == 'FOFEM') & (tree_df['tree_dens_ha'] >= 0),
+    #         tree_df['tree_dbh'] * tree_df['tree_species'].map(bark_map),
+    #         tree_df['tree_bark_thick']
+    #     )
+
     # Create mapping dictionaries for FOFEM species code and bark thickness factor
     spp_map = tree_params_df['FOFEM_sppCD'].to_dict()
     bark_map = tree_params_df['FOFEM_BrkThck_Vsp'].to_dict()
