@@ -7,11 +7,16 @@ Created on Tue May 29, 8:30:00 2025
 __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
 import helper
-import bcwft2018 as bcwft
 import numpy as np
 import pandas as pd
 from datetime import datetime as dt
 
+import sys
+module_dir = os.path.join(os.path.dirname(__file__), '..', '..')
+if module_dir not in sys.path:
+    sys.path.insert(0, module_dir)
+
+from dependencies.BC_CFFBPS_FuelTyping_Tool import bcwft2018 as bcwft
 
 def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFrame:
     print('Calculating CFFBPS Fuel Types using BCWFT2018 fuel typing algorithm')

@@ -10,26 +10,19 @@ import os
 import pandas as pd
 from typing import Optional
 
-try:
-    # Relative imports for module usage
-    from . import helper
-    from . import plot_attributes as pa
-    from . import plants_regen as pr
-    from . import trees
-    from . import canopy_cover as cc
-    from . import woody_debris as wd
-    from . import ccp_attributes
-    from . import fofem_attributes
-except ImportError:
-    # Absolute imports for script usage
-    import helper
-    import plot_attributes as pa
-    import plants_regen as pr
-    import trees
-    import canopy_cover as cc
-    import woody_debris as wd
-    import ccp_attributes
-    import fofem_attributes
+import sys
+module_dir = os.path.join(os.path.dirname(__file__), '..', '..')
+if module_dir not in sys.path:
+    sys.path.insert(0, module_dir)
+    
+from src.fuel_analyst.components import helper
+from src.fuel_analyst.components import plot_attributes as pa
+from src.fuel_analyst.components import plants_regen as pr
+from src.fuel_analyst.components import trees
+from src.fuel_analyst.components import canopy_cover as cc
+from src.fuel_analyst.components import woody_debris as wd
+from src.fuel_analyst.components import ccp_attributes
+from src.fuel_analyst.components import fofem_attributes
 
 default_stand_summary_dict = {
     'dens': {

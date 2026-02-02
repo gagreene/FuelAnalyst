@@ -10,12 +10,13 @@ import os
 import numpy as np
 import pandas as pd
 
-try:
-    # Relative import for module usage
-    from . import helper
-except ImportError:
-    # Absolute import for script usage
-    import helper
+import sys
+module_dir = os.path.join(os.path.dirname(__file__), '..', '..')
+if module_dir not in sys.path:
+    sys.path.insert(0, module_dir)
+
+from src.fuel_analyst.components import helper
+from dependencies.flame_components import flame_components as fc
 
 
 def _calc_scorch_ht(sfi, amb_t=None, in_stand_ws=None):
@@ -347,7 +348,7 @@ def _test_mortality():# Define input and output folders
             ['unique_id', 'ws', 'canopy_cover', 'ht_ovrstry_live', 'ccp_fsg', 'hfi', 'fire_type', 'temp', 'rh']
         ], on='unique_id', how='left')
 
-    
+
 
 
 if __name__ == '__main__':
