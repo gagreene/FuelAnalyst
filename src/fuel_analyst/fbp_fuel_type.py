@@ -12,9 +12,9 @@ import pandas as pd
 from datetime import datetime as dt
 
 import sys
-module_dir = os.path.join(os.path.dirname(__file__), '..', '..')
-if module_dir not in sys.path:
-    sys.path.insert(0, module_dir)
+pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..')
+if pkg_dir not in sys.path:
+    sys.path.insert(0, pkg_dir)
 
 from dependencies.BC_CFFBPS_FuelTyping_Tool import bcwft2018 as bcwft
 

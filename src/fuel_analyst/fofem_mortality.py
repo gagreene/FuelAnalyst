@@ -11,9 +11,9 @@ import numpy as np
 import pandas as pd
 
 import sys
-module_dir = os.path.join(os.path.dirname(__file__), '..', '..')
-if module_dir not in sys.path:
-    sys.path.insert(0, module_dir)
+pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..')
+if pkg_dir not in sys.path:
+    sys.path.insert(0, pkg_dir)
 
 from src.fuel_analyst.components import helper
 from dependencies.flame_components import flame_components as fc
