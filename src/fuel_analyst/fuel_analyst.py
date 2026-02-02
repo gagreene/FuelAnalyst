@@ -656,8 +656,9 @@ def fuel_analyst(in_folder: str,
 
 if __name__ == '__main__':
     # Define input and output folders
-    _in_folder = r'E:\UBC_FuelAnalyst_Testing\Survey123_Data\Survey_Data'
-    _out_folder = r'E:\UBC_FuelAnalyst_Testing\Survey123_Data\_Results'
+    test_dir = os.path.join(os.path.dirname(__file__), 'tests')
+    _in_folder = os.path.join(test_dir, 'test_data', 'Survey123_Data')
+    _out_folder = os.path.join(test_dir, 'results', 'fuel_analyst')
     _surface_fire_intensity_model = 'Byram'
     _stand_summary_dict = None      # Uses default stand summary settings if None
     _woody_debris_dict = None       # Uses default woody debris settings if None

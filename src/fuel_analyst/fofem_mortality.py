@@ -334,11 +334,16 @@ def process_mortality(
 
 
 def _test_mortality():# Define input and output folders
+    # Define input and output folders
+    test_dir = os.path.join(os.path.dirname(__file__), 'tests')
+    _in_folder = os.path.join(test_dir, 'test_data', 'conpyro')
+    _out_folder = os.path.join(test_dir, 'results', 'conpyro')
+
     _in_tree_data_dir = r'E:\UBC_FuelAnalyst_Testing\Survey123_Data\_Results'
     _tree_df_path = os.path.join(_in_folder, 'master_tree_df.csv')
     _in_plot_fire_data_dir = r'E:\UBC_FuelAnalyst_Testing\ConPyro_Data'
     _plot_fire_df_path = os.path.join(_in_plot_fire_data_dir, 'ccp_df_results.csv')
-    _out_folder = r'E:\UBC_FuelAnalyst_Testing\ConPyro_Data\_Results'
+    _out_folder = r'E:\UBC_FuelAnalyst_Testing\ConPyro_Data\results'
 
     # Join plot fire and tree dataframes on 'unique_id'
     plot_fire_df = helper.get_df(_plot_fire_df_path)
