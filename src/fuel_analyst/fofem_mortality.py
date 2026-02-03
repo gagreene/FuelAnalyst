@@ -122,7 +122,7 @@ def process_mortality(
 
     # Calculate mortality using CRNSCH model
     print('\tCalculating post-fire probability of mortality...')
-    merged_df['mortality_crnsch'] = fofem._mort_crnsch(
+    merged_df['mortality_crnsch'] = fofem.mort_crnsch(
         spp=merged_df['spp'].to_numpy(),
         dbh=merged_df['dbh'].to_numpy(),  # Convert m to cm
         ht=merged_df['ht'].to_numpy(),
@@ -139,7 +139,7 @@ def process_mortality(
     )
 
     # Calculate tree-level mortality
-    print('\nCalculating Post-Fire Tree Mortality')
+    print('\tCalculating Post-Fire Tree Mortality')
     tree_df = _calc_tree_mortality(merged_df, tree_df)
 
     # Calculate stand-level proportion of basal area killed by fire
@@ -165,8 +165,9 @@ if __name__ == '__main__':
     _in_tree_data_dir = os.path.join(test_dir, 'results', 'fuel_analyst')
     _in_fire_data_dir = r'E:\UBC_FuelAnalyst_Testing\ConPyro_Data'
     _out_dir = os.path.join(test_dir, 'results', 'fofem_mortality')
+    _aspen_sev = 'low'
 
-    # Join stand fire and tree dataframes on 'unique_id'
+    # Get stand fire and tree csv paths
     _stand_fire_df_path = os.path.join(_in_fire_data_dir, 'ccp_df_results.csv')
     _tree_df_path = os.path.join(_in_tree_data_dir, 'master_tree_df.csv')
 
@@ -175,5 +176,5 @@ if __name__ == '__main__':
         stand_fire_csv_path=_stand_fire_df_path,
         tree_csv_path=_tree_df_path,
         out_dir=_out_dir,
-        aspen_sev='low',
+        aspen_sev=_aspen_sev,
     )
