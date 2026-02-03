@@ -1,5 +1,0 @@
-numpy>=2.3.0,<3.0.0
-pandas>=2.3.0,<3.0.0
-scipy>=1.16.0,<2.0.0
-shiny>=1.0.0
-rsconnect-python>=1.20.0
