@@ -7,6 +7,3 @@
 [submodule "dependencies/BC_CFFBPS_FuelTyping_Tool"]
 	path = dependencies/BC_CFFBPS_FuelTyping_Tool
 	url = https://github.com/gagreene/BC_CFFBPS_FuelTyping_Tool.git
-[submodule "dependencies/pyfofem"]
-	path = dependencies/pyfofem
-	url = https://github.com/gagreene/pyfofem.git
