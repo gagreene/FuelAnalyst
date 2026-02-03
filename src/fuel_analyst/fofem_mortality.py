@@ -19,7 +19,7 @@ from src.fuel_analyst.components import helper
 from dependencies.flame_components import flame_components as fc
 
 
-def _calc_scorch_ht(sfi, amb_t=None, in_stand_ws=None):
+def _calc_scorch_ht(sfi, amb_t=None, instand_ws=None):
     """
     Van Wagner (1973) & Alexander (1982/85) lethal scorch height model.
     Accepts scalars or np.ndarray inputs.
@@ -31,16 +31,16 @@ def _calc_scorch_ht(sfi, amb_t=None, in_stand_ws=None):
     if amb_t is None:
         # Equation 8
         return 0.1483 * np.power(sfi, 2 / 3)
-    elif in_stand_ws is None:
+    elif instand_ws is None:
         # Equation 9
         return 4.4713 * np.power(sfi, 2 / 3) / (60 - amb_t)
     else:
         # Equation 10
         sfi = np.asarray(sfi)
         amb_t = np.asarray(amb_t)
-        in_stand_ws = np.asarray(in_stand_ws)
+        instand_ws = np.asarray(instand_ws)
         return ((0.74183 * np.power(sfi, 7 / 6)) /
-                (np.power((0.025574 * sfi) + (0.021433 * np.power(in_stand_ws, 3)), 0.5) * (60 - amb_t)))
+                (np.power((0.025574 * sfi) + (0.021433 * np.power(instand_ws, 3)), 0.5) * (60 - amb_t)))
 
 
 def _calc_flame_length(fire_intensity=None, char_ht=None, fl_model='Byram'):
@@ -112,16 +112,16 @@ def _mort_crnsch(
     crown_depth: np.ndarray,
     bark_thickness: np.ndarray = None,
     fire_intensity: np.ndarray = None,
-    amb_t: float = 25,
+    amb_t: np.ndarray = [25],
     flame_length: np.ndarray = None,
     char_ht: np.ndarray = None,
     scorch_ht: np.ndarray = None,
-    in_stand_ws: float = 0,
-    aspenSev: np.ndarray = None,
+    instand_ws: np.ndarray = [1],
+    aspen_sev: str = 'low',
     tree_params_df: pd.DataFrame = None
 ) -> np.ndarray:
     """
-    Vectorized FOFEM mortality model.
+    FOFEM crown scorch mortality model.
     All inputs must be np.ndarrays of the same length.
     spp: array of species codes (str or int). If int, will be mapped to FOFEM_sppCD using tree_params_df.
     tree_params_df: DataFrame with columns 'sppNumCD' and 'FOFEM_sppCD' for code mapping.
@@ -149,7 +149,7 @@ def _mort_crnsch(
     if (flame_length is not None) and (char_ht is None):
         char_ht = _calc_char_ht(flame_length)
     if scorch_ht is None:
-        scorch_ht = _calc_scorch_ht(fire_intensity, amb_t, in_stand_ws)
+        scorch_ht = _calc_scorch_ht(fire_intensity, amb_t, instand_ws)
 
     # Calculate cvs, cls
     _, cvs, cls = _calc_crown_length_vol_scorched(scorch_ht, ht, crown_depth)
@@ -178,27 +178,33 @@ def _mort_crnsch(
     mask_psme = np.isin(spp, ['PSME', 'PSMEF', 'PSMEM'])
 
     # FOFEM Eq 10 - White Fir
-    Pm[mask_abco] = 1 / (1 + np.exp(-(-3.5083 +
-                                      (cls[mask_abco] * 0.0956) -
-                                      (np.power(cls[mask_abco], 2) * 0.00184) +
-                                      (np.power(cls[mask_abco], 3) * 0.000017))))
+    if np.any(mask_abco):
+        Pm[mask_abco] = 1 / (1 + np.exp(-(-3.5083 +
+                                          (cls[mask_abco] * 0.0956) -
+                                          (np.power(cls[mask_abco], 2) * 0.00184) +
+                                          (np.power(cls[mask_abco], 3) * 0.000017))))
     # FOFEM Eq 11 - Subalpine/Grand Fir
-    Pm[mask_abgr] = 1 / (1 + np.exp(-(-1.6950 +
-                                      (cvs[mask_abgr] * 0.2071) -
-                                      (np.power(cvs[mask_abgr], 2) * 0.0047) +
-                                      (np.power(cvs[mask_abgr], 3) * 0.000035))))
+    if np.any(mask_abgr):
+        Pm[mask_abgr] = 1 / (1 + np.exp(-(-1.6950 +
+                                          (cvs[mask_abgr] * 0.2071) -
+                                          (np.power(cvs[mask_abgr], 2) * 0.0047) +
+                                          (np.power(cvs[mask_abgr], 3) * 0.000035))))
     # FOFEM Eq 16 - Red Fir
-    Pm[mask_abma] = 1 / (1 + np.exp(-(-2.3085 + (np.power(cls[mask_abma], 3) + 0.000004059))))
+    if np.any(mask_abma):
+        Pm[mask_abma] = 1 / (1 + np.exp(-(-2.3085 + (np.power(cls[mask_abma], 3) * 0.000004059))))
     # FOFEM Eq 12 - Incense Cedar
-    Pm[mask_cade] = 1 / (1 + np.exp(-(-4.2466 + (np.exp(cls[mask_cade], 3) * 0.000007172))))
+    if np.any(mask_cade):
+        Pm[mask_cade] = 1 / (1 + np.exp(-(-4.2466 + (np.exp(cls[mask_cade], 3) * 0.000007172))))
     # FOFEM Eq 14 - Western Larch
-    Pm[mask_laoc] = 1 / (1 + np.exp(-(-1.6594 + (cvs[mask_laoc] * 0.0327) - (dbh[mask_laoc] * 0.0489))))
+    if np.any(mask_laoc):
+        Pm[mask_laoc] = 1 / (1 + np.exp(-(-1.6594 + (cvs[mask_laoc] * 0.0327) - (dbh[mask_laoc] * 0.0489))))
     # FOFEM Eq 17 - Whitebark/Logepole Pine
-    Pm[mask_pial] = 1 / (1 + np.exp(-(-0.3268 +
-                                      (cvs[mask_pial] * 0.1387) -
-                                      (np.power(cvs[mask_pial], 2) * 0.0033) +
-                                      (np.power(cvs[mask_pial], 3) * 0.000025) -
-                                      (dbh[mask_pial] * 0.0266))))
+    if np.any(mask_pial):
+        Pm[mask_pial] = 1 / (1 + np.exp(-(-0.3268 +
+                                          (cvs[mask_pial] * 0.1387) -
+                                          (np.power(cvs[mask_pial], 2) * 0.0033) +
+                                          (np.power(cvs[mask_pial], 3) * 0.000025) -
+                                          (dbh[mask_pial] * 0.0266))))
     # FOFEM Eq 3 - All other spruce species
     if np.any(mask_spruce):
         dbh_in = dbh[mask_spruce] / 2.54
@@ -210,9 +216,11 @@ def _mort_crnsch(
         _Pm = np.where((dbh_in < 1) & (ht[mask_spruce] < (3 * 0.3048)), 1, _Pm)
         Pm[mask_spruce] = _Pm
     # FOFEM Eq 15 - Engelmann spruce
-    Pm[mask_pien] = 1 / (1 + np.exp(-(0.0845 + (cvs[mask_pien] * 0.0445))))
+    if np.any(mask_pien):
+        Pm[mask_pien] = 1 / (1 + np.exp(-(0.0845 + (cvs[mask_pien] * 0.0445))))
     # FOFEM Eq 18 - Sugar Pine
-    Pm[mask_pila] = 1 / (1 + np.exp(-(-2.0588 + (np.power(cls[mask_pila], 2) * 0.000814))))
+    if np.any(mask_pila):
+        Pm[mask_pila] = 1 / (1 + np.exp(-(-2.0588 + (np.power(cls[mask_pila], 2) * 0.000814))))
     # FOFEM Eq 5 - Longleaf Pine
     if np.any(mask_pipa2):
         barkT = 0.435 + (0.031 * dbh[mask_pipa2])
@@ -258,7 +266,6 @@ def _mort_crnsch(
         )
     # FOFEM Eq 4 - Aspen
     if np.any(mask_aspen):
-        sev = aspenSev[mask_aspen] if aspenSev is not None else np.array(['other'] * np.sum(mask_aspen))
         dbh_a = dbh[mask_aspen]
         char_ht_a = char_ht[mask_aspen]
         Pm[mask_aspen] = np.where(
@@ -267,10 +274,11 @@ def _mort_crnsch(
             1 / (1 + np.exp((0.0858 * dbh_a) - (0.118 * char_ht_a * 12) - 2.157))
         )
     # FOFEM Eq 20 - Douglas-fir
-    Pm[mask_psme] = 1 / (1 + np.exp(-(-2.0346 +
-                                      (cvs[mask_psme] * 0.0906) -
-                                      (np.power(cvs[mask_psme], 2) * 0.0022) +
-                                      (np.power(cvs[mask_psme], 3) * 0.000019))))
+    if np.any(mask_psme):
+        Pm[mask_psme] = 1 / (1 + np.exp(-(-2.0346 +
+                                          (cvs[mask_psme] * 0.0906) -
+                                          (np.power(cvs[mask_psme], 2) * 0.0022) +
+                                          (np.power(cvs[mask_psme], 3) * 0.000019))))
     # FOFEM Eq 1 - All other species
     mask_other = ~(mask_abco | mask_abgr | mask_abma | mask_cade | mask_laoc |
                    mask_pial | mask_spruce | mask_pien | mask_pila | mask_pipa2 |
@@ -289,16 +297,17 @@ def _mort_crnsch(
 
 
 def process_mortality(
-    df: pd.DataFrame,
-    amb_t: float = 25,
-    in_stand_ws: float = 0
+    plot_csv_path: str,
+    tree_csv_path: str,
+    out_dir: str,
+    aspen_sev: str = 'low',
 ) -> None:
     """
     Process mortality for a DataFrame of trees using the CRNSCH model.
 
     :param df: DataFrame containing tree data with required columns.
     :param amb_t: Ambient temperature in Celsius.
-    :param in_stand_ws: In-stand wind speed in m/s.
+    :param instand_ws: In-stand wind speed in m/s.
     :return: DataFrame with an added 'mortality_crnsch' column.
     """
     print('\nProcessing Post-Fire Tree Mortality (via FOFEM CRNSCH model)')
@@ -308,53 +317,96 @@ def process_mortality(
         os.path.join(os.path.dirname(__file__), 'supporting_data', 'tree_parameters.csv')
     ).set_index('Species')
 
+
+    # Load plot fire and tree data
+    plot_fire_df = helper.get_df(plot_csv_path)
+    tree_df = helper.get_df(tree_csv_path)
+
+    # Generate required columns list
+    required_cols = ['ws', 'canopy_cover', 'ht_ovrstry_live', 'ccp_fsg', 'ws', 'hfi', 'fire_type', 'temp']
+    # Remove rows with missing required data
+    plot_fire_df = plot_fire_df.dropna(subset=required_cols)
+
+    # Calculate in-stand wind speed
+    plot_fire_df['instand_ws'] = fc.getMidFlameWS(
+        wind_speed = plot_fire_df['ws'].to_numpy(),
+        canopy_cover = plot_fire_df['canopy_cover'].to_numpy(),
+        canopy_ht = plot_fire_df['ht_ovrstry_live'].to_numpy(),
+        canopy_baseht = plot_fire_df['ccp_fsg'].to_numpy(),
+        units = 'SI'
+    )
+
+    # Merge plot fire data into tree data
+    merge_cols = ['unique_id', 'instand_ws', 'hfi', 'fire_type', 'temp']
+    df = tree_df.merge(plot_fire_df[merge_cols], on='unique_id', how='left')
+
+    # Calculate mortality using CRNSCH model
+    print('Calculating tree-level mortality using FOFEM CRNSCH model...')
     df['mortality_crnsch'] = _mort_crnsch(
         spp=df['spp'].to_numpy(),
-        dbh=df['dbh_m'].to_numpy() * 100,  # Convert m to cm
-        ht=df['ht_m'].to_numpy(),
-        crown_depth=df['crwn_depth_m'].to_numpy(),
-        bark_thickness=df['bark_thickness_cm'].to_numpy() if 'bark_thickness_cm' in df.columns else None,
-        fire_intensity=df['fire_intensity_kw_m'].to_numpy() if 'fire_intensity_kw_m' in df.columns else None,
-        amb_t=amb_t,
-        flame_length=df['flame_length_m'].to_numpy() if 'flame_length_m' in df.columns else None,
-        char_ht=df['char_height_m'].to_numpy() if 'char_height_m' in df.columns else None,
-        scorch_ht=df['scorch_height_m'].to_numpy() if 'scorch_height_m' in df.columns else None,
-        in_stand_ws=in_stand_ws,
-        aspenSev=df['aspen_severity'].to_numpy() if 'aspen_severity' in df.columns else None,
+        dbh=df['dbh'].to_numpy(),  # Convert m to cm
+        ht=df['ht'].to_numpy(),
+        crown_depth=df['crown_depth'].to_numpy(),
+        bark_thickness=df['bark_thick'].to_numpy() if 'bark_thick' in df.columns else None,
+        fire_intensity=df['hfi'].to_numpy() if 'hfi' in df.columns else None,
+        amb_t=df['temp'].to_numpy(),
+        flame_length=df['flame_length'].to_numpy() if 'flame_length' in df.columns else None,
+        char_ht=df['char_height'].to_numpy() if 'char_height' in df.columns else None,
+        scorch_ht=df['scorch_height'].to_numpy() if 'scorch_height' in df.columns else None,
+        instand_ws=df['instand_ws'].to_numpy(),
+        aspen_sev=aspen_sev,
         tree_params_df=tree_params_df
     )
 
+    # Calculate tree-level mortality
+    tree_df['prob_mortality_crnsch'] = df['mortality_crnsch']
+    tree_df['tree_dead_crnsch'] = np.where(tree_df['prob_mortality_crnsch'] > 0.5, 1, 0)
+    tree_df['tree_dead_ba_crnsch'] = np.where(tree_df['tree_dead_crnsch'] == 1, tree_df['ba_live_ha'], 0)
+
+    # Calculate plot-level proportion of dead basal area
+    print('Calculating plot-level fire severity...')
+    plot_fire_df['total_live_ba'] = plot_fire_df['unique_id'].map(
+        tree_df.groupby('unique_id')['ba_live_ha'].sum()
+    )
+    plot_fire_df['dead_ba_crnsch'] = plot_fire_df['unique_id'].map(
+        tree_df.groupby('unique_id')['tree_dead_ba_crnsch'].sum()
+    )
+    plot_fire_df['prop_dead_ba_crnsch'] = plot_fire_df['dead_ba_crnsch'] / plot_fire_df['total_live_ba']
+
+    # Calculate plot-level fire severity per Agee (1994)
+    def severity_class(prop_dead_ba):
+        if prop_dead_ba <= 0.2:
+            return 'low'
+        elif 0.2 < prop_dead_ba < 0.7:
+            return 'mod'
+        else:
+            return 'high'
+    plot_fire_df['fire_severity'] = plot_fire_df['prop_dead_ba_crnsch'].apply(severity_class)
+
     # ### SAVE DATASETS TO OUTPUT FOLDER
-    os.makedirs(out_folder, exist_ok=True)
-    helper.export_csv(df, os.path.join(out_folder, 'survey_0.csv'))
-    helper.export_csv(sapling_df, os.path.join(out_folder, 'sapling_1.csv'))
-    helper.export_csv(tree_df, os.path.join(out_folder, 'tree_plot_2.csv'))
+    print('Saving results to output folder...')
+    os.makedirs(out_dir, exist_ok=True)
+    helper.export_csv(tree_df, os.path.join(out_dir, 'tree_mortality_results.csv'))
+    helper.export_csv(plot_fire_df, os.path.join(out_dir, 'plot_severity_results.csv'))
 
     return
 
 
-def _test_mortality():# Define input and output folders
+if __name__ == '__main__':
     # Define input and output folders
     test_dir = os.path.join(os.path.dirname(__file__), 'tests')
-    _in_folder = os.path.join(test_dir, 'test_data', 'conpyro')
-    _out_folder = os.path.join(test_dir, 'results', 'conpyro')
-
-    _in_tree_data_dir = r'E:\UBC_FuelAnalyst_Testing\Survey123_Data\_Results'
-    _tree_df_path = os.path.join(_in_folder, 'master_tree_df.csv')
+    _in_tree_data_dir = os.path.join(test_dir, 'results', 'fuel_analyst')
     _in_plot_fire_data_dir = r'E:\UBC_FuelAnalyst_Testing\ConPyro_Data'
-    _plot_fire_df_path = os.path.join(_in_plot_fire_data_dir, 'ccp_df_results.csv')
-    _out_folder = r'E:\UBC_FuelAnalyst_Testing\ConPyro_Data\results'
+    _out_dir = os.path.join(test_dir, 'results', 'fofem_mortality')
 
     # Join plot fire and tree dataframes on 'unique_id'
-    plot_fire_df = helper.get_df(_plot_fire_df_path)
-    tree_df = helper.get_df(_tree_df_path)
-    merged_tree_df = tree_df.merge(
-        plot_fire_df[
-            ['unique_id', 'ws', 'canopy_cover', 'ht_ovrstry_live', 'ccp_fsg', 'hfi', 'fire_type', 'temp', 'rh']
-        ], on='unique_id', how='left')
+    _plot_fire_df_path = os.path.join(_in_plot_fire_data_dir, 'ccp_df_results.csv')
+    _tree_df_path = os.path.join(_in_tree_data_dir, 'master_tree_df.csv')
 
-
-
-
-if __name__ == '__main__':
-    _test_mortality()
+    # Process mortality
+    process_mortality(
+        plot_csv_path=_plot_fire_df_path,
+        tree_csv_path=_tree_df_path,
+        out_dir=_out_dir,
+        aspen_sev='low',
+    )
