@@ -58,8 +58,6 @@ credentials.json
 *.zip
 *.tar.gz
 *.csv
-!fuel_analyst/supporting_data/plant_photoload.csv
-!fuel_analyst/supporting_data/tree_parameters.csv
 
 # Testing data (keep sample data in supporting_data only)
 src/fuel_analyst/tests/results/
