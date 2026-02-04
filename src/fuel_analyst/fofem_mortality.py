@@ -150,7 +150,7 @@ def process_mortality(
     print('\tCalculating stand-level fire severity...')
     stand_fire_df = _calc_severity_class(stand_fire_df)
 
-    # ### SAVE DATASETS TO OUTPUT FOLDER
+    # Save results to output folder
     print('\tSaving results to output folder...')
     os.makedirs(out_dir, exist_ok=True)
     helper.export_csv(tree_df, os.path.join(out_dir, 'tree_mortality_results.csv'))
@@ -163,7 +163,7 @@ if __name__ == '__main__':
     # Define input and output folders
     test_dir = os.path.join(os.path.dirname(__file__), 'tests')
     _in_tree_data_dir = os.path.join(test_dir, 'results', 'fuel_analyst')
-    _in_fire_data_dir = r'E:\UBC_FuelAnalyst_Testing\ConPyro_Data'
+    _in_fire_data_dir = os.path.join(test_dir, 'results', 'conpyro')
     _out_dir = os.path.join(test_dir, 'results', 'fofem_mortality')
     _aspen_sev = 'low'
 
