@@ -18,11 +18,11 @@ if pkg_dir not in sys.path:
 from dependencies.conpyro.conpyro import conpyro
 
 
-def run_conpyro(csv_path: str,
+def run_conpyro(in_csv_path: str,
                 output_request_list: list,
-                out_path: str) -> None:
+                out_csv_path: str) -> None:
     # Get dataframe
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(in_csv_path)
 
     # Drop rows with empty values in required columns
     drop_empty_rows_in_cols = ['stand_density', 'stand_type']
@@ -84,17 +84,20 @@ def run_conpyro(csv_path: str,
     del new_df
 
     # Save results to CSV
-    df.to_csv(out_path, index=False)
+    df.to_csv(out_csv_path, index=False)
 
     return
 
 
 # Test routine for MoistureContent class
 if __name__ == '__main__':
-    _csv_path = os.path.join(os.path.dirname(__file__), 'tests', 'test_data', 'conpyro', 'ccp_df.csv')
-    _out_dir = os.path.join(os.path.dirname(__file__), 'tests', 'results', 'conpyro')
+    # Define input and output folders
+    test_dir = os.path.join(os.path.dirname(__file__), 'tests')
+    _in_dir = os.path.join(test_dir, 'test_data', 'conpyro')
+    _out_dir = os.path.join(test_dir, 'results', 'conpyro')
     os.makedirs(_out_dir, exist_ok=True)
-    _out_path = os.path.join(_out_dir, 'ccp_df_results.csv')
+    _in_csv_path = os.path.join(_in_dir, 'ccp_df.csv')
+    _out_csv_path = os.path.join(_out_dir, 'ccp_df_results.csv')
 
     _output_request_list = [
         'fsg', 'mc_ffmc', 'mc_dmc', 'mc_sa', 'cac', 'cfo_prob',
@@ -102,6 +105,6 @@ if __name__ == '__main__':
         'cfb', 'sfi', 'cfi', 'hfi'
     ]
 
-    run_conpyro(csv_path=_csv_path,
+    run_conpyro(in_csv_path=_in_csv_path,
                 output_request_list=_output_request_list,
-                out_path=_out_path)
+                out_csv_path=_out_csv_path)
