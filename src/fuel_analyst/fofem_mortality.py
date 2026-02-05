@@ -159,6 +159,7 @@ def process_mortality(
     return
 
 
+# Test routine for FOFEM mortality processing
 if __name__ == '__main__':
     # Define input and output folders
     test_dir = os.path.join(os.path.dirname(__file__), 'tests')
