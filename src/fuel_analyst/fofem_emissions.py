@@ -27,11 +27,12 @@ def process_emissions() -> None:
     return
 
 
+# Test routine for FOFEM emissions processing
 if __name__ == '__main__':
     # Define input and output folders
     test_dir = os.path.join(os.path.dirname(__file__), 'tests')
     _in_stand_data_dir = os.path.join(test_dir, 'results', 'fuel_analyst')
-    _in_fire_data_dir = os.path.join(test_dir, 'results', 'conpyro')
+    _in_fire_data_dir = os.path.join(test_dir, 'results', 'fofem_mortality')
     _out_dir = os.path.join(test_dir, 'results', 'fofem_mortality')
 
     # Get stand fire and tree csv paths
