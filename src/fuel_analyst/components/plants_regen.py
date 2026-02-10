@@ -18,6 +18,120 @@ except ImportError:
     import helper
 
 
+def _calc_plants_fccs_fofem_attributes(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
+    """
+    Aggregates shrub species composition for each plot where the dominant substrate is shrubland.
+    For each row, identifies up to five shrub species, sums percent cover for duplicate species codes,
+    and formats the result for FCCS and FOFEM input. Adds columns for FCCS species, FCCS shrub species,
+    and FOFEM shrub species groupings.
+
+    :param df: DataFrame containing plant species, percent cover, and dominant substrate data.
+    :return: Tuple of updated DataFrame and a list of columns to keep.
+    """
+
+    def _fccs_fofem_species(row, shrub_only=False, fofem_shrub_group=False):
+        # Collect species codes and percent cover for up to five species
+        species = []
+        total_pct = 0
+        sagebrush_pct = 0
+        for i in range(1, 6):
+            label = row.get(f'pc_species_{i}_label', '')
+            pl_code = row.get(f'pc_species_{i}_plCode', '')
+            pct = row.get(f'pc_species_{i}_pct', 0)
+            # Only include shrubs if shrub_only is True
+            if pd.notnull(label) and (not shrub_only or 'Shrub' in label):
+                if pd.notnull(pl_code) and pd.notnull(pct):
+                    species.append((pl_code, float(pct)))
+                    total_pct += float(pct)
+                    # Track sagebrush percent cover for FOFEM grouping
+                    if shrub_only and fofem_shrub_group and pl_code in ['ARFR', 'ARTR']:
+                        sagebrush_pct += float(pct)
+        # Aggregate percent cover by species code, convert to relative percent
+        agg = {}
+        for pl_code, pct in species:
+            rel_pct = pct / total_pct * 100 if total_pct > 0 else 0
+            agg[pl_code] = agg.get(pl_code, 0) + rel_pct
+        # For FOFEM, group as Sagebrush or ShrubGroup
+        if shrub_only and fofem_shrub_group:
+            return 'Sagebrush' if sagebrush_pct > 50 else 'ShrubGroup'
+        # Format output string for FCCS/FOFEM
+        return ' | '.join(f'{k}:{v:.1f}' for k, v in agg.items())
+
+    # FCCS species composition for all surface plant species
+    df['fccs_spl_species'] = df.apply(lambda row: _fccs_fofem_species(row), axis=1)
+    # FCCS shrub species composition for shrub-dominated plots
+    df['fccs_shrub_species'] = df.apply(
+        lambda row: _fccs_fofem_species(row, shrub_only=True)
+        if row['dom_substrate'] in ['SL', 'ST'] else '', axis=1
+    )
+    # FOFEM shrub species grouping for shrub-dominated plots
+    df['fofem_shrub_group'] = df.apply(
+        lambda row: _fccs_fofem_species(row, shrub_only=True, fofem_shrub_group=True)
+        if row['dom_substrate'] in ['SL', 'ST'] else '', axis=1
+    )
+
+    return df, ['fofem_shrub_group']
+
+
+def _get_dom_substrate(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
+    """
+    Determines the dominant substrate type for each row in the DataFrame based on percent cover
+    and other plant attribute columns. Adds 'dom_sub' and 'dom_substrate' columns to the DataFrame.
+
+    :param df: DataFrame containing plant cover and height data.
+    :return: pd.DataFrame: Updated DataFrame with dominant substrate column.
+    """
+    # List of substrate percent cover columns to consider
+    substrate_list = ['bryoid_pct_total', 'grass_pct_total', 'herb_forb_pct_total', 'shrubs_pct_total']
+    # Mapping from substrate column to code
+    substrate_dict = {
+        'bryoid_pct_total': 'BY',
+        'grass_pct_total': 'HG',
+        'herb_forb_pct_total': 'HF',
+        'shrubs_pct_total': 'shrubs'
+    }
+    # Assign initial dominant substrate code based on max percent cover
+    df['dom_sub'] = df[substrate_list].apply(lambda y: substrate_dict.get(y.idxmax()), axis=1)
+
+    # Precompute boolean masks and values for substrate logic
+    shrubs_dom = df['shrubs_pct_total'].gt(50)
+    tall_shrubs = df['shrubs_ht_avg'] >= 2
+    bryo_dom = df['bryoid_pct_total'].gt(50)
+    herbs_dom = df['herb_forb_pct_total'].gt(50)
+    grass_dom = df['grass_pct_total'].gt(50)
+    herbs_grass_sum = df['herb_forb_pct_total'] + df['grass_pct_total']
+    herbs_grass_dom = herbs_grass_sum > 50
+    herbs_ratio = df['herb_forb_pct_total'] / herbs_grass_sum.replace(0, np.nan)
+    grass_ratio = df['grass_pct_total'] / herbs_grass_sum.replace(0, np.nan)
+    dom_shrubs = df['dom_sub'] == 'shrubs'
+
+    # Assign final dominant substrate class based on rules and conditions
+    df['dom_substrate'] = np.select(
+        [
+            shrubs_dom,  # Shrubs dominant
+            bryo_dom,    # Bryoid dominant
+            herbs_dom,   # Herbs/forbs dominant
+            grass_dom,   # Grasses dominate
+            herbs_grass_dom & (herbs_ratio > 0.5),  # Herbs/forbs > 50% and dominate over grass
+            herbs_grass_dom & (grass_ratio > 0.5),  # Grasses > 50% and dominate over herbs
+            herbs_grass_dom,  # Herbs + grass > 50% but neither dominates
+            dom_shrubs       # Initial dominant substrate is shrubs
+        ],
+        [
+            np.where(tall_shrubs, 'ST', 'SL'),  # Tall or low shrubland
+            'BY',  # Bryoids (no distinction between mosses and lichens)
+            'HF',  # Herb - Forbs
+            'HG',  # Herb - Graminoids
+            'HF',  # Herb - Forbs
+            'HG',  # Herb - Graminoids
+            'HE',  # Herbaceous (no distinction between forbs and graminoids)
+            np.where(tall_shrubs, 'ST', 'SL')  # Tall or low shrubland based on regeneration height
+        ],
+        default=df['dom_sub']
+    )
+    return df, ['dom_substrate']
+
+
 def _get_photoload_biomass(photoload_code: str, pct_cover: float, height: float):
     photoload_dict = {
         'AMAL': (height / 35.56) * 0.0148 * np.exp(0.0454 * pct_cover),
@@ -34,6 +148,44 @@ def _get_photoload_biomass(photoload_code: str, pct_cover: float, height: float)
     }
 
     return photoload_dict.get(photoload_code, np.nan)
+
+
+def _process_regen(df: pd.DataFrame, regen_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, list]:
+    """
+    Calculates stand-level (per hectare) regeneration metrics for small and tall, live and dead trees,
+    and adds these as new columns to the main DataFrame.
+
+    Small regen <= 30cm Height; Tall regen: 30cm < Height < 1.3 m
+
+    :param df: DataFrame containing plot-level plant data.
+    :param regen_df: DataFrame containing regeneration counts by plot.
+    :return: Updated DataFrame with regeneration density columns (per hectare).
+    """
+    print('\tProcessing data for tree regeneration')
+    # Multiplier to convert plot counts to per hectare values (for 5.64m radius plot)
+    plot_multiplier = 100
+
+    regen_df['rgn_live_small_cnt'] /= regen_df['rgn_small_plot_proportion']
+    regen_df['rgn_live_tall_cnt'] /= regen_df['rgn_tall_plot_proportion']
+
+    # Aggregate regeneration counts by plot (ParentGlobalID), summing each count type
+    regen_sums = regen_df.groupby('ParentGlobalID').agg({
+        'rgn_live_small_cnt': 'sum',
+        'rgn_live_tall_cnt': 'sum',
+    }).mul(plot_multiplier)  # Convert to per hectare
+
+    # Initialize columns to keep in the master DataFrame
+    keep_columns = []
+
+    # Map aggregated regeneration counts to main DataFrame and normalize by number of plots
+    for col in ['rgn_live_small_cnt', 'rgn_live_tall_cnt']:
+        new_col = col.replace('rgn_', 'dens_regen_').replace('_cnt', '_ha')
+        df[new_col] = df.GlobalID.map(regen_sums[col])
+        df[new_col] = df[new_col].fillna(0)  # Fill missing values with 0
+        # Add the new columns to the keep_columns list
+        keep_columns.append(new_col)
+
+    return df, regen_df, keep_columns
 
 
 def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
@@ -170,158 +322,6 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     ]
 
     return df, keep_columns
-
-
-def _get_dom_substrate(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
-    """
-    Determines the dominant substrate type for each row in the DataFrame based on percent cover
-    and other plant attribute columns. Adds 'dom_sub' and 'dom_substrate' columns to the DataFrame.
-
-    :param df: DataFrame containing plant cover and height data.
-    :return: pd.DataFrame: Updated DataFrame with dominant substrate column.
-    """
-    # List of substrate percent cover columns to consider
-    substrate_list = ['bryoid_pct_total', 'grass_pct_total', 'herb_forb_pct_total', 'shrubs_pct_total']
-    # Mapping from substrate column to code
-    substrate_dict = {
-        'bryoid_pct_total': 'BY',
-        'grass_pct_total': 'HG',
-        'herb_forb_pct_total': 'HF',
-        'shrubs_pct_total': 'shrubs'
-    }
-    # Assign initial dominant substrate code based on max percent cover
-    df['dom_sub'] = df[substrate_list].apply(lambda y: substrate_dict.get(y.idxmax()), axis=1)
-
-    # Precompute boolean masks and values for substrate logic
-    shrubs_dom = df['shrubs_pct_total'].gt(50)
-    tall_shrubs = df['shrubs_ht_avg'] >= 2
-    bryo_dom = df['bryoid_pct_total'].gt(50)
-    herbs_dom = df['herb_forb_pct_total'].gt(50)
-    grass_dom = df['grass_pct_total'].gt(50)
-    herbs_grass_sum = df['herb_forb_pct_total'] + df['grass_pct_total']
-    herbs_grass_dom = herbs_grass_sum > 50
-    herbs_ratio = df['herb_forb_pct_total'] / herbs_grass_sum.replace(0, np.nan)
-    grass_ratio = df['grass_pct_total'] / herbs_grass_sum.replace(0, np.nan)
-    dom_shrubs = df['dom_sub'] == 'shrubs'
-
-    # Assign final dominant substrate class based on rules and conditions
-    df['dom_substrate'] = np.select(
-        [
-            shrubs_dom,  # Shrubs dominant
-            bryo_dom,    # Bryoid dominant
-            herbs_dom,   # Herbs/forbs dominant
-            grass_dom,   # Grasses dominate
-            herbs_grass_dom & (herbs_ratio > 0.5),  # Herbs/forbs > 50% and dominate over grass
-            herbs_grass_dom & (grass_ratio > 0.5),  # Grasses > 50% and dominate over herbs
-            herbs_grass_dom,  # Herbs + grass > 50% but neither dominates
-            dom_shrubs       # Initial dominant substrate is shrubs
-        ],
-        [
-            np.where(tall_shrubs, 'ST', 'SL'),  # Tall or low shrubland
-            'BY',  # Bryoids (no distinction between mosses and lichens)
-            'HF',  # Herb - Forbs
-            'HG',  # Herb - Graminoids
-            'HF',  # Herb - Forbs
-            'HG',  # Herb - Graminoids
-            'HE',  # Herbaceous (no distinction between forbs and graminoids)
-            np.where(tall_shrubs, 'ST', 'SL')  # Tall or low shrubland based on regeneration height
-        ],
-        default=df['dom_sub']
-    )
-    return df, ['dom_substrate']
-
-
-def _calc_plants_fccs_fofem_attributes(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
-    """
-    Aggregates shrub species composition for each plot where the dominant substrate is shrubland.
-    For each row, identifies up to five shrub species, sums percent cover for duplicate species codes,
-    and formats the result for FCCS and FOFEM input. Adds columns for FCCS species, FCCS shrub species,
-    and FOFEM shrub species groupings.
-
-    :param df: DataFrame containing plant species, percent cover, and dominant substrate data.
-    :return: Tuple of updated DataFrame and a list of columns to keep.
-    """
-
-    def _fccs_fofem_species(row, shrub_only=False, fofem_shrub_group=False):
-        # Collect species codes and percent cover for up to five species
-        species = []
-        total_pct = 0
-        sagebrush_pct = 0
-        for i in range(1, 6):
-            label = row.get(f'pc_species_{i}_label', '')
-            pl_code = row.get(f'pc_species_{i}_plCode', '')
-            pct = row.get(f'pc_species_{i}_pct', 0)
-            # Only include shrubs if shrub_only is True
-            if pd.notnull(label) and (not shrub_only or 'Shrub' in label):
-                if pd.notnull(pl_code) and pd.notnull(pct):
-                    species.append((pl_code, float(pct)))
-                    total_pct += float(pct)
-                    # Track sagebrush percent cover for FOFEM grouping
-                    if shrub_only and fofem_shrub_group and pl_code in ['ARFR', 'ARTR']:
-                        sagebrush_pct += float(pct)
-        # Aggregate percent cover by species code, convert to relative percent
-        agg = {}
-        for pl_code, pct in species:
-            rel_pct = pct / total_pct * 100 if total_pct > 0 else 0
-            agg[pl_code] = agg.get(pl_code, 0) + rel_pct
-        # For FOFEM, group as Sagebrush or ShrubGroup
-        if shrub_only and fofem_shrub_group:
-            return 'Sagebrush' if sagebrush_pct > 50 else 'ShrubGroup'
-        # Format output string for FCCS/FOFEM
-        return ' | '.join(f'{k}:{v:.1f}' for k, v in agg.items())
-
-    # FCCS species composition for all surface plant species
-    df['fccs_spl_species'] = df.apply(lambda row: _fccs_fofem_species(row), axis=1)
-    # FCCS shrub species composition for shrub-dominated plots
-    df['fccs_shrub_species'] = df.apply(
-        lambda row: _fccs_fofem_species(row, shrub_only=True)
-        if row['dom_substrate'] in ['SL', 'ST'] else '', axis=1
-    )
-    # FOFEM shrub species grouping for shrub-dominated plots
-    df['fofem_shrub_group'] = df.apply(
-        lambda row: _fccs_fofem_species(row, shrub_only=True, fofem_shrub_group=True)
-        if row['dom_substrate'] in ['SL', 'ST'] else '', axis=1
-    )
-
-    return df, ['fofem_shrub_group']
-
-
-def _process_regen(df: pd.DataFrame, regen_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, list]:
-    """
-    Calculates stand-level (per hectare) regeneration metrics for small and tall, live and dead trees,
-    and adds these as new columns to the main DataFrame.
-
-    Small regen <= 30cm Height; Tall regen: 30cm < Height < 1.3 m
-
-    :param df: DataFrame containing plot-level plant data.
-    :param regen_df: DataFrame containing regeneration counts by plot.
-    :return: Updated DataFrame with regeneration density columns (per hectare).
-    """
-    print('\tProcessing data for tree regeneration')
-    # Multiplier to convert plot counts to per hectare values (for 5.64m radius plot)
-    plot_multiplier = 100
-
-    regen_df['rgn_live_small_cnt'] /= regen_df['rgn_small_plot_proportion']
-    regen_df['rgn_live_tall_cnt'] /= regen_df['rgn_tall_plot_proportion']
-
-    # Aggregate regeneration counts by plot (ParentGlobalID), summing each count type
-    regen_sums = regen_df.groupby('ParentGlobalID').agg({
-        'rgn_live_small_cnt': 'sum',
-        'rgn_live_tall_cnt': 'sum',
-    }).mul(plot_multiplier)  # Convert to per hectare
-
-    # Initialize columns to keep in the master DataFrame
-    keep_columns = []
-
-    # Map aggregated regeneration counts to main DataFrame and normalize by number of plots
-    for col in ['rgn_live_small_cnt', 'rgn_live_tall_cnt']:
-        new_col = col.replace('rgn_', 'dens_regen_').replace('_cnt', '_ha')
-        df[new_col] = df.GlobalID.map(regen_sums[col])
-        df[new_col] = df[new_col].fillna(0)  # Fill missing values with 0
-        # Add the new columns to the keep_columns list
-        keep_columns.append(new_col)
-
-    return df, regen_df, keep_columns
 
 
 def process_plants_regen(in_folder: str, out_folder: str) -> tuple[pd.DataFrame, list]:
