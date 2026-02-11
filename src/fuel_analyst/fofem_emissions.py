@@ -8,10 +8,8 @@ __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
 import os
 import shutil
-
 import numpy as np
 import pandas as pd
-import warnings
 import subprocess
 from csv import reader as CSV
 import concurrent.futures
@@ -23,7 +21,6 @@ if pkg_dir not in sys.path:
 
 from src.fuel_analyst.components import helper
 from src.fuel_analyst.components  import fwis_moisture_content as mc
-from dependencies.flame_components import flame_components as fc
 from dependencies.pyfofem.src.pyfofem import pyfofem as fofem
 
 # Dictionary of seasons for each month in the year
@@ -348,6 +345,7 @@ def process_emissions(
     :param stand_wx_fire_csv_path: Path to stand fire severity CSV file.
     :param fofem_consume_csv_path: Path to FOFEM consumption CSV file.
     :param out_dir: Output directory for Burnup-In.brn files.
+    :param model_soil_heating: Whether to use FOFEM soil heating consumption model (True) or not (False).
     :return: None
     """
     # Ensure output directory exists
@@ -379,17 +377,18 @@ def process_emissions(
     merged_df =_calc_fuel_moisture_content(merged_df)
 
     # Model emissions using FOFEM with Burnup-In.brn files
-    # with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
-    #     results = list(executor.map(
-    #         _model_emissions,
-    #         merged_df.to_dict(orient='records'),
-    #         [out_dir] * len(merged_df),
-    #         [consume_model] * len(merged_df)
-    #     ))
-    #
-    results = [
-        _model_emissions(row, out_dir, consume_model) for row in merged_df.to_dict(orient='records')
-    ]
+    if os.cpu_count() >= 4:  # Use multiprocessing if 4 or more CPU cores are available
+        with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count() - 1) as executor:
+            results = list(executor.map(
+                _model_emissions,
+                merged_df.to_dict(orient='records'),
+                [out_dir] * len(merged_df),
+                [consume_model] * len(merged_df)
+            ))
+    else:
+        results = [
+            _model_emissions(row, out_dir, consume_model) for row in merged_df.to_dict(orient='records')
+        ]
 
     # Unpack results
     fofem_consume_results, out_emission_dirs = zip(*results)
