@@ -83,52 +83,8 @@ def gen_fofem_consumption_df(
         # Select moisture regime values, defaulting to 'Very Dry' if not found
         fofem_moist_regime = fofem_moist_regime_dict.get(moist_regime, fofem_moist_regime_dict['Very Dry'])
 
-        # Conversion factor from kg/m^2 to tons/acre
-        conv = 4.46089561
-
-        # Build the FOFEM consumption DataFrame with required variables and unit conversions
-        fofem_consume_df = pd.DataFrame({
-            '# PlotId': df.unique_id,
-            'Litter': (df['ffl_litter_kgpm2'] * conv).round(2).fillna(0),
-            'wfl1 Hour': ((df['woody_kgpm2_fofem_sound_0_635'] +
-                           df['woody_kgpm2_fofem_rotten_0_635']) * conv).round(2).fillna(0),
-            'wfl10 Hour': ((df['woody_kgpm2_fofem_sound_2_54'] +
-                            df['woody_kgpm2_fofem_rotten_2_54']) * conv).round(2).fillna(0),
-            'wfl10 Hour Moisture': fofem_moist_regime[1],
-            'wfl100 Hour': ((df['woody_kgpm2_fofem_sound_7_62'] +
-                             df['woody_kgpm2_fofem_rotten_7_62']) * conv).round(2).fillna(0),
-            'wfl3-6S': (df['woody_kgpm2_fofem_sound_15_24'] * conv).round(2).fillna(0),
-            'wfl6-9S': (df['woody_kgpm2_fofem_sound_22_86'] * conv).round(2).fillna(0),
-            'wfl9-20S': (df['woody_kgpm2_fofem_sound_50_8'] * conv).round(2).fillna(0),
-            'wfl20plusS': (df['woody_kgpm2_fofem_sound_gt50_8'] * conv).round(2).fillna(0),
-            'wfl3-6R': (df['woody_kgpm2_fofem_rotten_15_24'] * conv).round(2).fillna(0),
-            'wfl6-9R': (df['woody_kgpm2_fofem_rotten_22_86'] * conv).round(2).fillna(0),
-            'wfl9-20R': (df['woody_kgpm2_fofem_rotten_50_8'] * conv).round(2).fillna(0),
-            'wfl20plusR': (df['woody_kgpm2_fofem_rotten_gt50_8'] * conv).round(2).fillna(0),
-            'wfl1000HourMoisture': fofem_moist_regime[2],
-            'Duff': (df['ffl_duff_kgpm2'] * conv).round(2).fillna(0),
-            'DuffMoisture': fofem_moist_regime[0],
-            'DuffDepth': (df['stand_duff_depth_cm'] / 2.54).round(2).fillna(0),  # Convert cm to inches
-            'Herbaceous': (df['herbs_kgpm2'] * conv).round(2).fillna(0),
-            'Shrub': (df['shrubs_kgpm2'] * conv).round(2).fillna(0),
-            'CrownFoliage': (df['stand_foliage_fofem_kgpm2_sum'] * conv).round(2).fillna(0),
-            'CrownBranch': (df['stand_branches_fofem_kgpm2_sum'] * conv).round(2).fillna(0),
-            'PercentCrownBurned': 0,  # Default value
-            'Region': fofem_region,
-            'Season': fofem_season,
-            'SoilFamily': df['SoilFamily'] if model_soil_heat else 'NA',
-            'SoilMoisture': fofem_moist_regime[3],
-            # FOFEM consumption equation placeholders
-            'LitterLoad_ConsumEq1': -1,
-            'PctDuff_ConsumEq2': -1,
-            'DuffDepth_ConsumEq3': -1,
-            'MSE_ConsumEq4': -1,
-            'Herb_ConsumEq5': -1,
-            'Shrub_ConsumEq6': -1
-        })
-
         # Assign CoverGroup based on dominant species and substrate codes
-        fofem_consume_df['CoverGroup'] = np.where(
+        fofem_cover_group = np.where(
             df.SPECIES_CD_1 == 'PY', 'Ponderosa',
             np.where(df['SPECIES_CD_1'].isin([
                 'B', 'BA', 'BB', 'BG', 'BL', 'BN', 'S', 'SA', 'SB', 'SE', 'SR',
@@ -141,10 +97,56 @@ def gen_fofem_consumption_df(
         )
 
         # Assign FuelCategory based on treatment type
-        fofem_consume_df['FuelCategory'] = np.where(
+        fofem_fuel_category = np.where(
             df.treatment_type.isin(['untreated', 'burned']),
             'Natural',
             np.where(df.treatment_type == 'treated', 'Slash', 'Piles')
         )
+
+        # Conversion factor from kg/m^2 to tons/acre
+        conv = 4.46089561
+
+        # Build the FOFEM consumption DataFrame with required variables and unit conversions
+        fofem_consume_df = pd.DataFrame({
+            '#PlotId': df.unique_id,
+            'Litter': (df['ffl_litter_kgpm2'] * conv).round(2).fillna(0),
+            'wfl1Hour': ((df['woody_kgpm2_fofem_sound_0_635'] +
+                           df['woody_kgpm2_fofem_rotten_0_635']) * conv).round(2).fillna(0),
+            'wfl10Hour': ((df['woody_kgpm2_fofem_sound_2_54'] +
+                            df['woody_kgpm2_fofem_rotten_2_54']) * conv).round(2).fillna(0),
+            'wfl10HourMoisture': fofem_moist_regime[1],
+            'wfl100Hour': ((df['woody_kgpm2_fofem_sound_7_62'] +
+                             df['woody_kgpm2_fofem_rotten_7_62']) * conv).round(2).fillna(0),
+            'wfl3_6S': (df['woody_kgpm2_fofem_sound_15_24'] * conv).round(2).fillna(0),
+            'wfl6_9S': (df['woody_kgpm2_fofem_sound_22_86'] * conv).round(2).fillna(0),
+            'wfl9_20S': (df['woody_kgpm2_fofem_sound_50_8'] * conv).round(2).fillna(0),
+            'wfl20plusS': (df['woody_kgpm2_fofem_sound_gt50_8'] * conv).round(2).fillna(0),
+            'wfl3_6R': (df['woody_kgpm2_fofem_rotten_15_24'] * conv).round(2).fillna(0),
+            'wfl6_9R': (df['woody_kgpm2_fofem_rotten_22_86'] * conv).round(2).fillna(0),
+            'wfl9_20R': (df['woody_kgpm2_fofem_rotten_50_8'] * conv).round(2).fillna(0),
+            'wfl20plusR': (df['woody_kgpm2_fofem_rotten_gt50_8'] * conv).round(2).fillna(0),
+            'wfl1000HourMoisture': fofem_moist_regime[2],
+            'Duff': (df['ffl_duff_kgpm2'] * conv).round(2).fillna(0),
+            'DuffMoisture': fofem_moist_regime[0],
+            'DuffDepth': (df['stand_duff_depth_cm'] / 2.54).round(2).fillna(0),  # Convert cm to inches
+            'Herbaceous': (df['herbs_kgpm2'] * conv).round(2).fillna(0),
+            'Shrub': (df['shrubs_kgpm2'] * conv).round(2).fillna(0),
+            'CrownFoliage': (df['stand_foliage_fofem_kgpm2_sum'] * conv).round(2).fillna(0),
+            'CrownBranch': (df['stand_branches_fofem_kgpm2_sum'] * conv).round(2).fillna(0),
+            'PercentCrownBurned': 0,  # Default value
+            'Region': fofem_region,
+            'CoverGroup': fofem_cover_group,
+            'Season': fofem_season,
+            'FuelCategory': fofem_fuel_category,
+            'SoilFamily': df['SoilFamily'] if model_soil_heat else 'NA',
+            'SoilMoisture': fofem_moist_regime[3],
+            # FOFEM consumption equation placeholders
+            'LitterLoad_ConsumEq1': -1,
+            'PctDuff_ConsumEq2': -1,
+            'DuffDepth_ConsumEq3': -1,
+            'MSE_ConsumEq4': -1,
+            'Herb_ConsumEq5': -1,
+            'Shrub_ConsumEq6': -1
+        })
 
         return fofem_consume_df

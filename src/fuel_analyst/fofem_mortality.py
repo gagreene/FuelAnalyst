@@ -102,23 +102,34 @@ def process_mortality(
     stand_fire_df = helper.get_df(stand_fire_csv_path)
     tree_df = helper.get_df(tree_csv_path)
 
+    # If instand_ws column is missing, calculate it using FLAME components
+    if 'instand_ws' not in stand_fire_df.columns:
+        print('\tCalculating in-stand wind speed using FLAME components...')
+
+        # Verify required columns are present for in-stand wind speed calculation
+        required_ws_cols = ['ws', 'canopy_cover', 'ht_ovrstry_live', 'fsg']
+        missing_cols = [col for col in required_ws_cols if col not in stand_fire_df.columns]
+        if missing_cols:
+            raise ValueError(f'Missing required columns for in-stand wind speed calculation: {missing_cols}')
+
+        # Calculate in-stand wind speed
+        stand_fire_df['instand_ws'] = fc.getMidFlameWS(
+            wind_speed = stand_fire_df['ws'].to_numpy(),
+            canopy_cover = stand_fire_df['canopy_cover'].to_numpy(),
+            canopy_ht = stand_fire_df['ht_ovrstry_live'].to_numpy(),
+            canopy_baseht = stand_fire_df['fsg'].to_numpy(),
+            units = 'SI'
+        )
+
     # Generate required columns list
-    required_cols = ['ws', 'canopy_cover', 'ht_ovrstry_live', 'ccp_fsg', 'ws', 'hfi', 'fire_type', 'temp']
+    required_cols = ['instand_ws', 'canopy_cover', 'ht_ovrstry_live', 'fsg', 'ws', 'hfi', 'fire_type', 'temp']
+
     # Remove rows with missing required data
     stand_fire_df = stand_fire_df.dropna(subset=required_cols)
 
-    # Calculate in-stand wind speed
-    stand_fire_df['instand_ws'] = fc.getMidFlameWS(
-        wind_speed = stand_fire_df['ws'].to_numpy(),
-        canopy_cover = stand_fire_df['canopy_cover'].to_numpy(),
-        canopy_ht = stand_fire_df['ht_ovrstry_live'].to_numpy(),
-        canopy_baseht = stand_fire_df['ccp_fsg'].to_numpy(),
-        units = 'SI'
-    )
-
     # Merge stand fire data into tree data
     merge_cols = ['unique_id', 'instand_ws', 'hfi', 'fire_type', 'temp']
-    merged_df = tree_df.merge(stand_fire_df[merge_cols], on='unique_id', how='left')
+    merged_df = tree_df.merge(stand_fire_df, on='unique_id', how='left')
 
     # Calculate mortality using CRNSCH model
     print('\tCalculating post-fire probability of mortality...')
@@ -153,8 +164,8 @@ def process_mortality(
     # Save results to output folder
     print('\tSaving results to output folder...')
     os.makedirs(out_dir, exist_ok=True)
-    helper.export_csv(tree_df, os.path.join(out_dir, 'tree_mortality_results.csv'))
-    helper.export_csv(stand_fire_df, os.path.join(out_dir, 'stand_severity_results.csv'))
+    helper.export_csv(tree_df, os.path.join(out_dir, 'fofem_tree_mortality_results.csv'))
+    helper.export_csv(stand_fire_df, os.path.join(out_dir, 'fofem_severity_results.csv'))
 
     return
 
@@ -169,13 +180,13 @@ if __name__ == '__main__':
     _aspen_sev = 'low'
 
     # Get stand fire and tree csv paths
-    _stand_fire_df_path = os.path.join(_in_fire_data_dir, 'ccp_df_results.csv')
-    _tree_df_path = os.path.join(_in_tree_data_dir, 'master_tree_df.csv')
+    _stand_fire_csv_path = os.path.join(_in_fire_data_dir, 'ccp_df_results.csv')
+    _tree_csv_path = os.path.join(_in_tree_data_dir, 'master_tree_df.csv')
 
     # Process mortality
     process_mortality(
-        stand_fire_csv_path=_stand_fire_df_path,
-        tree_csv_path=_tree_df_path,
+        stand_fire_csv_path=_stand_fire_csv_path,
+        tree_csv_path=_tree_csv_path,
         out_dir=_out_dir,
         aspen_sev=_aspen_sev,
     )

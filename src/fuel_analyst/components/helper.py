@@ -10,6 +10,19 @@ import os
 import pandas as pd
 from datetime import datetime as dt
 import re
+import csv as CSV
+
+
+def _add_line_to_csv(file_path, add_list, position):
+    with open(file_path, 'r') as in_file:
+        reader = list(CSV.reader(in_file))
+        reader.insert(position, add_list)
+
+    with open(file_path, 'w', newline='') as out_file:
+        writer = CSV.writer(out_file)
+        for line in reader:
+            writer.writerow(line)
+
 
 
 def export_csv(df: pd.DataFrame, csv_path: str) -> None:
@@ -27,6 +40,16 @@ def export_csv(df: pd.DataFrame, csv_path: str) -> None:
     return
 
 
+def file_exists(file_path: str) -> bool:
+    """
+    Check if a file exists at the given path.
+
+    :param file_path: Path to the file.
+    :return: True if the file exists, False otherwise.
+    """
+    return os.path.isfile(file_path)
+
+
 def get_df(csv_path):
     """
     Read a CSV file into a pandas DataFrame.
@@ -37,6 +60,18 @@ def get_df(csv_path):
     print(f'\tGetting DataFrame from CSV file at: {csv_path}')
     # Read the CSV file with header row and no index column
     return pd.read_csv(csv_path, header=0, index_col=False)
+
+
+def get_missing_df_columns(df: pd.DataFrame, required_columns: list) -> bool:
+    """
+    Get a list of missing columns from a DataFrame based on a list of required column names.
+
+    :param df: DataFrame to check.
+    :param required_columns: List of required column names.
+    :return: True if all required columns exist, False otherwise.
+    """
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    return missing_columns
 
 
 def get_unique_id(df: pd.DataFrame) -> pd.DataFrame:
