@@ -120,6 +120,18 @@ def _extract_weather(
     """
     Extract weather data from rasters for all variables and merge results.
     Each plot/date/variable combination is a row.
+
+    :param plots: GeoDataFrame with plot locations (must include geometry and plot_id_col_name)
+    :param plot_id_col_name: Name of the unique ID column in the plots GeoDataFrame (e.g. "unique_id")
+    :param wx_var_list: List of weather variables to sample (e.g. ["fwi", "isi"])
+    :param wx_directories: Dictionary mapping variable names to their corresponding dir paths
+    :param start_year: First year to include (inclusive)
+    :param end_year: Last year to include (inclusive)
+    :param use_bcws_dates: Whether to determine in-season dates based on BCWS fire season dates and
+        plot ecodivision (default False)
+    :param start_month_day: Start month/day (MMDD as int) for filtering rasters (required if use_bcws_dates is False)
+    :param end_month_day: End month/day (MMDD as int) for filtering rasters (required if use_bcws_dates is False)
+    :return: DataFrame with sampled weather data for all variables and plots
     """
     wx_target_directories = _select_wx_directories(wx_var_list, wx_directories)
     dfs = []
