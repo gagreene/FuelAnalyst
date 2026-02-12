@@ -17,7 +17,15 @@ from datetime import datetime
 from typing import Optional
 from functools import reduce
 
+import sys
 pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..')
+if pkg_dir not in sys.path:
+    sys.path.insert(0, pkg_dir)
+
+from src.fuel_analyst.components import helper
+
+
+# Define constants for ecodivision shapefile and BCWS fire season dates by ecodivision
 ECODIVISION_PATH = os.path.join(
     os.path.dirname(__file__), 'supporting_data', 'WHSE_TERRESTRIAL_ECOLOGY_ERC_ECODIVISIONS_SP.json'
 )
@@ -389,7 +397,7 @@ def extract_weather_data(
         start_month_day: Optional[int] = None,
         end_month_day: Optional[int] = None,
         calculate_percentiles: bool = False,
-        percentile_var_list: Optional[list[str]] = None
+        percentile_var_list: Optional[list[str]] = None,
 ) -> None:
     """
     Main function to extract weather data for specified variables and plots, and save results.
@@ -407,11 +415,11 @@ def extract_weather_data(
     :param use_bcws_dates: Whether to determine in-season dates based on BCWS fire season dates and
         plot ecodivision (default False)
     :param start_month_day: Start month/day (MMDD as int) for filtering rasters (required if use_bcws_dates is False)
-    :param end_month_day: End month/day (MMDD as int) for filtering rasters (required if use_bcws_dates is False
-
+    :param end_month_day: End month/day (MMDD as int) for filtering rasters (required if use_bcws_dates is False)
     :param calculate_percentiles: Whether to calculate percentiles for specified variables (default False)
-    :param percentile_var_list: List of variables to calculate percentiles for (required if calculate_percentiles is True)
-    :return: None (saves output files to disk)
+    :param percentile_var_list: List of variables to calculate percentiles for
+        (required if calculate_percentiles is True)
+    :return: None
     """
     # Create output directory if it doesn't exist
     os.makedirs(_out_dir, exist_ok=True)
@@ -465,26 +473,27 @@ def extract_weather_data(
     return
 
 
+# Example usage
 if __name__ == '__main__':
-    # Example usage
     # Define input and output directories
     _wx_data_dir = r'I:/_Weather_Data/NRCAN_FWIS_Database'
     test_dir = os.path.join(os.path.dirname(__file__), 'tests')
-    _out_dir = os.path.join(test_dir, 'results', 'wx_extract')  # r'C:/Users/ftiribelli/PycharmProjects/sample_weather/test_data/'
+    _out_dir = os.path.join(test_dir, 'results', 'wx_extract')
     _out_file_name = 'wx_data'
-    _plot_pts_path = os.path.join(test_dir, 'test_data', 'wx_extract', 'UBC_FuelPlots_small_xy.csv') #  r'C:/Users/ftiribelli/PycharmProjects/sample_weather/test_data/UBC_FuelPlots_small_xy.csv'
+    _plot_pts_path = os.path.join(test_dir, 'test_data', 'wx_extract', 'ccp_df.csv')
     _plot_id_col_name = 'unique_id'
-    _lat_col_name = 'Y'  # Always decimal degrees, WGS84 (EPSG:4326) for input CSV; will be reprojected to EPSG:3978
-    _lon_col_name = 'X'  # Always decimal degrees, WGS84 (EPSG:4326) for input CSV; will be reprojected to EPSG:3978
+    _lat_col_name = 'lat'  # Always decimal degrees, WGS84 (EPSG:4326) for input CSV; will be reprojected to EPSG:3978
+    _lon_col_name = 'long'  # Always decimal degrees, WGS84 (EPSG:4326) for input CSV; will be reprojected to EPSG:3978
     _wx_var_list = ['temp', 'rh', 'ws', 'wd', 'ffmc', 'dmc', 'dc', 'bui', 'isi', 'fwi']
     _start_year = 2007
     _end_year = 2024
-    _use_bcws_dates = True  # Whether to determine in-season dates based on BCWS fire season dates and plot ecodivision
+    _use_bcws_dates = True  # If true, determine in-season dates based on BCWS fire season dates and plot ecodivision
     _start_month_day = None
     _end_month_day = None
     _calculate_percentiles = True
     _percentile_var_list = ['fwi']
 
+    # Extract weather data and save results
     extract_weather_data(
         wx_data_dir=_wx_data_dir,
         out_dir=_out_dir,
