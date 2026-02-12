@@ -16,13 +16,10 @@ from pyproj import CRS
 from datetime import datetime
 from typing import Optional
 from functools import reduce
-
 import sys
 pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..')
 if pkg_dir not in sys.path:
     sys.path.insert(0, pkg_dir)
-
-from src.fuel_analyst.components import helper
 
 
 # Define constants for ecodivision shapefile and BCWS fire season dates by ecodivision
@@ -192,6 +189,8 @@ def _extract_weather(
         else:
             print(f'\t\tProcessing rasters for variable {var}...')
             all_rows = _process_raster_date_chunk(raster_date_items, plots, plot_id_col_name, var)
+
+        # Combine all rows for this variable into a single DataFrame
         if all_rows:
             df_var = pd.concat(all_rows, ignore_index=True)
             df_var = df_var.dropna(subset=[var])
