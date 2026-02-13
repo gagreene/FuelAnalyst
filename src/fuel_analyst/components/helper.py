@@ -13,7 +13,7 @@ import re
 import csv as CSV
 
 
-def _add_line_to_csv(file_path, add_list, position):
+def add_line_to_csv(file_path, add_list, position):
     with open(file_path, 'r') as in_file:
         reader = list(CSV.reader(in_file))
         reader.insert(position, add_list)
