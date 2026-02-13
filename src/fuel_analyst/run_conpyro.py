@@ -7,11 +7,8 @@ Created on Sun Feb 2, 11:15:00 2026
 __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
 import os
-from numpy import (arccos, arcsin, arctan, array, column_stack, degrees, full,
-                   isnan, log, ma, nan, ndarray, pi, power, radians, sin)
+from numpy import array, column_stack, full, nan
 import pandas as pd
-import numbers
-from typing import Union, Optional
 
 import sys
 pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..')
@@ -20,6 +17,26 @@ if pkg_dir not in sys.path:
 
 from dependencies.conpyro.src.conpyro import conpyro
 from dependencies.flame_components import flame_components as fc
+
+
+default_fire_modelling_dict = {
+    'conpyro': {
+        'out_request': [
+            'fsg', 'mc_ffmc', 'mc_dmc', 'mc_sa', 'cac', 'cfo_prob',
+            'sros', 'cros', 'hros', 'bros', 'fire_type', 'accel_param',
+            'cfb', 'tfc', 'sfi', 'cfi', 'hfi'
+        ],
+        'flame_comp_out_list': [
+            'instand_ws', 'flame_length_m', 'flame_tilt', 'flame_height', 'flame_res_time', 'flame_depth'
+        ],
+    },
+    'fofem_mortality': {
+        'model_mortality': True,
+    },
+    'fofem_emissions': {
+        'model_emissions': True,
+    },
+}
 
 
 def _calc_instand_ws(df: pd.DataFrame) -> pd.DataFrame:
@@ -287,6 +304,15 @@ def run_conpyro(in_csv_path: str,
                 conpyro_out_list: list,
                 flame_comp_out_list: list,
                 out_csv_path: str) -> None:
+    """
+    Run ConPyro on the input data and model flame components based on ConPyro output.
+
+    :param in_csv_path: Path to the input CSV file containing required columns for ConPyro.
+    :param conpyro_out_list: List of ConPyro output parameters to include in the output DataFrame.
+    :param flame_comp_out_list: List of flame component output parameters to model and include in the output DataFrame.
+    :param out_csv_path: Path to save the output CSV file with ConPyro results and flame components.
+    :return: None
+    """
     # Get dataframe
     df = pd.read_csv(in_csv_path)
 
@@ -371,14 +397,14 @@ def run_conpyro(in_csv_path: str,
     return
 
 
-# Test routine for ConPyro module
+# Test routine for ConPyro modelling
 if __name__ == '__main__':
     # Define input and output folders
     test_dir = os.path.join(os.path.dirname(__file__), 'tests')
-    _in_dir = os.path.join(test_dir, 'test_data', 'conpyro')
+    _in_dir = os.path.join(test_dir, 'results', 'wx_extract')
     _out_dir = os.path.join(test_dir, 'results', 'conpyro')
     os.makedirs(_out_dir, exist_ok=True)
-    _in_csv_path = os.path.join(_in_dir, 'ccp_df.csv')
+    _in_csv_path = os.path.join(_in_dir, 'ccp_df_wx.csv')
     _out_csv_path = os.path.join(_out_dir, 'ccp_df_results.csv')
 
     _conpyro_out_list = [

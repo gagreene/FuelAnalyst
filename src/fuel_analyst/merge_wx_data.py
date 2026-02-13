@@ -48,21 +48,21 @@ def merge_weather_data(
         raise ValueError(f'Plot ID column "{plot_merge_col_name}" not found in plot data columns: {list(plot_df.columns)}')
     if wx_merge_col_name not in wx_df.columns:
         raise ValueError(f'Plot ID column "{wx_merge_col_name}" not found in weather data columns: {list(wx_df.columns)}')
-    merged_df = wx_df.merge(plot_df, left_on=wx_merge_col_name, right_on=plot_merge_col_name, how='left')
+    merged_df = plot_df.merge(wx_df, left_on=plot_merge_col_name, right_on=wx_merge_col_name, how='left')
     merged_df.to_csv(out_path, index=False)
     print('Saved merged data: ', out_path)
 
     return
 
 
+# Test routine for merging weather data with plot data
 if __name__ == '__main__':
-    # Example usage
     # Define input and output directories
     _wx_data_dir = r'I:/_Weather_Data/NRCAN_FWIS_Database'
     test_dir = os.path.join(os.path.dirname(__file__), 'tests')
     _out_dir = os.path.join(test_dir, 'results', 'wx_extract')
     _out_file_name = 'wx_data'
-    _plot_data_path = os.path.join(test_dir, 'test_data', 'fuel_analyst', 'ccp_df.csv')
+    _plot_data_path = os.path.join(test_dir, 'results', 'fbp_fuel_typing', 'ccp_df_fbp.csv')
     _plot_merge_col_name = 'unique_id'
     _wx_data_path = os.path.join(_out_dir, f'{_out_file_name}.csv')
     _wx_merge_col_name = 'unique_id'

@@ -484,7 +484,7 @@ def extract_weather_data(
     return
 
 
-# Example usage
+# Test routine for extracting weather data and saving results
 if __name__ == '__main__':
     # Define input and output directories
     _wx_data_dir = r'I:/_Weather_Data/NRCAN_FWIS_Database'

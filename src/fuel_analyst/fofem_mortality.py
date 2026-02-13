@@ -59,22 +59,6 @@ def _calc_severity_class(stand_fire_df: pd.DataFrame) -> pd.DataFrame:
     return stand_fire_df
 
 
-def _calc_tree_mortality(merged_df: pd.DataFrame,
-                         tree_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calculate tree-level mortality using the CRNSCH model.
-    :param merged_df: DataFrame containing merged stand fire and tree data with 'mortality_crnsch' column.
-    :param tree_df: DataFrame containing tree data with required columns.
-    :return: DataFrame with added mortality columns.
-    """
-    # Calculate tree-level mortality
-    tree_df['prob_mortality_crnsch'] = merged_df['mortality_crnsch']
-    tree_df['tree_dead_crnsch'] = np.where(tree_df['prob_mortality_crnsch'] > 0.5, 1, 0)
-    tree_df['tree_dead_ba_crnsch'] = np.where(tree_df['tree_dead_crnsch'] == 1, tree_df['ba_live_ha'], 0)
-
-    return tree_df
-
-
 def process_mortality(
     stand_fire_csv_path: str,
     tree_csv_path: str,
@@ -102,69 +86,66 @@ def process_mortality(
     stand_fire_df = helper.get_df(stand_fire_csv_path)
     tree_df = helper.get_df(tree_csv_path)
 
-    # If instand_ws column is missing, calculate it using FLAME components
-    if 'instand_ws' not in stand_fire_df.columns:
-        print('\tCalculating in-stand wind speed using FLAME components...')
-
-        # Verify required columns are present for in-stand wind speed calculation
-        required_ws_cols = ['ws', 'canopy_cover', 'ht_ovrstry_live', 'fsg']
-        missing_cols = [col for col in required_ws_cols if col not in stand_fire_df.columns]
-        if missing_cols:
-            raise ValueError(f'Missing required columns for in-stand wind speed calculation: {missing_cols}')
-
-        # Calculate in-stand wind speed
-        stand_fire_df['instand_ws'] = fc.getMidFlameWS(
-            wind_speed = stand_fire_df['ws'].to_numpy(),
-            canopy_cover = stand_fire_df['canopy_cover'].to_numpy(),
-            canopy_ht = stand_fire_df['ht_ovrstry_live'].to_numpy(),
-            canopy_baseht = stand_fire_df['fsg'].to_numpy(),
-            units = 'SI'
-        )
-
-    # Generate required columns list
-    required_cols = ['instand_ws', 'canopy_cover', 'ht_ovrstry_live', 'fsg', 'ws', 'hfi', 'fire_type', 'temp']
-
     # Remove rows with missing required data
-    stand_fire_df = stand_fire_df.dropna(subset=required_cols)
+    required_cols = ['instand_ws_kmph', 'canopy_cover', 'ht_ovrstry_live', 'fsg', 'ws', 'hfi', 'fire_type', 'temp']
+    # Only keep columns that exist in stand_fire_df
+    filtered_required_cols = [col for col in required_cols if col in stand_fire_df.columns]
+    if filtered_required_cols:
+        stand_fire_df = stand_fire_df.dropna(subset=filtered_required_cols)
+    else:
+        print('Warning: None of the required columns found in stand_fire_df. Skipping dropna.')
 
-    # Merge stand fire data into tree data
-    merge_cols = ['unique_id', 'instand_ws', 'hfi', 'fire_type', 'temp']
-    merged_df = tree_df.merge(stand_fire_df, on='unique_id', how='left')
+    # Identify scenario columns (all columns except unique_id and weather/fire variables)
+    scenario_cols = [col for col in stand_fire_df.columns if col not in ['unique_id', 'instand_ws_kmph', 'hfi', 'fire_type', 'temp']]
+    # Merge tree data with all fire weather scenarios for each unique_id
+    merged_df = pd.merge(tree_df, stand_fire_df, on='unique_id', how='inner', suffixes=('', '_fire'))
 
-    # Calculate mortality using CRNSCH model
-    print('\tCalculating post-fire probability of mortality...')
+    # Calculate mortality for each tree-fire scenario combination
+    def get_col(col):
+        return merged_df[col].to_numpy() if col in merged_df.columns else None
+
     merged_df['mortality_crnsch'] = fofem.mort_crnsch(
-        spp=merged_df['spp'].to_numpy(),
-        dbh=merged_df['dbh'].to_numpy(),  # Convert m to cm
-        ht=merged_df['ht'].to_numpy(),
-        crown_depth=merged_df['crown_depth'].to_numpy(),
-        bark_thickness=merged_df['bark_thick'].to_numpy() if 'bark_thick' in merged_df.columns else None,
-        fire_intensity=merged_df['hfi'].to_numpy() if 'hfi' in merged_df.columns else None,
-        amb_t=merged_df['temp'].to_numpy(),
-        flame_length=merged_df['flame_length'].to_numpy() if 'flame_length' in merged_df.columns else None,
-        char_ht=merged_df['char_height'].to_numpy() if 'char_height' in merged_df.columns else None,
-        scorch_ht=merged_df['scorch_height'].to_numpy() if 'scorch_height' in merged_df.columns else None,
-        instand_ws=merged_df['instand_ws'].to_numpy(),
+        spp=get_col('spp'),
+        dbh=get_col('dbh'),
+        ht=get_col('ht'),
+        crown_depth=get_col('crown_depth'),
+        bark_thickness=get_col('bark_thick'),
+        fire_intensity=get_col('hfi'),
+        amb_t=get_col('temp'),
+        flame_length=get_col('flame_length'),
+        char_ht=get_col('char_height'),
+        scorch_ht=get_col('scorch_height'),
+        instand_ws=get_col('instand_ws_kmph'),
         aspen_sev=aspen_sev,
         tree_code_dict=tree_code_dict
     )
 
-    # Calculate tree-level mortality
-    print('\tCalculating Post-Fire Tree Mortality')
-    tree_df = _calc_tree_mortality(merged_df, tree_df)
+    # Calculate tree-level mortality for each scenario
+    merged_df['prob_mortality_crnsch'] = merged_df['mortality_crnsch']
+    merged_df['tree_dead_crnsch'] = np.where(merged_df['prob_mortality_crnsch'] > 0.5, 1, 0)
+    merged_df['tree_dead_ba_crnsch'] = np.where(merged_df['tree_dead_crnsch'] == 1, merged_df['ba_live_ha'], 0)
 
-    # Calculate stand-level proportion of basal area killed by fire
-    print('\tCalculating proportion of stand basal area killed...')
-    stand_fire_df = _calc_stand_ba_killed(stand_fire_df, tree_df)
+    # Calculate stand-level proportion of basal area killed by fire for each scenario
+    agg_df = merged_df.groupby(['unique_id', 'hfi', 'fire_type', 'temp', 'instand_ws_kmph'], as_index=False).agg({
+        'ba_live_ha': 'sum',
+        'tree_dead_ba_crnsch': 'sum'
+    })
+    agg_df['prop_dead_ba_crnsch'] = agg_df['tree_dead_ba_crnsch'] / agg_df['ba_live_ha']
+
+    # Merge aggregated results back to original stand_fire_df to preserve all columns
+    stand_fire_df = pd.merge(
+        stand_fire_df,
+        agg_df[['unique_id', 'hfi', 'fire_type', 'temp', 'instand_ws_kmph', 'tree_dead_ba_crnsch', 'prop_dead_ba_crnsch']],
+        on=['unique_id', 'hfi', 'fire_type', 'temp', 'instand_ws_kmph'],
+        how='left'
+    )
 
     # Calculate stand-level fire severity per Agee (1994)
-    print('\tCalculating stand-level fire severity...')
     stand_fire_df = _calc_severity_class(stand_fire_df)
 
     # Save results to output folder
-    print('\tSaving results to output folder...')
     os.makedirs(out_dir, exist_ok=True)
-    helper.export_csv(tree_df, os.path.join(out_dir, 'fofem_tree_mortality_results.csv'))
+    helper.export_csv(merged_df, os.path.join(out_dir, 'fofem_tree_mortality_results.csv'))
     helper.export_csv(stand_fire_df, os.path.join(out_dir, 'fofem_severity_results.csv'))
 
     return

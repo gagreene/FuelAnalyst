@@ -654,6 +654,7 @@ def fuel_analyst(in_folder: str,
     return
 
 
+# Test routine for Fuel Analyst
 if __name__ == '__main__':
     # Define input and output folders
     test_dir = os.path.join(os.path.dirname(__file__), 'tests')

@@ -59,7 +59,7 @@ def get_df(csv_path):
     """
     print(f'\tGetting DataFrame from CSV file at: {csv_path}')
     # Read the CSV file with header row and no index column
-    return pd.read_csv(csv_path, header=0, index_col=False)
+    return pd.read_csv(csv_path, header=0, index_col=False, low_memory=False)
 
 
 def get_missing_df_columns(df: pd.DataFrame, required_columns: list) -> bool:

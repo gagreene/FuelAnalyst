@@ -95,13 +95,19 @@ def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFra
 
     return df
 
-def process_fbp_fuel_type(master_fuel_df_path: str, fbp_prep_df_path: str, ccp_df_path: str, season: str) -> None:
+def process_fbp_fuel_type(
+        master_fuel_df_path: str,
+        fbp_prep_df_path: str,
+        ccp_df_path: str,
+        out_dir: str,
+        season: str) -> None:
     """
     Calculate the FBP fuel type for each plot in the DataFrame using the BCWFT2018 fuel typing system.
 
     :param master_fuel_df_path: Path to the master fuel DataFrame CSV file.
     :param fbp_prep_df_path: Path to the FBP preparation DataFrame CSV file.
     :param ccp_df_path: Path to the CCP DataFrame CSV file to be updated with FBP fuel types.
+    :param out_dir: Directory to save the updated CCP DataFrame CSV file with FBP fuel types.
     :param season: Season for fuel typing ('Growing' or 'Dormant').
     :return: DataFrame with added columns for FBP fuel type and modifier.
     """
@@ -146,15 +152,24 @@ def process_fbp_fuel_type(master_fuel_df_path: str, fbp_prep_df_path: str, ccp_d
 
     # Replace ccp_df with updated DataFrame
     print('Saving updated CCP DataFrame with FBP fuel types')
-    helper.export_csv(ccp_df, ccp_df_path)
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, os.path.basename(ccp_df_path).replace('.csv', '_fbp.csv'))
+    helper.export_csv(ccp_df, out_path)
 
     return
 
 
+# Test routine for calculating FBP fuel types
 if __name__ == '__main__':
-    # Example usage
-    _master_fuel_df_path = r'E:\UBC_FuelAnalyst_Testing\Survey123_Data\_Results\master_fuel_df.csv'
-    _fbp_prep_df_path = r'E:\UBC_FuelAnalyst_Testing\Survey123_Data\_Results\fbp_prep_df.csv'
-    _ccp_df_path = r'E:\UBC_FuelAnalyst_Testing\Survey123_Data\_Results\ccp_df.csv'
+    # Define input and output folders
+    test_dir = os.path.join(os.path.dirname(__file__), 'tests')
+    _out_dir = os.path.join(test_dir, 'results', 'fbp_fuel_typing')
+
+    # Get stand fire and fofem consume csv paths
+    _master_fuel_df_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'master_fuel_df.csv')
+    _fbp_prep_df_path = os.path.join(test_dir, 'test_data', 'fbp_fuel_typing', 'fbp_prep_df.csv')
+    _ccp_df_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'ccp_df.csv')
     _season = 'growing'
-    process_fbp_fuel_type(_master_fuel_df_path, _fbp_prep_df_path, _ccp_df_path, _season)
+
+    # Run FBP fuel type processing
+    process_fbp_fuel_type(_master_fuel_df_path, _fbp_prep_df_path, _ccp_df_path, _out_dir, _season)

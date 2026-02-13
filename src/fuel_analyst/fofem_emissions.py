@@ -146,7 +146,7 @@ def _get_merged_consumption_df(
     fofem_consume_df['remove'] = np.nan
 
     # Get required columns for merge and emissions processing
-    required_cols = ['unique_id', 'wx_date', 'hfi', 'instand_ws', 'temp', 'ffmc', 'dmc', 'dc', 'cfb']
+    required_cols = ['unique_id', 'wx_date', 'hfi', 'instand_ws_kmph', 'temp', 'ffmc', 'dmc', 'dc', 'cfb']
 
     # Verify required columns are present in stand_fire_df
     missing_cols = helper.get_missing_df_columns(stand_fire_df, required_cols)
@@ -243,7 +243,7 @@ def _model_emissions(row: pd.Series, out_dir: str, consume_model: str) -> tuple:
     process_id = os.getpid()
 
     # Check if required columns are present in DataFrame
-    required_cols = ['hfi', 'instand_ws', 'temp']
+    required_cols = ['hfi', 'instand_ws_kmph', 'temp']
     missing_cols = helper.get_missing_df_columns(pd.DataFrame([row]), required_cols)
     if len(missing_cols) > 0:
         raise ValueError(f'Missing required columns in DataFrame: {missing_cols}')
@@ -253,7 +253,7 @@ def _model_emissions(row: pd.Series, out_dir: str, consume_model: str) -> tuple:
         out_dir=out_dir,
         unique_id=process_id,
         hfi=row['hfi'],
-        instand_ws=row['instand_ws'],
+        instand_ws=row['instand_ws_kmph'],
         amb_temp=row['temp']
     )
 
