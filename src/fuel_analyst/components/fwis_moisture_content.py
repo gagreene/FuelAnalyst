@@ -28,7 +28,7 @@ def dmc_mc(dmc: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
     :return: The moisture content (m) corresponding to the input dmc value(s).
     """
     # Percentage of Moisture Content (m)
-    return 20 + np.exp((244.72 - dmc) / 43.43)
+    return 20.0 + np.exp(-(dmc - 244.72) / 43.43)
 
 
 def dc_mc(dc: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
