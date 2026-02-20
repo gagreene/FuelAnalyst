@@ -55,16 +55,19 @@ def _calc_fuel_moisture_content(df: pd.DataFrame) -> pd.DataFrame:
 def _create_burnup_in_file(
         out_dir: str,
         unique_id: int,
-        hfi: float,
+        intensity: float,
+        ig_time: float,
         instand_ws: float,
-        amb_temp: float
+        depth: float,
+        amb_temp: float,
 ) -> str:
     """
     Create a Burnup-In.brn file for a given row of fire behavior and weather data.
 
     :param out_dir: Output directory for Burnup-In.brn file.
     :param unique_id: Unique identifier for the row (used in output file name).
-    :param hfi: Heat per unit area (kJ/m^2).
+    :param intensity: Heat per unit area (kJ/m^2).
+    :param ig_time: Ignition (flame residence) time (seconds).
     :param instand_ws: In-stand/mid-flame wind speed (km/h).
     :param amb_temp: Ambient temperature (°C).
     :return: Path to worker-specific Burnup-In directory.
@@ -77,8 +80,10 @@ def _create_burnup_in_file(
     # Generate Burnup-In.brn file using FOFEM pyfofem module
     fofem.gen_burnup_in_file(
         out_brn_path=out_brn,
-        intensity=round(hfi, 2),
+        intensity=round(intensity, 2),
+        ig_time=round(ig_time, 2),
         windspeed=round(instand_ws, 2),
+        depth=round(depth, 2),
         ambient_temp=round(amb_temp, 2)
     )
 
@@ -111,7 +116,8 @@ def _create_consume_file(out_dir: str, consume_df: pd.DataFrame) -> str:
 
 def _gen_plot_id(df: pd.DataFrame):
     """
-    Replace spaces with underscores in the '#PlotId' column and return a mapping from underscored to original values.
+    Replace spaces with underscores in the '#PlotId' column and return a mapping
+    from underscored to original values.
 
     :param df: DataFrame with '#PlotId' column.
     :return: (DataFrame with updated '#PlotId', dict mapping underscored to original values)
@@ -173,7 +179,11 @@ def _get_merged_consumption_df(
     fofem_consume_df['remove'] = np.nan
 
     # Get required columns for merge and emissions processing
-    required_cols = [plot_id_col_name, 'wx_date', 'hfi', 'instand_ws_kmph', 'temp', 'mc_sa', 'mc_dmc', 'dc', 'cfb']
+    required_cols = [
+        plot_id_col_name, 'wx_date', 'hfi',
+        'flame_res_time_min', 'instand_ws_kmph',
+        'temp', 'mc_sa', 'mc_dmc', 'dc', 'cfb'
+    ]
 
     # Verify required columns are present in plot_fire_df
     missing_cols = helper.get_missing_df_columns(plot_fire_df, required_cols)
@@ -192,9 +202,10 @@ def _get_merged_consumption_df(
         left_on='#PlotId',
         right_on=plot_id_col_name,
         how='left',
-        suffixes=('', '_fofem')
+        suffixes=('', '_plot')
     )
-
+    # Drop columns with "_plot" suffix
+    merged_df = merged_df.drop(columns=[col for col in merged_df.columns if col.endswith('_plot')])
     # Drop rows with missing plot_id_col_name values
     merged_df = merged_df.dropna(subset=[plot_id_col_name])
 
@@ -272,7 +283,9 @@ def _model_emissions(row: dict, out_dir: str, consume_model: str) -> tuple:
     process_id = os.getpid()
 
     # Check if required columns are present in DataFrame
-    required_cols = ['hfi', 'instand_ws_kmph', 'temp']
+    required_cols = [
+        'wx_date', 'hfi', 'flame_res_time_min', 'instand_ws_kmph', 'temp'
+    ]
     missing_cols = helper.get_missing_df_columns(pd.DataFrame([row]), required_cols)
     if missing_cols:
         raise ValueError(f'Missing required columns in DataFrame: {missing_cols}')
@@ -281,8 +294,10 @@ def _model_emissions(row: dict, out_dir: str, consume_model: str) -> tuple:
     out_emission_dir = _create_burnup_in_file(
         out_dir=out_dir,
         unique_id=process_id,
-        hfi=row['hfi'],
+        intensity=row['hfi'],
+        ig_time=60*row['flame_res_time_min'],
         instand_ws=row['instand_ws_kmph'],
+        depth=0.3,
         amb_temp=row['temp']
     )
 
@@ -374,7 +389,7 @@ def process_emissions(
         fofem_consume_csv_path: str,
         out_dir: str,
         model_soil_heating: bool = False,
-        return_path: bool = False,
+        return_df: bool = False,
 ) -> Union[None, str]:
     """
     Process emissions modelling with FOFEM.
@@ -385,14 +400,14 @@ def process_emissions(
     :param fofem_consume_csv_path: Path to FOFEM consumption CSV file.
     :param out_dir: Output directory for Burnup-In.brn files.
     :param model_soil_heating: Whether to use FOFEM soil heating consumption model (True) or not (False).
-    :param return_path: Whether to return a path to the final DataFrame with emissions results (True) or not (False).
-    :return: None if return_path is False, otherwise a path to the DataFrame containing the merged input data and
+    :param return_df: Whether to return a path to the final DataFrame with emissions results (True) or not (False).
+    :return: None if return_df is False, otherwise the DataFrame containing the merged input data and
         FOFEM emissions results.
     """
     # Ensure output directory exists
     os.makedirs(out_dir, exist_ok=True)
 
-    # Determine FOFEM consumption model to use based on whether soil heating is being modeled
+    # Assign FOFEM consumption model based on whether soil heating is being modeled
     if model_soil_heating:
         consume_model = 'S'
     else:
@@ -449,9 +464,11 @@ def process_emissions(
 
     # Convert FOFEM results to DataFrame
     fofem_results_df = pd.DataFrame(fofem_consume_results, columns=CONSUMPTION_VARS)
+    helper.export_csv(fofem_results_df, os.path.join(out_dir, 'fofem_results_df_temp.csv'))
 
     # Delete "remove" column from merged_df
     merged_df = merged_df.drop(columns=['remove'])
+    helper.export_csv(merged_df, os.path.join(out_dir, 'merged_df_temp.csv'))
 
     # Append to merged_df
     final_df = pd.concat([merged_df.reset_index(drop=True), fofem_results_df], axis=1)
@@ -459,12 +476,15 @@ def process_emissions(
     # Restore original PlotId values in final_df
     final_df = _restore_plot_id(final_df, plotid_map)
 
+    # Sort final_df by plot_id_col_name and wx_date
+    final_df = final_df.sort_values(by=['#PlotId', 'wx_date']).reset_index(drop=True)
+
     # Save as csv to output directory
     csv_out_path = os.path.join(out_dir, 'fofem_emissions_results.csv')
-    final_df.to_csv(csv_out_path, index=False)
+    helper.export_csv(final_df, csv_out_path)
 
-    if return_path:
-        return csv_out_path
+    if return_df:
+        return final_df
 
     return None
 

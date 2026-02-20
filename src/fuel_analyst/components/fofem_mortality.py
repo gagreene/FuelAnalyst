@@ -16,7 +16,7 @@ pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..')
 if pkg_dir not in sys.path:
     sys.path.insert(0, pkg_dir)
 
-from src.fuel_analyst.components import helper
+from . import helper
 from dependencies.pyfofem.src.pyfofem import pyfofem as fofem
 
 
@@ -72,8 +72,8 @@ def process_mortality(
         aspen_sev: str = 'low',
         plot_id_col_name: str = 'unique_id',
         fofem_tree_id_col_name: str = 'unique_id',
-        return_paths: bool = False,
-) -> Union[None, tuple[str, str]]:
+        return_dfs: bool = False,
+) -> Union[None, tuple[pd.DataFrame, pd.DataFrame]]:
     """
     Process mortality for a DataFrame of trees using the CRNSCH model.
 
@@ -83,9 +83,9 @@ def process_mortality(
     :param aspen_sev: Aspen severity level ('low' or 'high') for mortality calculation.
     :param plot_id_col_name: Name of the unique ID column in plot_fire_df (default 'unique_id').
     :param fofem_tree_id_col_name: Name of the unique ID column in tree_df (default 'unique_id').
-    :param return_paths: Whether to return the merged tree-fire DataFrame and the stand-level
+    :param return_dfs: Whether to return the merged tree-fire DataFrame and the stand-level
         fire severity DataFrame (default False).
-    :return: None if return_paths is False, otherwise a tuple of (merged_tree_df, plot_fire_df) DataFrames.
+    :return: None if return_dfs is False, otherwise a tuple of (merged_tree_df, plot_fire_df) DataFrames.
     """
     # Load tree parameters and set index
     tree_params_df = helper.get_df(
@@ -164,16 +164,22 @@ def process_mortality(
     # Calculate stand-level fire severity per Agee (1994)
     plot_fire_df = _calc_severity_class(plot_fire_df)
 
+    # Sort DataFrames by plot_id_col_name and wx_date for easier comparison
+    merged_tree_df = merged_tree_df.sort_values(by=[plot_id_col_name, 'wx_date']).reset_index(drop=True)
+    plot_fire_df = plot_fire_df.sort_values(by=[plot_id_col_name, 'wx_date']).reset_index(drop=True)
+
     # Save results to output folder
     os.makedirs(out_dir, exist_ok=True)
     out_tree_csv_path = os.path.join(out_dir, 'fofem_tree_mortality_results.csv')
     out_severity_csv_path = os.path.join(out_dir, 'fofem_severity_results.csv')
+    print(f'\tSaving tree mortality results to {out_tree_csv_path}...')
     helper.export_csv(merged_tree_df, out_tree_csv_path)
+    print(f'\tSaving plot severity results to {out_severity_csv_path}...')
     helper.export_csv(plot_fire_df, out_severity_csv_path)
 
-    if return_paths:
-        # Return the merged tree-fire DataFrame and the stand-level fire severity DataFrame paths
-        return out_tree_csv_path, out_severity_csv_path
+    if return_dfs:
+        # Return the merged tree-fire DataFrame and the stand-level fire severity DataFrame
+        return merged_tree_df, plot_fire_df
 
     return None
 
