@@ -13,14 +13,15 @@ import pandas as pd
 import subprocess
 from csv import reader as CSV
 import concurrent.futures
+from typing import Union
 
 import sys
-pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..')
+pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..')
 if pkg_dir not in sys.path:
     sys.path.insert(0, pkg_dir)
 
-from src.fuel_analyst.components import helper
-from src.fuel_analyst.components  import fwis_moisture_content as mc
+from . import helper
+from . import fwis_moisture_content as mc
 from dependencies.pyfofem.src.pyfofem import pyfofem as fofem
 
 # Dictionary of seasons for each month in the year
@@ -30,25 +31,23 @@ default_season_start_dict = {
     'fall': '0915',
     'winter': '1115',
 }
-
 FOFEM_DIR = os.path.join(pkg_dir, 'dependencies', 'pyfofem', 'src', 'pyfofem', 'supporting_data', 'FOFEM6.7')
 CONSUMPTION_VARS = fofem.CONSUMPTION_VARS
 
 
 def _calc_fuel_moisture_content(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculate Fuel Moisture Content and add to merged DataFrame.
+    Calculate fuel moisture content columns and add them to the DataFrame.
 
-    :param df: Merged DataFrame with 'ffmc' and 'dc' columns.
-    :return: DataFrame with 'FuelMoistureContent' column added.
+    :param df: DataFrame with 'mc_sa', 'dmc', and 'dc' columns.
+    :return: DataFrame with 'wfl10HourMoisture', 'DuffMoisture', and 'wfl1000HourMoisture' columns added.
     """
     # Calculate fuel moisture values
-    hr10_mc = mc.ffmc_mc(ffmc=df['ffmc'].to_numpy())
-    duff_mc = mc.dmc_mc(dmc=df['dmc'].to_numpy())
-    hr1000_mc = mc.dc_mc(dc=df['dc'].to_numpy())
-    df['wfl10HourMoisture'] = hr10_mc
-    df['DuffMoisture'] = duff_mc
-    df['wfl1000HourMoisture'] = hr1000_mc
+    # hr10_mc = mc.ffmc_mc(ffmc=df['ffmc'].to_numpy())
+    # duff_mc = mc.dmc_mc(dmc=df['dmc'].to_numpy())
+    df['wfl10HourMoisture'] = df['mc_sa']
+    df['DuffMoisture'] = df['mc_dmc']
+    df['wfl1000HourMoisture'] = mc.dc_mc(dc=df['dc'].to_numpy())
 
     return df
 
@@ -63,11 +62,11 @@ def _create_burnup_in_file(
     """
     Create a Burnup-In.brn file for a given row of fire behavior and weather data.
 
+    :param out_dir: Output directory for Burnup-In.brn file.
     :param unique_id: Unique identifier for the row (used in output file name).
     :param hfi: Heat per unit area (kJ/m^2).
     :param instand_ws: In-stand/mid-flame wind speed (km/h).
     :param amb_temp: Ambient temperature (°C).
-    :param out_dir: Output directory for Burnup-In.brn file.
     :return: Path to worker-specific Burnup-In directory.
     """
     # Check if directory exists and remove if it does
@@ -86,13 +85,12 @@ def _create_burnup_in_file(
     return out_emission_dir
 
 
-def _create_consume_file(out_dir: str, unique_id: int, consume_df: pd.DataFrame) -> str:
+def _create_consume_file(out_dir: str, consume_df: pd.DataFrame) -> str:
     """
     Create a Consume CSV file for a given row of fire behavior and weather data.
 
     :param out_dir: Output directory for Consume CSV file.
-    :param unique_id: Unique identifier for the row (used in output file name).
-    :param row: Row of merged DataFrame containing fire behavior and weather data for a single plot.
+    :param consume_df: DataFrame containing the Consume data for a single row of fire behavior and weather data.
     :return: Path to generated Consume CSV file.
     """
     # Check if file exists and remove if it does
@@ -104,33 +102,62 @@ def _create_consume_file(out_dir: str, unique_id: int, consume_df: pd.DataFrame)
     consume_df.to_csv(out_consume, index=False, sep=',')
 
     # Add switches to consume_df csv
-    helper._add_line_to_csv(out_consume, ['#1k-SizeClass'], 0)
-    helper._add_line_to_csv(out_consume, ['#ConsumptionEquation'], 1)
-    helper._add_line_to_csv(out_consume, [f'#BurnUpFile Burnup-In.brn'], 2)
+    helper.add_line_to_csv(out_consume, ['#1k-SizeClass'], 0)
+    helper.add_line_to_csv(out_consume, ['#ConsumptionEquation'], 1)
+    helper.add_line_to_csv(out_consume, [f'#BurnUpFile Burnup-In.brn'], 2)
 
     return out_consume
 
 
+def _gen_plot_id(df: pd.DataFrame):
+    """
+    Replace spaces with underscores in the '#PlotId' column and return a mapping from underscored to original values.
+
+    :param df: DataFrame with '#PlotId' column.
+    :return: (DataFrame with updated '#PlotId', dict mapping underscored to original values)
+    """
+    # Create mapping from underscored PlotId to original
+    plotid_map = dict(zip(df['#PlotId'].str.replace(' ', '_'), df['#PlotId']))
+    # Replace spaces in #PlotId column data with underscores for consistency
+    df['#PlotId'] = df['#PlotId'].str.replace(' ', '_')
+    return df, plotid_map
+
+
+def _restore_plot_id(df: pd.DataFrame, plotid_map: dict) -> pd.DataFrame:
+    """
+    Restore the original '#PlotId' values using the mapping.
+
+    :param df: DataFrame with underscored '#PlotId' column.
+    :param plotid_map: Mapping from underscored to original '#PlotId' values.
+    :return: DataFrame with '#PlotId' restored to original values.
+    """
+    df['#PlotId'] = df['#PlotId'].map(plotid_map).fillna(df['#PlotId'])
+    return df
+
+
 def _get_merged_consumption_df(
-        stand_wx_fire_csv_path: str,
+        plot_wx_fire_csv_path: str,
+        plot_id_col_name: str,
         fofem_consume_csv_path: str,
         consume_model: str = 'C'
 ) -> pd.DataFrame:
     """
-    Merge stand fire severity and FOFEM consumption dataframes
+    Merge stand fire severity and FOFEM consumption dataframes.
 
-    :param stand_wx_fire_csv_path: Path to stand weather and fire severity CSV file.
+    :param plot_wx_fire_csv_path: Path to stand weather and fire severity CSV file.
+    :param plot_id_col_name: Name of the unique ID column in the stand fire severity CSV used for merging (e.g., 'unique_id').
     :param fofem_consume_csv_path: Path to FOFEM consumption CSV file.
+    :param consume_model: FOFEM consumption model ('C' or 'S').
     :return: Merged DataFrame.
     """
     # Ensure files exist
-    if not helper.file_exists(stand_wx_fire_csv_path):
-        raise FileNotFoundError(f'Stand weather and fire behavior CSV file not found: {stand_wx_fire_csv_path}')
+    if not helper.file_exists(plot_wx_fire_csv_path):
+        raise FileNotFoundError(f'Stand weather and fire behavior CSV file not found: {plot_wx_fire_csv_path}')
     if not helper.file_exists(fofem_consume_csv_path):
         raise FileNotFoundError(f'FOFEM consumption CSV file not found: {fofem_consume_csv_path}')
 
     # Read CSV files into DataFrames
-    stand_fire_df = helper.get_df(stand_wx_fire_csv_path)  # Use unique_id column for merge
+    plot_fire_df = helper.get_df(plot_wx_fire_csv_path)  # Use plot_id_col_name for merge
     fofem_consume_df = helper.get_df(fofem_consume_csv_path)  # Use #PlotId column for merge
 
     if consume_model == 'C':
@@ -142,46 +169,43 @@ def _get_merged_consumption_df(
         # Replace missing data in SoilFamily column with 'NA' for soil heating modelling
         fofem_consume_df['SoilFamily'] = fofem_consume_df['SoilFamily'].fillna('NA')
 
-    # Add remove column to end of fofem_consume_df before merge with stand_fire_df
+    # Add remove column to end of fofem_consume_df before merge with plot_fire_df
     fofem_consume_df['remove'] = np.nan
 
     # Get required columns for merge and emissions processing
-    required_cols = ['unique_id', 'wx_date', 'hfi', 'instand_ws_kmph', 'temp', 'ffmc', 'dmc', 'dc', 'cfb']
+    required_cols = [plot_id_col_name, 'wx_date', 'hfi', 'instand_ws_kmph', 'temp', 'mc_sa', 'mc_dmc', 'dc', 'cfb']
 
-    # Verify required columns are present in stand_fire_df
-    missing_cols = helper.get_missing_df_columns(stand_fire_df, required_cols)
-    if len(missing_cols) > 0:
+    # Verify required columns are present in plot_fire_df
+    missing_cols = helper.get_missing_df_columns(plot_fire_df, required_cols)
+    if missing_cols:
         raise ValueError(
-            f'Missing required column(s) in weather and fire behavior CSV: {required_cols}'
+            f"Missing required column(s) in weather and fire behavior CSV: {required_cols}"
         )
 
-    # Filter columns in stand_fire_df
-    stand_fire_df = stand_fire_df[required_cols]
+    # Filter columns in plot_fire_df
+    plot_fire_df = plot_fire_df[required_cols]
 
     # Merge fofem consume data (one) with stand fire severity data (many) = one-to-many relationship
     merged_df = pd.merge(
         left=fofem_consume_df,
-        right=stand_fire_df,
+        right=plot_fire_df,
         left_on='#PlotId',
-        right_on='unique_id',
+        right_on=plot_id_col_name,
         how='left',
         suffixes=('', '_fofem')
     )
 
-    # Drop rows with missing unique_id values
-    merged_df = merged_df.dropna(subset=['unique_id'])
-
-    # Replace spaces in #PlotId column data with underscores for consistency
-    merged_df['#PlotId'] = merged_df['#PlotId'].str.replace(' ', '_')
+    # Drop rows with missing plot_id_col_name values
+    merged_df = merged_df.dropna(subset=[plot_id_col_name])
 
     return merged_df
 
 
 def _get_pct_crown_burned(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculate Percent Crown Burned and add to merged DataFrame.
+    Calculate percent crown burned and add to DataFrame.
 
-    :param df: Merged DataFrame with 'cfb' column.
+    :param df: DataFrame with 'cfb' column.
     :return: DataFrame with 'PercentCrownBurned' column added.
     """
     # Copy cfb column to PercentCrownBurned
@@ -190,18 +214,21 @@ def _get_pct_crown_burned(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _get_season(df: pd.DataFrame, season_start_dict: dict = default_season_start_dict) -> pd.DataFrame:
+def _get_season(df: pd.DataFrame, season_start_dict: dict = None) -> pd.DataFrame:
     """
     Determine the season for each row in the DataFrame based on date and season start dates.
 
-    :param df: Merged DataFrame with 'month' and 'day' columns.
+    :param df: DataFrame with 'wx_date' column.
     :param season_start_dict: Dictionary defining season start dates.
     :return: DataFrame with 'season' column added.
     """
+    if season_start_dict is None:
+        season_start_dict = default_season_start_dict
+
     # Verify that required columns are present
     required_cols = ['wx_date']
     missing_cols = helper.get_missing_df_columns(df, required_cols)
-    if len(missing_cols) > 0:
+    if missing_cols:
         raise ValueError(
             f'Missing required column(s) in weather CSV: {required_cols}'
         )
@@ -232,12 +259,14 @@ def _get_season(df: pd.DataFrame, season_start_dict: dict = default_season_start
     return df
 
 
-def _model_emissions(row: pd.Series, out_dir: str, consume_model: str) -> tuple:
+def _model_emissions(row: dict, out_dir: str, consume_model: str) -> tuple:
     """
     Model emissions using FOFEM with Burnup-In.brn files for a given row of fire behavior and weather data.
-    :param row: Row of merged DataFrame containing fire behavior and weather data for a single plot.
+
+    :param row: Dict of merged DataFrame row containing fire behavior and weather data for a single plot.
     :param out_dir: Output directory for Burnup-In.brn files.
-    :return: None
+    :param consume_model: FOFEM consumption model ('C' or 'S').
+    :return: Tuple (list of FOFEM results, output emission directory).
     """
     # Get unique identifier for the multiprocessing worker
     process_id = os.getpid()
@@ -245,7 +274,7 @@ def _model_emissions(row: pd.Series, out_dir: str, consume_model: str) -> tuple:
     # Check if required columns are present in DataFrame
     required_cols = ['hfi', 'instand_ws_kmph', 'temp']
     missing_cols = helper.get_missing_df_columns(pd.DataFrame([row]), required_cols)
-    if len(missing_cols) > 0:
+    if missing_cols:
         raise ValueError(f'Missing required columns in DataFrame: {missing_cols}')
 
     # Create Burnup-In.brn files for each row in the DataFrame
@@ -264,7 +293,6 @@ def _model_emissions(row: pd.Series, out_dir: str, consume_model: str) -> tuple:
         # Save Consume data to file
         out_consume = _create_consume_file(
             out_dir=out_emission_dir,
-            unique_id=process_id,
             consume_df=row_consume_df,
         )
         del row_consume_df
@@ -273,33 +301,40 @@ def _model_emissions(row: pd.Series, out_dir: str, consume_model: str) -> tuple:
         fofem_consume_results = _run_fofem(
             out_dir=out_emission_dir,
             out_consume=out_consume,
-            unique_id=process_id,
             consume_model=consume_model,
         )
     except Exception as e:
-        print(f'Error processing row with unique_id {row["unique_id"]}: {e}')
+        print(f'Error processing row with unique_id {row.get("unique_id", "N/A")}: {e}')
         fofem_consume_results = [f'Error: {e}'] * len(CONSUMPTION_VARS)
 
     return fofem_consume_results, out_emission_dir
 
 
-def _run_fofem(out_dir: str, out_consume: str, unique_id: int, consume_model: str) -> dict:
+def _run_fofem(out_dir: str, out_consume: str, consume_model: str) -> list:
     """
     Run FOFEM Consumed Emissions Modelling and capture results.
 
     :param out_dir: Output directory for FOFEM results.
     :param out_consume: Path to Consume CSV file for FOFEM input.
-    :param unique_id: Unique identifier for the multiprocessing worker.
-    :return: Dictionary containing FOFEM results and any errors.
+    :param consume_model: FOFEM consumption model ('C' or 'S').
+    :return: List containing FOFEM results and any errors.
     """
     # Create output file paths for FOFEM results
     out_results = os.path.join(out_dir, f'fofemConsumedEmissionsDF_Temp-Out.csv')
     out_run = os.path.join(out_dir, f'fofemConsumedEmissionsDF_Temp-Run.csv')
     out_err = os.path.join(out_dir, f'fofemConsumedEmissionsDF_Temp-Err.txt')
 
+    # Get all files in FOFEM_DIR and copy to out_dir if they don't already exist
+    # (to avoid issues with multiple workers trying to read the same files in FOFEM_DIR)
+    for filename in os.listdir(FOFEM_DIR):
+        src_file = os.path.join(FOFEM_DIR, filename)
+        dst_file = os.path.join(out_dir, filename)
+        if not os.path.exists(dst_file):
+            shutil.copy(src_file, dst_file)
+
     # Run FOFEM Consumed Emissions Modelling
-    os.chdir(FOFEM_DIR)
-    fofem_consume = subprocess.run(
+    os.chdir(out_dir)
+    _ = subprocess.run(
         ['fof_gui',
          consume_model,
          out_consume,
@@ -326,27 +361,33 @@ def _run_fofem(out_dir: str, out_consume: str, unique_id: int, consume_model: st
     if cons_data:
         consume_results = cons_data[0][1:]
     else:
-        with open(out_err, newline='') as f:
-            error_message = f.read()
-        consume_results = [error_message] * len(CONSUMPTION_VARS)
+        # with open(out_err, newline='') as f:
+        #     error_message = f.read()
+        consume_results = [0] * len(CONSUMPTION_VARS)
 
     return consume_results
 
 
 def process_emissions(
-        stand_wx_fire_csv_path: str,
+        plot_wx_fire_csv_path: str,
+        plot_id_col_name: str,
         fofem_consume_csv_path: str,
         out_dir: str,
         model_soil_heating: bool = False,
-) -> None:
+        return_path: bool = False,
+) -> Union[None, str]:
     """
     Process emissions modelling with FOFEM.
 
-    :param stand_wx_fire_csv_path: Path to stand fire severity CSV file.
+    :param plot_wx_fire_csv_path: Path to CSV file containing plot weather and fire data.
+    :param plot_id_col_name: Name of the unique ID column in the stand fire severity CSV used for merging
+        (e.g., 'unique_id').
     :param fofem_consume_csv_path: Path to FOFEM consumption CSV file.
     :param out_dir: Output directory for Burnup-In.brn files.
     :param model_soil_heating: Whether to use FOFEM soil heating consumption model (True) or not (False).
-    :return: None
+    :param return_path: Whether to return a path to the final DataFrame with emissions results (True) or not (False).
+    :return: None if return_path is False, otherwise a path to the DataFrame containing the merged input data and
+        FOFEM emissions results.
     """
     # Ensure output directory exists
     os.makedirs(out_dir, exist_ok=True)
@@ -359,10 +400,14 @@ def process_emissions(
 
     # Get merged consumption DataFrame
     merged_df = _get_merged_consumption_df(
-        stand_wx_fire_csv_path=stand_wx_fire_csv_path,
+        plot_wx_fire_csv_path=plot_wx_fire_csv_path,
+        plot_id_col_name=plot_id_col_name,
         fofem_consume_csv_path=fofem_consume_csv_path,
         consume_model=consume_model,
     )
+
+    # Generate new PlotId column for merged_df based on plot_id_col_name (to be used in FOFEM input files)
+    merged_df, plotid_map = _gen_plot_id(merged_df)
 
     # Get percent crown burned
     merged_df = _get_pct_crown_burned(merged_df)
@@ -371,14 +416,18 @@ def process_emissions(
     merged_df = _get_season(merged_df)
 
     # Drop unnecessary columns after merge
-    merged_df = merged_df.drop(columns=['unique_id', 'cfb'])
+    merged_df = merged_df.drop(columns=[plot_id_col_name, 'cfb'])
 
     # Calculate percentage fuel moisture content
     merged_df =_calc_fuel_moisture_content(merged_df)
 
     # Model emissions using FOFEM with Burnup-In.brn files
     if os.cpu_count() >= 4:  # Use multiprocessing if 4 or more CPU cores are available
-        with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count() - 1) as executor:
+        num_workers = os.cpu_count() - 1
+        print(
+            f'\tProcessing Emissions (via BURNUP model) in parallel with {num_workers} workers...'
+        )
+        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
             results = list(executor.map(
                 _model_emissions,
                 merged_df.to_dict(orient='records'),
@@ -386,6 +435,7 @@ def process_emissions(
                 [consume_model] * len(merged_df)
             ))
     else:
+        print('\tProcessing Emissions (via BURNUP model)...')
         results = [
             _model_emissions(row, out_dir, consume_model) for row in merged_df.to_dict(orient='records')
         ]
@@ -406,27 +456,36 @@ def process_emissions(
     # Append to merged_df
     final_df = pd.concat([merged_df.reset_index(drop=True), fofem_results_df], axis=1)
 
-    # Save as csv to output directory
-    final_df.to_csv(os.path.join(out_dir, 'fofem_emissions_results.csv'), index=False)
+    # Restore original PlotId values in final_df
+    final_df = _restore_plot_id(final_df, plotid_map)
 
-    return
+    # Save as csv to output directory
+    csv_out_path = os.path.join(out_dir, 'fofem_emissions_results.csv')
+    final_df.to_csv(csv_out_path, index=False)
+
+    if return_path:
+        return csv_out_path
+
+    return None
 
 
 # Test routine for FOFEM emissions processing
 if __name__ == '__main__':
     # Define input and output folders
-    test_dir = os.path.join(os.path.dirname(__file__), 'tests')
+    test_dir = os.path.join(os.path.dirname(__file__), '../tests')
     _in_fofem_consume_dir = os.path.join(test_dir, 'results', 'fuel_analyst')
     _in_fire_data_dir = os.path.join(test_dir, 'results', 'fofem_mortality')
     _out_dir = os.path.join(test_dir, 'results', 'fofem_emissions')
 
     # Get stand fire and fofem consume csv paths
-    _stand_wx_fire_csv_path = os.path.join(_in_fire_data_dir, 'fofem_severity_results.csv')
+    _plot_wx_fire_csv_path = os.path.join(_in_fire_data_dir, 'fofem_severity_results.csv')
     _fofem_consume_csv_path = os.path.join(_in_fofem_consume_dir, 'fofem_consume_df.csv')
+    _plot_id_col_name = 'unique_id'
 
-    # Process mortality
+    # Process emissions modelling
     process_emissions(
-        stand_wx_fire_csv_path=_stand_wx_fire_csv_path,
+        plot_wx_fire_csv_path=_plot_wx_fire_csv_path,
+        plot_id_col_name=_plot_id_col_name,
         fofem_consume_csv_path=_fofem_consume_csv_path,
         out_dir=_out_dir,
     )

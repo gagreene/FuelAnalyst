@@ -1,0 +1,203 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Feb 1, 16:30:00 2026
+
+@author: Gregory A. Greene
+"""
+__author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
+
+import os
+import numpy as np
+import pandas as pd
+from typing import Union
+
+import sys
+pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..')
+if pkg_dir not in sys.path:
+    sys.path.insert(0, pkg_dir)
+
+from src.fuel_analyst.components import helper
+from dependencies.pyfofem.src.pyfofem import pyfofem as fofem
+
+
+def _calc_plot_ba_killed(
+        plot_fire_df: pd.DataFrame,
+        plot_id_col_name: str,
+        tree_df: pd.DataFrame,
+        fofem_tree_id_col_name: str
+) -> pd.DataFrame:
+    """
+    Calculate live stand basal area killed based on mortality probability.
+    :param plot_fire_df: DataFrame containing stand fire data with plot_id_col_name column.
+    :param tree_df: DataFrame containing tree data with fofem_tree_id_col_name column.
+    :param plot_id_col_name: Name of the unique ID column in plot_fire_df (default 'unique_id').
+    :param fofem_tree_id_col_name: Name of the unique ID column in tree_df (default 'unique_id').
+    :return: DataFrame with added basal area killed columns.
+    """
+    plot_fire_df['total_live_ba'] = plot_fire_df[plot_id_col_name].map(
+        tree_df.groupby(fofem_tree_id_col_name)['ba_live_ha'].sum()
+    )
+    plot_fire_df['dead_ba_crnsch'] = plot_fire_df[plot_id_col_name].map(
+        tree_df.groupby(fofem_tree_id_col_name)['tree_dead_ba_crnsch'].sum()
+    )
+    plot_fire_df['prop_dead_ba_crnsch'] = plot_fire_df['dead_ba_crnsch'] / plot_fire_df['total_live_ba']
+
+    return plot_fire_df
+
+
+def _calc_severity_class(plot_fire_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate stand-level fire severity based on proportion of basal area killed.
+    0-20% = low, 20-70% = moderate, 70-100% = high (Agee, 1994).
+    :param plot_fire_df: DataFrame containing stand fire data with 'prop_dead_ba_crnsch' column.
+    :return: DataFrame with added 'fire_severity' column.
+    """
+    prop_dead_ba = plot_fire_df['prop_dead_ba_crnsch']
+    mask_low = (0 <= prop_dead_ba) & (prop_dead_ba <= 0.2)
+    mask_mod = (prop_dead_ba > 0.2) & (prop_dead_ba < 0.7)
+    mask_high = prop_dead_ba >= 0.7
+
+    plot_fire_df['fire_severity'] = None
+    plot_fire_df.loc[mask_low, 'fire_severity'] = 'low'
+    plot_fire_df.loc[mask_mod, 'fire_severity'] = 'mod'
+    plot_fire_df.loc[mask_high, 'fire_severity'] = 'high'
+
+    return plot_fire_df
+
+
+def process_mortality(
+        plot_wx_fire_csv_path: str,
+        fofem_tree_csv_path: str,
+        out_dir: str,
+        aspen_sev: str = 'low',
+        plot_id_col_name: str = 'unique_id',
+        fofem_tree_id_col_name: str = 'unique_id',
+        return_paths: bool = False,
+) -> Union[None, tuple[str, str]]:
+    """
+    Process mortality for a DataFrame of trees using the CRNSCH model.
+
+    :param plot_wx_fire_csv_path: Path to CSV file containing plot weather and fire data.
+    :param fofem_tree_csv_path: Path to CSV file containing tree data.
+    :param out_dir: Output directory to save results.
+    :param aspen_sev: Aspen severity level ('low' or 'high') for mortality calculation.
+    :param plot_id_col_name: Name of the unique ID column in plot_fire_df (default 'unique_id').
+    :param fofem_tree_id_col_name: Name of the unique ID column in tree_df (default 'unique_id').
+    :param return_paths: Whether to return the merged tree-fire DataFrame and the stand-level
+        fire severity DataFrame (default False).
+    :return: None if return_paths is False, otherwise a tuple of (merged_tree_df, plot_fire_df) DataFrames.
+    """
+    # Load tree parameters and set index
+    tree_params_df = helper.get_df(
+        os.path.join(os.path.dirname(__file__), '..', 'supporting_data', 'tree_parameters.csv')
+    ).set_index('Species')
+    tree_code_dict = dict(zip(tree_params_df['sppNumCD'], tree_params_df['FOFEM_sppCD']))
+
+    # Load stand fire and tree data
+    plot_fire_df = helper.get_df(plot_wx_fire_csv_path)
+    tree_df = helper.get_df(fofem_tree_csv_path)
+
+    # Remove rows with missing required data
+    required_cols = ['instand_ws_kmph', 'canopy_cover', 'ht_ovrstry_live', 'fsg', 'ws', 'hfi', 'fire_type', 'temp']
+    # Only keep columns that exist in plot_fire_df
+    filtered_required_cols = [col for col in required_cols if col in plot_fire_df.columns]
+    if filtered_required_cols:
+        plot_fire_df = plot_fire_df.dropna(subset=filtered_required_cols)
+    else:
+        print('\t\tWarning: None of the required columns were found in plot_fire_df. Skipping dropna.')
+
+    # Merge tree data with all fire weather scenarios for each unique_id
+    merged_tree_df = pd.merge(
+        plot_fire_df,
+        tree_df,
+        left_on=plot_id_col_name,
+        right_on=fofem_tree_id_col_name,
+        how='inner',
+        suffixes=('', '_tree')
+    )
+
+    # Calculate mortality for each tree-fire scenario combination
+    print('\tProcessing Post-Fire Tree Mortality (via FOFEM CRNSCH model)...')
+    def get_col(col):
+        return merged_tree_df[col].to_numpy() if col in merged_tree_df.columns else None
+    merged_tree_df['mortality_crnsch'] = fofem.mort_crnsch(
+        spp=get_col('spp'),
+        dbh=get_col('dbh'),
+        ht=get_col('ht'),
+        crown_depth=get_col('crown_depth'),
+        bark_thickness=get_col('bark_thick'),
+        fire_intensity=get_col('hfi'),
+        amb_t=get_col('temp'),
+        flame_length=get_col('flame_length'),
+        char_ht=get_col('char_height'),
+        scorch_ht=get_col('scorch_height'),
+        instand_ws=get_col('instand_ws_kmph'),
+        aspen_sev=aspen_sev,
+        tree_code_dict=tree_code_dict
+    )
+
+    # Calculate tree-level mortality for each scenario
+    merged_tree_df['prob_mortality_crnsch'] = merged_tree_df['mortality_crnsch']
+    merged_tree_df['tree_dead_crnsch'] = np.where(merged_tree_df['prob_mortality_crnsch'] > 0.5, 1, 0)
+    merged_tree_df['tree_dead_ba_crnsch'] = np.where(merged_tree_df['tree_dead_crnsch'] == 1,
+                                                     merged_tree_df['ba_live_ha'],
+                                                     0)
+
+    # Calculate stand-level proportion of basal area killed by fire for each scenario
+    agg_df = merged_tree_df.groupby([
+        plot_id_col_name, 'wx_date', 'hfi', 'fire_type', 'temp', 'instand_ws_kmph'
+    ], as_index=False).agg({
+        'ba_live_ha': 'sum',
+        'tree_dead_ba_crnsch': 'sum'
+    })
+    agg_df['prop_dead_ba_crnsch'] = agg_df['tree_dead_ba_crnsch'] / agg_df['ba_live_ha']
+
+    # Merge aggregated results back to original plot_fire_df to preserve all columns
+    plot_fire_df = pd.merge(
+        plot_fire_df,
+        agg_df[[plot_id_col_name, 'wx_date', 'hfi', 'fire_type', 'temp',
+                'instand_ws_kmph', 'tree_dead_ba_crnsch', 'prop_dead_ba_crnsch']],
+        on=[plot_id_col_name, 'wx_date', 'hfi', 'fire_type', 'temp', 'instand_ws_kmph'],
+        how='left'
+    )
+
+    # Calculate stand-level fire severity per Agee (1994)
+    plot_fire_df = _calc_severity_class(plot_fire_df)
+
+    # Save results to output folder
+    os.makedirs(out_dir, exist_ok=True)
+    out_tree_csv_path = os.path.join(out_dir, 'fofem_tree_mortality_results.csv')
+    out_severity_csv_path = os.path.join(out_dir, 'fofem_severity_results.csv')
+    helper.export_csv(merged_tree_df, out_tree_csv_path)
+    helper.export_csv(plot_fire_df, out_severity_csv_path)
+
+    if return_paths:
+        # Return the merged tree-fire DataFrame and the stand-level fire severity DataFrame paths
+        return out_tree_csv_path, out_severity_csv_path
+
+    return None
+
+
+# Test routine for FOFEM mortality processing
+if __name__ == '__main__':
+    # Define input and output folders
+    test_dir = os.path.join(os.path.dirname(__file__), '../tests')
+    _in_tree_data_dir = os.path.join(test_dir, 'results', 'fuel_analyst')
+    _in_fire_data_dir = os.path.join(test_dir, 'results', 'conpyro')
+    _out_dir = os.path.join(test_dir, 'results', 'fofem_mortality')
+    _aspen_sev = 'low'
+
+    # Get stand fire and tree csv paths
+    _plot_wx_fire_csv_path = os.path.join(_in_fire_data_dir, 'ccp_df_results.csv')
+    _fofem_tree_csv_path = os.path.join(_in_tree_data_dir, 'master_tree_df.csv')
+    _plot_fire_id_col_name = _fofem_tree_id_col_name = 'unique_id'
+
+    # Process mortality modelling
+    process_mortality(
+        plot_wx_fire_csv_path=_plot_wx_fire_csv_path,
+        plot_id_col_name=_plot_fire_id_col_name,
+        fofem_tree_csv_path=_fofem_tree_csv_path,
+        fofem_tree_id_col_name=_fofem_tree_id_col_name,
+        out_dir=_out_dir,
+        aspen_sev=_aspen_sev,
+    )
