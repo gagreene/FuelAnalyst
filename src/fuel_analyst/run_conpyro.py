@@ -51,7 +51,7 @@ default_fire_modelling_dict = {
         },
     },
     'fofem_mortality': {
-        'run_model': False,
+        'run_model': True,
         'plot_id_col_name': 'unique_id',
         'fofem_tree_id_col_name': 'unique_id',
     },
