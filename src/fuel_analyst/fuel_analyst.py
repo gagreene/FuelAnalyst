@@ -452,21 +452,23 @@ default_fofem_consume_dict = {
 }
 
 
-def fuel_analyst(in_folder: str,
-                 out_folder: str,
-                 surface_fire_intensity_model: str,
-                 stand_summary_params: Optional[dict] = None,
-                 woody_debris_params: Optional[dict] = None,
-                 ccp_params: Optional[dict] = None,
-                 fofem_consume_params: Optional[dict] = None,
-                 gen_ccp_df: bool = False,
-                 gen_fofem_tree_df: bool = False,
-                 gen_fofem_consume_df: bool = False) -> None:
+def fuel_analyst(
+        in_dir: str,
+        out_dir: str,
+        surface_fire_intensity_model: str,
+        stand_summary_params: Optional[dict] = None,
+        woody_debris_params: Optional[dict] = None,
+        ccp_params: Optional[dict] = None,
+        fofem_consume_params: Optional[dict] = None,
+        gen_ccp_df: bool = False,
+        gen_fofem_tree_df: bool = False,
+        gen_fofem_consume_df: bool = False
+) -> None:
     """
     Main Fuel Analyst function to process the fuel attributes and save the results.
 
-    :param in_folder: Path to the input folder containing the survey data.
-    :param out_folder: Path to the output folder where results will be saved.
+    :param in_dir: Path to the input folder containing the survey data.
+    :param out_dir: Path to the output folder where results will be saved.
     :param surface_fire_intensity_model: Model to use for surface fire intensity calculations.
     :param stand_summary_params: Dictionary containing stand summary parameters.
     :param woody_debris_params: Dictionary containing parameters for woody debris processing.
@@ -480,8 +482,8 @@ def fuel_analyst(in_folder: str,
     # Create the list of forms to process
     form_select_list = ['plants', 'trees', 'cover', 'woody']
 
-    # Create a dictionary to map form names to their respective folder names
-    folder_dict = {
+    # Create a dictionary to map form names to their respective directory names
+    dir_dict = {
         'plot': '1_Plot_Attributes',
         'plants': '2_Plants_Regeneration',
         'trees': '3_Trees',
@@ -513,7 +515,7 @@ def fuel_analyst(in_folder: str,
     if gen_ccp_df:
         # Verify all forms are present for CCP generation
         for form in form_select_list:
-            in_path = os.path.join(in_folder, folder_dict.get(form))
+            in_path = os.path.join(in_dir, dir_dict.get(form))
             missing_forms = [form for form in form_select_list if not os.path.exists(in_path)]
             if missing_forms:
                 raise FileNotFoundError(
@@ -537,20 +539,20 @@ def fuel_analyst(in_folder: str,
     form_df = None
     master_tree_df = None
     ccp_df = None
-    fbp_df = None
+    fbp_prep_df = None
     fofem_tree_df = None
     fofem_consume_df = None
 
     # Process plot attributes
-    plot_df, add_columns = pa.process_plot_attributes(os.path.join(in_folder, folder_dict.get('plot')),
-                                                      os.path.join(out_folder, folder_dict.get('plot')))
+    plot_df, add_columns = pa.process_plot_attributes(os.path.join(in_dir, dir_dict.get('plot')),
+                                                      os.path.join(out_dir, dir_dict.get('plot')))
     keep_columns.extend(add_columns)
 
     # Process selected forms
     for form in form_select_list:
         # Get the input and output paths for the current form
-        in_path = os.path.join(in_folder, folder_dict.get(form))
-        out_path = os.path.join(out_folder, folder_dict.get(form))
+        in_path = os.path.join(in_dir, dir_dict.get(form))
+        out_path = os.path.join(out_dir, dir_dict.get(form))
 
         # Check if the input path exists
         if not os.path.exists(in_path):
@@ -612,42 +614,42 @@ def fuel_analyst(in_folder: str,
         fofem_consume_df = fofem_attributes.gen_fofem_consumption_df(plot_df, fofem_consume_params)
 
     # ### PROCESS OUTPUTS
-    # Make the out_folder if it does not exist
-    os.makedirs(out_folder, exist_ok=True)
+    # Make the out_dir if it does not exist
+    os.makedirs(out_dir, exist_ok=True)
 
     # Save the Master Fuel DataFrame to the output folder if it exists
     if plot_df is not None:
-        master_df_path = os.path.join(out_folder, 'master_fuel_df.csv')
+        master_df_path = os.path.join(out_dir, 'master_fuel_df.csv')
         print(f'\n\nSaving the Master Fuel DataFrame to: {master_df_path}')
         plot_df = plot_df[keep_columns]  # Keep only the specified columns
         helper.export_csv(plot_df, master_df_path)
 
     # Save the Master Tree DataFrame to the output folder if it exists
     if master_tree_df is not None:
-        master_tree_df_path = os.path.join(out_folder, 'master_tree_df.csv')
+        master_tree_df_path = os.path.join(out_dir, 'master_tree_df.csv')
         print(f'Saving the Master Tree DataFrame to: {master_tree_df_path}')
         helper.export_csv(master_tree_df, master_tree_df_path)
 
     # Save the CCP DataFrame to the output folder if it exists
     if ccp_df is not None:
-        ccp_df_path = os.path.join(out_folder, 'ccp_df.csv')
+        ccp_df_path = os.path.join(out_dir, 'ccp_df.csv')
         print(f'Saving the CCP DataFrame to: {ccp_df_path}')
         helper.export_csv(ccp_df, ccp_df_path)
 
     if fbp_prep_df is not None:
-        fbp_df_path = os.path.join(out_folder, 'fbp_prep_df.csv')
+        fbp_df_path = os.path.join(out_dir, 'fbp_prep_df.csv')
         print(f'Saving the FBP Prep DataFrame to: {fbp_df_path}')
         helper.export_csv(fbp_prep_df, fbp_df_path)
 
     # Save the FOFEM Tree DataFrame to the output folder if it exists
     if fofem_tree_df is not None:
-        fofem_tree_df_path = os.path.join(out_folder, 'fofem_tree_df.csv')
+        fofem_tree_df_path = os.path.join(out_dir, 'fofem_tree_df.csv')
         print(f'Saving the FOFEM Tree DataFrame to: {fofem_tree_df_path}')
         helper.export_csv(fofem_tree_df, fofem_tree_df_path)
 
     # Save the FOFEM Consumption DataFrame to the output folder if it exists
     if fofem_consume_df is not None:
-        fofem_consume_df_path = os.path.join(out_folder, 'fofem_consume_df.csv')
+        fofem_consume_df_path = os.path.join(out_dir, 'fofem_consume_df.csv')
         print(f'Saving the FOFEM Consumption DataFrame to: {fofem_consume_df_path}')
         helper.export_csv(fofem_consume_df, fofem_consume_df_path)
 
@@ -658,8 +660,8 @@ def fuel_analyst(in_folder: str,
 if __name__ == '__main__':
     # Define input and output folders
     test_dir = os.path.join(os.path.dirname(__file__), 'tests')
-    _in_folder = os.path.join(test_dir, 'test_data', 'Survey123_Data')
-    _out_folder = os.path.join(test_dir, 'results', 'fuel_analyst')
+    _in_dir = os.path.join(test_dir, 'test_data', 'Survey123_Data')
+    _out_dir = os.path.join(test_dir, 'results', 'fuel_analyst')
     _surface_fire_intensity_model = 'Byram'
     _stand_summary_dict = None      # Uses default stand summary settings if None
     _woody_debris_dict = None       # Uses default woody debris settings if None
@@ -670,8 +672,8 @@ if __name__ == '__main__':
     _gen_fofem_consume_df = True    # Whether to generate the FOFEM consumption DataFrame
 
     # Run the main fuel_analyst function
-    fuel_analyst(in_folder=_in_folder,
-                 out_folder=_out_folder,
+    fuel_analyst(in_dir=_in_dir,
+                 out_dir=_out_dir,
                  surface_fire_intensity_model=_surface_fire_intensity_model,
                  stand_summary_params=_stand_summary_dict,
                  woody_debris_params=_woody_debris_dict,
