@@ -343,6 +343,17 @@ def _sample_raster(
     """
     Sample a list of rasters at plot locations and return a long-format table.
     Each raster is sampled for all provided plot coordinates in a single call.
+
+    :param plots: GeoDataFrame with plot locations (must include geometry and id_col)
+    :param raster_paths: List of file paths to rasters to sample (must be in the same CRS as plots)
+    :param id_col: Name of the unique ID column in the plots GeoDataFrame (e.g. "unique_id")
+    :param var: Weather variable name corresponding to the rasters being sampled (e.g. "fwi", "isi")
+    :param value_col: Name of the column to store sampled values in the output DataFrame
+        (default "value")
+    :param date_col: Name of the column to store raster date (YYYYMMDD as int) in the output DataFrame
+        (default "wx_date")
+    :return: DataFrame with columns [id_col, date_col, value_col] containing sampled values for each
+        plot and raster
     """
     if id_col not in plots.columns:
         raise ValueError(f'ID column "{id_col}" not found in plots columns: {list(plots.columns)}')
