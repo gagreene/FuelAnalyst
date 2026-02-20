@@ -7,34 +7,57 @@ Created on Sun Feb 2, 11:15:00 2026
 __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
 import os
+import shutil
 from numpy import array, column_stack, full, nan
 import pandas as pd
+from typing import Optional
 
 import sys
 pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..')
 if pkg_dir not in sys.path:
     sys.path.insert(0, pkg_dir)
 
+from src.fuel_analyst.components import helper
 from dependencies.conpyro.src.conpyro import conpyro
 from dependencies.flame_components import flame_components as fc
 
 
 default_fire_modelling_dict = {
     'conpyro': {
-        'out_request': [
-            'fsg', 'mc_ffmc', 'mc_dmc', 'mc_sa', 'cac', 'cfo_prob',
-            'sros', 'cros', 'hros', 'bros', 'fire_type', 'accel_param',
-            'cfb', 'tfc', 'sfi', 'cfi', 'hfi'
-        ],
-        'flame_comp_out_list': [
-            'instand_ws', 'flame_length_m', 'flame_tilt', 'flame_height', 'flame_res_time', 'flame_depth'
-        ],
+        'plot_id_col_name': 'unique_id',
+        'input_params': {
+            'cfo_model': 3,  # Options: Integer from 1 to 4, 10 (see ConPyro documentation for details), or string "use_csv"
+            'sros_model': 1,  #
+            'cros_model': 1,
+            'smooth_ros': True,
+            'model_slope_effects': True,
+            'wx_date': 'use_csv',    # Options: Integer in format YYYYMMDD, or string "use_csv" (default)
+            'fmc': None,    # Only needed if wx_date is None
+            'season': None,    # Only needed if wx_date is None
+            'time': None,       # Only needed for CFIS (cfo_model == 10); Set to 1200 since not using CFIS by default
+        },
+        'output_params': {
+            'out_request': [
+                'mc_sa', 'mc_dmc', # Needed for FOFEM emissions modelling
+                'fsg', 'cac', 'cfo_prob',
+                'sros', 'cros', 'hros', 'bros',
+                'tfc', 'sfi', 'cfi', 'hfi',
+                'cfb', 'fire_type'
+            ],
+            # Leave flame_comp_out_list fixed for the time being - do not let user adjust
+            'flame_comp_out_list': [
+                'instand_ws', 'flame_length_m', 'flame_tilt', 'flame_height', 'flame_res_time', 'flame_depth'
+            ],
+        },
     },
     'fofem_mortality': {
-        'model_mortality': True,
+        'run_model': False,
+        'plot_id_col_name': 'unique_id',
+        'fofem_tree_id_col_name': 'unique_id',
     },
     'fofem_emissions': {
-        'model_emissions': True,
+        'run_model': True,
+        'plot_id_col_name': 'unique_id',
     },
 }
 
@@ -262,11 +285,123 @@ def _calc_flame_depth(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def model_flame_components(df: pd.DataFrame, flame_comp_out_list) -> pd.DataFrame:
+def _model_fire_behavior(df: pd.DataFrame, input_params: dict, conpyro_out_list: list,
+                         conpyro_params: dict) -> pd.DataFrame:
     """
-    Model flame components based on ConPyro output parameters.
+    Run ConPyro for each weather date and time combination and return the resulting DataFrame.
+
+    :param df: Input DataFrame with required columns.
+    :param input_params: Dictionary of input parameters for ConPyro.
+    :param conpyro_out_list: List of output parameters to request from ConPyro.
+    :param conpyro_params: Dictionary of ConPyro model parameters.
+    :return: DataFrame with ConPyro results.
+    """
+    new_df_list = []
+    for wx_date in (
+            (input_params['wx_date'] if isinstance(input_params['wx_date'], list)
+            else [input_params['wx_date']] if isinstance(input_params['wx_date'], (int, type(None)))
+            else list(set(df['wx_date'].astype(int))))
+    ):
+        for time in (
+                (input_params['time'] if isinstance(input_params['time'], list)
+                else [input_params['time']] if isinstance(input_params['time'], (int, type(None)))
+                else list(set(df['wx_date'].astype(int))))
+        ):
+            subset_df = (df[(df['wx_date'] == wx_date)] if input_params['wx_date'] == 'use_csv' else df)
+            subset_df = (subset_df[(subset_df['time'] == time)] if input_params['time'] == 'use_csv' else subset_df)
+
+            # Initialize ConPyro class
+            cp = conpyro.ConPyro()
+            cp.initialize(
+                cfo_model=(input_params['cfo_model']
+                           if input_params['cfo_model'] != 'use_csv'
+                           else subset_df['cfo_model'].values.astype(int)),
+                sros_model=(input_params['sros_model']
+                            if input_params['sros_model'] != 'use_csv'
+                            else subset_df['sros_model'].values.astype(int)),
+                cros_model=(input_params['cros_model']
+                            if input_params['cros_model'] != 'use_csv'
+                            else subset_df['cros_model'].values.astype(int)),
+                smooth_ros=bool(input_params['smooth_ros']),
+                model_slope_effects=bool(input_params['model_slope_effects']),
+                season=input_params['season'],
+                density=subset_df['stand_density'].values.astype(str),
+                stand_type=subset_df['stand_type'].values.astype(str),
+                ws=subset_df['ws'].values,
+                wd=subset_df['wd'].values,
+                ffmc=subset_df['ffmc'].values,
+                dmc=subset_df['dmc'].values,
+                bui=subset_df['bui'].values,
+                fsg=subset_df['fsg'].values,
+                fuel_type=subset_df['fbp_fuel_type'].values.astype(str),
+                ffl=subset_df[['duff_fuel_load', 'litter_fuel_load']].sum(axis=1).values,
+                wfl=subset_df['woody_fuel_load'].values,
+                gfl=subset_df['herbaceous_fuel_load'].values,
+                pct_cnfr=subset_df['pct_cnfr'].values,
+                cbd=subset_df['cbd_ovrstry'].values,
+                ht_midstry_live=subset_df['ht_midstry_live'].values,
+                ht_midstry_dead=subset_df['ht_midstry_dead'].values,
+                cbh_ovrstry=subset_df['cbh_ovrstry'].values,
+                cbh_midstry=subset_df['cbh_midstry'].values,
+                cfl_ovrstry=subset_df['cfl_ovrstry'].values,
+                cfl_midstry=subset_df['cfl_midstry'].values,
+                dead_branch_fl=subset_df['dead_branch_fl'].values,
+                fmc=(input_params['fmc']
+                     if input_params['fmc'] != 'use_csv'
+                     else subset_df['fmc'].values.astype(float)
+                     ),
+                wx_date=wx_date,
+                time=time,
+                site_elev=subset_df['elevation'].values,
+                stn_elev=subset_df['elevation'].values,
+                temp=subset_df['temp'].values,
+                rh=subset_df['rh'].values,
+                cc=subset_df['canopy_cover'].values,
+                elevation=subset_df['elevation'].values,
+                slope=subset_df['slope'].values,
+                aspect=subset_df['aspect'].values,
+                lat=subset_df['lat'].values,
+                long=subset_df['long'].values,
+            )
+
+            # Run ConPyro
+            cp.run_conpyro()
+
+            # Get requested output parameters
+            temp_df = pd.DataFrame(
+                column_stack(array(cp.return_params(out_request=conpyro_out_list), dtype=object)),
+                columns=conpyro_out_list
+            )
+            # Drop any columns that are already in subset_df to avoid duplication when concatenating
+            subset_df = subset_df.drop(columns=[col for col in subset_df.columns if col in temp_df.columns],
+                                       errors='ignore')
+            subset_df = subset_df.reset_index(drop=True)
+            subset_df = pd.concat([subset_df, temp_df], axis=1)
+            new_df_list.append(subset_df)
+            del cp, temp_df, subset_df
+
+    # Concatenate all new_df results
+    df = pd.concat(new_df_list, ignore_index=True)
+
+    # Change string values to int or float (as appropriate) if they are numeric
+    for col in df.select_dtypes(include=['object']).columns:
+        try:
+            df[col] = pd.to_numeric(df[col])
+        except ValueError:
+            pass
+
+    # Sort by plot_id_col_name and wx_date
+    df = df.sort_values(by=[conpyro_params['plot_id_col_name'], 'wx_date']).reset_index(drop=True)
+
+    return df
+
+
+def _model_flame_components(df: pd.DataFrame, flame_comp_out_list: list) -> pd.DataFrame:
+    """
+    Model flame components using ConPyro output fire behavior parameters.
 
     :param df: DataFrame with ConPyro output parameters.
+    :param flame_comp_out_list: List of flame component variables to calculate and add to the DataFrame.
     :return: DataFrame with additional flame component columns.
     """
     # Calculate in-stand wind speed (km/h)
@@ -300,99 +435,216 @@ def model_flame_components(df: pd.DataFrame, flame_comp_out_list) -> pd.DataFram
     return df
 
 
-def run_conpyro(in_csv_path: str,
-                conpyro_out_list: list,
-                flame_comp_out_list: list,
-                out_csv_path: str) -> None:
+def _model_fofem_emissions(
+        df: pd.DataFrame,
+        fire_csv_path: str,
+        fofem_emissions_params: dict,
+        in_fofem_consume_csv_path: str,
+        out_dir: str,
+        conpyro_params: dict
+) -> pd.DataFrame:
     """
-    Run ConPyro on the input data and model flame components based on ConPyro output.
+    Run FOFEM emissions modelling and merge results with the input DataFrame.
 
-    :param in_csv_path: Path to the input CSV file containing required columns for ConPyro.
-    :param conpyro_out_list: List of ConPyro output parameters to include in the output DataFrame.
-    :param flame_comp_out_list: List of flame component output parameters to model and include in the output DataFrame.
-    :param out_csv_path: Path to save the output CSV file with ConPyro results and flame components.
+    :param df: DataFrame with plot-level fire behavior results from ConPyro.
+    :param fire_csv_path: Path to the CSV file with fire behavior results.
+    :param fofem_emissions_params: Dictionary of FOFEM emissions model parameters.
+    :param in_fofem_consume_csv_path: Path to the input CSV file containing FOFEM fuel
+        consumption data for emissions modelling.
+    :param out_dir: Directory to save FOFEM emissions output files.
+    :param conpyro_params: Dictionary of ConPyro model parameters.
+    :return: DataFrame with FOFEM emissions results merged.
+    """
+    from src.fuel_analyst.components import fofem_emissions as fe
+
+    # Create FOFEM emissions output directory and remove any existing files if it already exists
+    emissions_dir = os.path.join(out_dir, 'fofem_emissions')
+    os.makedirs(emissions_dir, exist_ok=True)
+    helper.delete_files(emissions_dir)
+
+    # Run FOFEM emissions modelling with the plot-level fire behavior results from ConPyro
+    emiss_df = fe.process_emissions(
+        plot_wx_fire_csv_path=fire_csv_path,
+        plot_id_col_name=fofem_emissions_params['plot_id_col_name'],
+        fofem_consume_csv_path=in_fofem_consume_csv_path,
+        out_dir=emissions_dir,
+        return_df=True,
+    )
+
+    # Merge emissions results back to original plot_fire_df to preserve all columns
+    df = pd.merge(
+        df,
+        emiss_df,
+        left_on=[conpyro_params['plot_id_col_name'], 'wx_date'],
+        right_on=['#PlotId', 'wx_date'],
+        how='left',
+        suffixes=('', '_fofem_emissions'),
+    )
+
+    # Drop columns with "_fofem_emissions" suffix
+    df = df.drop(columns=['#PlotId'] + [col for col in df.columns if col.endswith('_fofem_emissions')])
+
+    return df
+
+
+def _model_fofem_mortality(
+        df: pd.DataFrame,
+        fire_csv_path: str,
+        in_tree_csv_path: str,
+        out_dir: str,
+        fofem_mortality_params: dict,
+        conpyro_params: dict,
+) -> pd.DataFrame:
+    """
+    Run FOFEM mortality modelling and merge results with the input DataFrame.
+
+    :param df: DataFrame with plot-level fire behavior results from ConPyro.
+    :param fire_csv_path: Path to the CSV file with fire behavior results.
+    :param in_tree_csv_path: Path to the input CSV file containing tree data for FOFEM mortality modelling.
+    :param out_dir: Directory to save FOFEM mortality output files.
+    :param fofem_mortality_params: Dictionary of FOFEM mortality model parameters.
+    :param conpyro_params: Dictionary of ConPyro model parameters.
+    :param fofem_ext: String suffix for FOFEM output files.
+    :return: DataFrame with FOFEM mortality results merged.
+    """
+    from src.fuel_analyst.components import fofem_mortality as fm
+
+    # Create FOFEM mortality output directory and remove any existing files if it already exists
+    mortality_dir = os.path.join(out_dir, 'fofem_mortality')
+    os.makedirs(mortality_dir, exist_ok=True)
+    helper.delete_files(mortality_dir)
+
+    # Run FOFEM mortality modelling with the plot-level fire behavior results from ConPyro
+    tree_mort_df, severity_df = fm.process_mortality(
+        plot_wx_fire_csv_path=fire_csv_path,
+        fofem_tree_csv_path=in_tree_csv_path,
+        out_dir=mortality_dir,
+        plot_id_col_name=fofem_mortality_params['plot_id_col_name'],
+        fofem_tree_id_col_name=fofem_mortality_params['fofem_tree_id_col_name'],
+        return_dfs=True
+    )
+    del tree_mort_df
+
+    # Merge severity results back to original plot_fire_df to preserve all columns
+    df = pd.merge(
+        df,
+        severity_df,
+        left_on=[conpyro_params['plot_id_col_name'], 'wx_date'],
+        right_on=[fofem_mortality_params['plot_id_col_name'], 'wx_date'],
+        how='left',
+        suffixes=('', '_fofem_mortality'),
+    )
+
+    # Drop columns with "_fofem_mortality" suffix
+    df = df.drop(columns=[col for col in df.columns if col.endswith('_fofem_mortality')])
+
+    return df
+
+
+def run_conpyro(
+        out_dir: str,
+        in_conpyro_csv_path: str,
+        in_tree_csv_path: Optional[str] = None,
+        in_fofem_consume_csv_path: Optional[str] = None,
+        fire_modelling_params: Optional[dict] = None
+) -> None:
+    """
+    Run ConPyro with the test datasets.
+
+    :param out_dir: Directory to save output CSV files.
+    :param in_conpyro_csv_path: Path to the input CSV file containing required columns for ConPyro.
+    :param in_tree_csv_path: Optional path to the input CSV file containing tree data for
+        FOFEM mortality modelling.
+    :param in_fofem_consume_csv_path: Optional path to the input CSV file containing
+        FOFEM fuel consumption data for emissions modelling.
+    :param fire_modelling_params: Optional dictionary containing fire modelling parameters for ConPyro,
+        FOFEM mortality, and FOFEM emissions modelling.
     :return: None
     """
-    # Get dataframe
-    df = pd.read_csv(in_csv_path)
+    # Ensure the output directory exists
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Set default fire modelling parameters if not provided
+    if fire_modelling_params is None:
+        fire_modelling_params = default_fire_modelling_dict
+
+    # Get ConPyro, FOFEM mortality, and FOFEM emissions parameters from fire_modelling_params
+    conpyro_params = fire_modelling_params['conpyro']
+    fofem_mortality_params = fire_modelling_params['fofem_mortality']
+    fofem_emissions_params = fire_modelling_params['fofem_emissions']
+
+    # Get modelling parameters
+    input_params = conpyro_params['input_params']
+    conpyro_out_list = conpyro_params['output_params']['out_request']
+    flame_comp_out_list = conpyro_params['output_params']['flame_comp_out_list']
+
+    # Get dataframe of plot data for ConPyro modelling
+    df = pd.read_csv(in_conpyro_csv_path, low_memory=False)
 
     # Drop rows with empty values in required columns
     drop_empty_rows_in_cols = ['stand_density', 'stand_type']
     for col in drop_empty_rows_in_cols:
         df = df[df[col].notna()]
 
-    # Initialize ConPyro class
-    cp = conpyro.ConPyro()
-    cp.initialize(
-        cfo_model=3,
-        sros_model=1,
-        cros_model=1,
-        smooth_ros=True,
-        model_slope_effects=True,
-        season=None,
-        density=df['stand_density'].values.astype(str),
-        stand_type=df['stand_type'].values.astype(str),
-        ws=df['ws'].values,
-        wd=df['wd'].values,
-        ffmc=df['ffmc'].values,
-        dmc=df['dmc'].values,
-        bui=df['bui'].values,
-        fsg=df['fsg'].values,
-        fuel_type=df['fbp_fuel_type'].values.astype(str),
-        ffl=df[['duff_fuel_load', 'litter_fuel_load']].sum(axis=1).values,
-        wfl=df['woody_fuel_load'].values,
-        gfl=df['herbaceous_fuel_load'].values,
-        pct_cnfr=df['pct_cnfr'].values,
-        cbd=df['cbd_ovrstry'].values,
-        ht_midstry_live=df['ht_midstry_live'].values,
-        ht_midstry_dead=df['ht_midstry_dead'].values,
-        cbh_ovrstry=df['cbh_ovrstry'].values,
-        cbh_midstry=df['cbh_midstry'].values,
-        cfl_ovrstry=df['cfl_ovrstry'].values,
-        cfl_midstry=df['cfl_midstry'].values,
-        dead_branch_fl=df['dead_branch_fl'].values,
-        fmc=90,
-        wx_date=20170706,
-        time=1200,
-        site_elev=df['elevation'].values,
-        stn_elev=df['elevation'].values,
-        temp=df['temp'].values,
-        rh=df['rh'].values,
-        cc=df['canopy_cover'].values,
-        slope=df['slope'].values,
-        aspect=df['aspect'].values,
+    # ### MODEL FIRE BEHAVIOR WITH CONPYRO ###
+    print('\n>>>> Running ConPyro...')
+    df = _model_fire_behavior(
+        df=df,
+        input_params=input_params,
+        conpyro_out_list=conpyro_out_list,
+        conpyro_params=conpyro_params,
     )
 
-    # Run ConPyro
-    print('Running ConPyro...')
-    cp.run_conpyro()
+    # ### MODEL FLAME COMPONENTS ###
+    print('\n>>>> Modeling flame components with ConPyro output...')
+    df = _model_flame_components(df, flame_comp_out_list)
 
-    # Get requested output parameters
-    new_df = pd.DataFrame(
-        column_stack(array(cp.return_params(out_request=conpyro_out_list), dtype=object)),
-        columns=conpyro_out_list)
 
-    # Drop columns from df if they are present in new_df
-    df = df.drop(columns=[col for col in new_df.columns if col in df.columns], errors='ignore')
+    # ### SAVE CONPYRO RESULTS TO CSV ###
+    # Create fire behavior output directory and remove any existing files if it already exists
+    fire_dir = os.path.join(out_dir, 'fire_behavior')
+    os.makedirs(fire_dir, exist_ok=True)
+    helper.delete_files(fire_dir)
+    # Save ConPyro results to CSV
+    fire_csv_path = os.path.join(fire_dir, 'conpyro_results.csv')
+    print(f'\tSaving results to {fire_csv_path}...')
+    helper.export_csv(df, fire_csv_path)
 
-    # Add new columns to original dataframe
-    df = pd.concat([df.reset_index(drop=True), new_df.reset_index(drop=True)], axis=1)
-    del new_df
+    fofem_ext = ''
+    # ### MODEL FOFEM MORTALITY (IF ENABLED) ###
+    if fofem_mortality_params['run_model']:
+        print('\n>>>> Running FOFEM mortality modelling...')
+        df = _model_fofem_mortality(
+            df=df,
+            fire_csv_path=fire_csv_path,
+            in_tree_csv_path=in_tree_csv_path,
+            out_dir=out_dir,
+            fofem_mortality_params=fofem_mortality_params,
+            conpyro_params=conpyro_params,
+        )
+        fofem_ext += '_mortality'
 
-    # Change string values to int or float (as appropriate) if they are numeric
-    for col in df.select_dtypes(include=['object']).columns:
-        try:
-            df[col] = pd.to_numeric(df[col])
-        except ValueError:
-            pass
+    # ### MODEL FOFEM EMISSIONS (IF ENABLED) ###
+    if fofem_emissions_params['run_model']:
+        print('\n>>>> Running FOFEM emissions modelling...')
+        df = _model_fofem_emissions(
+            df=df,
+            fire_csv_path=fire_csv_path,
+            fofem_emissions_params=fofem_emissions_params,
+            in_fofem_consume_csv_path=in_fofem_consume_csv_path,
+            out_dir=out_dir,
+            conpyro_params=conpyro_params,
+        )
+        fofem_ext += '_emissions'
 
-    # Model flame components with ConPyro output
-    print('Modeling flame components with ConPyro output...')
-    df = model_flame_components(df, flame_comp_out_list)
-
-    # Save results to CSV
-    print(f'Saving results to {out_csv_path}...')
-    df.to_csv(out_csv_path, index=False)
+    # ### SAVE FINAL RESULTS TO CSV ###
+    if fofem_mortality_params['run_model'] or fofem_emissions_params['run_model']:
+        out_csv_path = os.path.join(out_dir, f'conpyro{fofem_ext}_results.csv')
+        print(f'\nSaving final modelling results to {out_csv_path}...')
+        # Sort by plot_id_col_name and wx_date
+        df = df.sort_values(by=[conpyro_params['plot_id_col_name'], 'wx_date']).reset_index(drop=True)
+        # Save final DataFrame to CSV
+        helper.export_csv(df, out_csv_path)
 
     return
 
@@ -401,24 +653,22 @@ def run_conpyro(in_csv_path: str,
 if __name__ == '__main__':
     # Define input and output folders
     test_dir = os.path.join(os.path.dirname(__file__), 'tests')
-    _in_dir = os.path.join(test_dir, 'results', 'wx_extract')
     _out_dir = os.path.join(test_dir, 'results', 'conpyro')
-    os.makedirs(_out_dir, exist_ok=True)
-    _in_csv_path = os.path.join(_in_dir, 'ccp_df_wx.csv')
-    _out_csv_path = os.path.join(_out_dir, 'ccp_df_results.csv')
+    # The ConPyro input dataframe must have weather data attached for ConPyro/FOFEM modelling
+    # Required weather columns for ConPyro modelling: 'ws', 'wd', 'ffmc', 'dmc', 'bui', 'temp', 'rh'
+    # Required weather columns for FOFEM mortality modelling: 'ws', 'temp'
+    # Required weather columns for FOFEM emissions modelling: 'ws', 'temp'
+    _in_dir = os.path.join(test_dir, 'results', 'wx_extract')
+    _conpyro_csv_path = os.path.join(_in_dir, 'ccp_df_wx.csv')
+    _tree_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'master_tree_df.csv')
+    _fofem_consume_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'fofem_consume_df.csv')
+    _fire_modelling_dict = None
 
-    _conpyro_out_list = [
-        'fsg', 'mc_ffmc', 'mc_dmc', 'mc_sa', 'cac', 'cfo_prob',
-        'sros', 'cros', 'hros', 'bros', 'fire_type', 'accel_param',
-        'cfb', 'tfc', 'sfi', 'cfi', 'hfi'
-    ]
-
-    _flame_comp_out_list = [
-        'instand_ws', 'flame_length_m', 'flame_tilt', 'flame_height', 'flame_res_time', 'flame_depth'
-    ]
-
-    # Run ConPyro and flame components modelling
-    run_conpyro(in_csv_path=_in_csv_path,
-                conpyro_out_list=_conpyro_out_list,
-                flame_comp_out_list=_flame_comp_out_list,
-                out_csv_path=_out_csv_path)
+    # Run ConPyro modelling
+    run_conpyro(
+        out_dir=_out_dir,
+        in_conpyro_csv_path=_conpyro_csv_path,
+        in_tree_csv_path=_tree_csv_path,
+        in_fofem_consume_csv_path=_fofem_consume_csv_path,
+        fire_modelling_params=_fire_modelling_dict,
+    )
