@@ -7,13 +7,22 @@ Created on Tue May 27, 9:25:00 2025
 __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
 import os
+import shutil
 import pandas as pd
 from datetime import datetime as dt
 import re
 import csv as CSV
 
 
-def add_line_to_csv(file_path, add_list, position):
+def add_line_to_csv(file_path: str, add_list: list, position: int) -> None:
+    """
+    Add a line to a CSV file at a specified position.
+
+    :param file_path: Path to the CSV file.
+    :param add_list: List of values to add as a new line in the CSV.
+    :param position: Line number (0-indexed) where the new line should be inserted.
+    :return: None
+    """
     with open(file_path, 'r') as in_file:
         reader = list(CSV.reader(in_file))
         reader.insert(position, add_list)
@@ -24,6 +33,23 @@ def add_line_to_csv(file_path, add_list, position):
             writer.writerow(line)
 
 
+def delete_files(src_dir: str) -> None:
+    """
+    Delete all files and folders in the specified source directory.
+
+    :param src_dir: Path to the source directory where files and folders will be deleted.
+    :return: None
+    """
+
+    # Delete folders and files in src_dir if they already exist
+    for item in os.listdir(src_dir):
+        item_path = os.path.join(src_dir, item)
+        if os.path.isfile(item_path):
+            os.remove(item_path)
+        elif os.path.isdir(item_path):
+            shutil.rmtree(item_path)
+
+
 
 def export_csv(df: pd.DataFrame, csv_path: str) -> None:
     """
@@ -31,6 +57,7 @@ def export_csv(df: pd.DataFrame, csv_path: str) -> None:
 
     :param df: DataFrame to export.
     :param csv_path: Path to the output CSV file.
+    :return: None
     """
     # Remove the file if it already exists to avoid appending or file corruption
     if os.path.exists(csv_path):
@@ -50,7 +77,7 @@ def file_exists(file_path: str) -> bool:
     return os.path.isfile(file_path)
 
 
-def get_df(csv_path):
+def get_df(csv_path: str) -> pd.DataFrame:
     """
     Read a CSV file into a pandas DataFrame.
 
