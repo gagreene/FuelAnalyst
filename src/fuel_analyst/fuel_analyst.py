@@ -588,7 +588,8 @@ def fuel_analyst(
             if not all(id in form_df['unique_id'].values for id in id_list):
                 missing_ids = [id for id in id_list if id not in form_df['unique_id'].values]
                 print(f'\tWarning:')
-                print(f'\t\tThe following plots are missing data in the {form_dict[form]} dataframe: {missing_ids}')
+                print(f'\t\tThe following IDs are in the Plot Attributes dataset, '
+                      f'but not in {form_dict[form]}: {missing_ids}')
                 missing_ids = [id for id in form_df['unique_id'].values if id not in id_list]
                 print(f'\t\tThe following IDs are in the {form_dict[form]} data, '
                       f'but not in Plot Attributes: {missing_ids}')
