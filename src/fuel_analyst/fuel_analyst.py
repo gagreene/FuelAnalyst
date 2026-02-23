@@ -591,7 +591,7 @@ def fuel_analyst(
                 print(f'\t\tThe following IDs are in the Plot Attributes dataset, '
                       f'but not in {form_dict[form]}: {missing_ids}')
                 missing_ids = [id for id in form_df['unique_id'].values if id not in id_list]
-                print(f'\t\tThe following IDs are in the {form_dict[form]} data, '
+                print(f'\t\tThe following IDs are in the {form_dict[form]} dataset, '
                       f'but not in Plot Attributes: {missing_ids}')
             else:
                 print(f'\tAll IDs from plot_df are present in {form} data. Merging data.')
