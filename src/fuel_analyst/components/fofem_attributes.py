@@ -146,7 +146,11 @@ def gen_fofem_consumption_df(
             'DuffDepth_ConsumEq3': -1,
             'MSE_ConsumEq4': -1,
             'Herb_ConsumEq5': -1,
-            'Shrub_ConsumEq6': -1
+            'Shrub_ConsumEq6': -1,
+            # Add temporary fuel bed depth variable for use in Burnup-In file for FOFEM emissions modeling.
+            # Will be removed from consumption DataFrame prior to use in emissions modelling.
+            'remove_hereafter': np.nan,
+            'fuel_bed_depth_m': (df['fuel_bed_depth_m']).round(2).fillna(0),  # Keep in m
         })
 
         return fofem_consume_df

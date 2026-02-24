@@ -260,6 +260,11 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
         # Get species labels
         df[f'pc_species_{x}_label'] = df[f'pc_species_{x}'].map(label_map)
 
+        # PROCESS ALL PLANTS FOR FUEL BED DEPTH (i.e., Height only)
+        # Get plant height weighted by percent cover for all species (for calculating dominant substrate)
+        df['fuel_bed_ht_wtd'] = df[f'pc_species_{x}_pct'] * df[f'pc_species_{x}_ht']
+        df['fuel_bed_pct_total'] = df[f'pc_species_{x}_pct']
+
         # PROCESS MOSS/BRYOPHYTE
         # Generate a mask for species that are mosses or bryophytes
         moss_bryo_mask = df[f'pc_species_{x}_label'].str.contains('Moss', na=False)
@@ -310,7 +315,8 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
         # Get shrub height weighted by percent cover
         df['shrubs_ht_wtd'] += np.where(shrub_mask, df[f'pc_species_{x}_pct'] * df[f'pc_species_{x}_ht'], 0)
 
-    # Get average height of grass, herbs/forbs, all herbaceous plants (grass + herbs/forbs), and shrubs (m)
+    # Get average height of all fuels, grass, herbs/forbs, all herbaceous plants (grass + herbs/forbs), and shrubs (m)
+    df['fuel_bed_depth_m'] = df['fuel_bed_ht_wtd'] / df['fuel_bed_pct_total'] / 100
     df['bryoid_ht_avg'] = (df['bryoid_ht_wtd'] / df['bryoid_pct_total']) / 100
     df['grass_ht_avg'] = (df['grass_ht_wtd'] / df['grass_pct_total']) / 100
     df['herb_forb_ht_avg'] = (df['herb_forb_ht_wtd'] / df['herb_forb_pct_total']) / 100
@@ -318,7 +324,7 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     df['shrubs_ht_avg'] = (df['shrubs_ht_wtd'] / df['shrubs_pct_total']) / 100
 
     keep_columns = [
-        'bryoid_kgpm2', 'grass_kgpm2', 'herb_forb_kgpm2', 'shrubs_kgpm2',
+        'fuel_bed_depth_m', 'bryoid_kgpm2', 'grass_kgpm2', 'herb_forb_kgpm2', 'shrubs_kgpm2',
     ]
 
     return df, keep_columns

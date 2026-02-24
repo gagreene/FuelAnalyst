@@ -175,9 +175,6 @@ def _get_merged_consumption_df(
         # Replace missing data in SoilFamily column with 'NA' for soil heating modelling
         fofem_consume_df['SoilFamily'] = fofem_consume_df['SoilFamily'].fillna('NA')
 
-    # Add remove column to end of fofem_consume_df before merge with plot_fire_df
-    fofem_consume_df['remove'] = np.nan
-
     # Get required columns for merge and emissions processing
     required_cols = [
         plot_id_col_name, 'wx_date', 'hfi',
@@ -189,7 +186,7 @@ def _get_merged_consumption_df(
     missing_cols = helper.get_missing_df_columns(plot_fire_df, required_cols)
     if missing_cols:
         raise ValueError(
-            f"Missing required column(s) in weather and fire behavior CSV: {required_cols}"
+            f'Missing required column(s) in weather and fire behavior CSV: {required_cols}'
         )
 
     # Filter columns in plot_fire_df
@@ -297,13 +294,15 @@ def _model_emissions(row: dict, out_dir: str, consume_model: str) -> tuple:
         intensity=row['hfi'],
         ig_time=60*row['flame_res_time_min'],
         instand_ws=row['instand_ws_kmph'],
-        depth=0.3,
+        depth=row['fuel_bed_depth_m'],
         amb_temp=row['temp']
     )
 
     try:
-        # Convert row to Dataframe, removing all data including and after 'remove' column
-        row_consume_df = pd.DataFrame([row]).loc[:, :'remove'].drop(columns=['remove'])
+        # Convert row to Dataframe, removing all data including and after 'remove_hereafter' column
+        row_consume_df = pd.DataFrame(
+            [row]
+        ).loc[:, :'remove_hereafter'].drop(columns=['remove_hereafter'])
 
         # Save Consume data to file
         out_consume = _create_consume_file(
@@ -467,7 +466,7 @@ def process_emissions(
     helper.export_csv(fofem_results_df, os.path.join(out_dir, 'fofem_results_df_temp.csv'))
 
     # Delete "remove" column from merged_df
-    merged_df = merged_df.drop(columns=['remove'])
+    merged_df = merged_df.drop(columns=['remove_hereafter'])
     helper.export_csv(merged_df, os.path.join(out_dir, 'merged_df_temp.csv'))
 
     # Append to merged_df
