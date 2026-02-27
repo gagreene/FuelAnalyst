@@ -425,7 +425,7 @@ def extract_weather_data(
     Main function to extract weather data for specified variables and plots, and save results.
 
     :param wx_data_dir: Path to parent directory containing NRCAN gridded weather data directories for each variable
-    :param out_dir: dir to save output files
+    :param out_dir: Directory to save output files
     :param out_file_name: Base name for output files (without extension)
     :param plot_pts_path: Path to the plot locations CSV file (optional, if not using shapefile)
     :param plot_id_col_name: Name of the unique ID column in the plots file (default "unique_id")
