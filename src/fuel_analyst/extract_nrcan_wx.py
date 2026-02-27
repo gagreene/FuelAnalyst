@@ -424,7 +424,7 @@ def extract_weather_data(
     """
     Main function to extract weather data for specified variables and plots, and save results.
 
-    :param wx_data_dir: Base path to weather data dir containing variable subdirectories
+    :param wx_data_dir: Path to parent directory containing NRCAN gridded weather data directories for each variable
     :param out_dir: dir to save output files
     :param out_file_name: Base name for output files (without extension)
     :param plot_pts_path: Path to the plot locations CSV file (optional, if not using shapefile)
@@ -498,7 +498,7 @@ def extract_weather_data(
 # Test routine for extracting weather data and saving results
 if __name__ == '__main__':
     # Define input and output directories
-    _wx_data_dir = r'I:/_Weather_Data/NRCAN_FWIS_Database'
+    _wx_data_dir = r'I:/_Weather_Data/NRCAN_FWIS_Database'  # Parent directory containing NRCAN gridded weather data
     test_dir = os.path.join(os.path.dirname(__file__), 'tests')
     _out_dir = os.path.join(test_dir, 'results', 'wx_extract')
     _out_file_name = f'wx_data'
