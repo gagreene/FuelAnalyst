@@ -499,39 +499,37 @@ def extract_weather_data(
 if __name__ == '__main__':
     # Define input and output directories
     _wx_data_dir = r'I:/_Weather_Data/NRCAN_FWIS_Database'
-    # test_dir = os.path.join(os.path.dirname(__file__), 'tests')
-    for aoi in ['AFN', 'Galiano', 'SSI']:
-        test_dir = fr'E:\UBC_FuelAnalyst_Testing\Student_Data\{aoi}'
-        _out_dir = os.path.join(test_dir, 'wx_extract_general')
-        _out_file_name = f'{aoi}_wx_data_general'
-        _plot_pts_path = os.path.join(test_dir, f'general_coord_{aoi}.csv')
-        _plot_id_col_name = 'unique_id'
-        _lat_col_name = 'lat'  # Always decimal degrees, WGS84 (EPSG:4326) for input CSV; will be reprojected to EPSG:3978
-        _lon_col_name = 'long'  # Always decimal degrees, WGS84 (EPSG:4326) for input CSV; will be reprojected to EPSG:3978
-        _wx_var_list = ['temp', 'rh', 'ws', 'wd', 'ffmc', 'dmc', 'dc', 'bui', 'isi', 'fwi']
-        _start_year = 2005
-        _end_year = 2024
-        _use_bcws_dates = False  # If true, determine in-season dates based on BCWS fire season dates and plot ecodivision
-        _start_month_day = 501  # MMDD as integer; required if use_bcws_dates is False
-        _end_month_day = 930  # MMDD as integer; required if use_bcws_dates is False
-        _calculate_percentiles = True
-        _percentile_var_list = ['fwi']
+    test_dir = os.path.join(os.path.dirname(__file__), 'tests')
+    _out_dir = os.path.join(test_dir, 'results', 'wx_extract')
+    _out_file_name = f'wx_data'
+    _plot_pts_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'conpyro_df.csv')
+    _plot_id_col_name = 'unique_id'
+    _lat_col_name = 'lat'  # Always decimal degrees, WGS84 (EPSG:4326) for input CSV; will be reprojected to EPSG:3978
+    _lon_col_name = 'long'  # Always decimal degrees, WGS84 (EPSG:4326) for input CSV; will be reprojected to EPSG:3978
+    _wx_var_list = ['temp', 'rh', 'ws', 'wd', 'ffmc', 'dmc', 'dc', 'bui', 'isi', 'fwi']
+    _start_year = 2005
+    _end_year = 2024
+    _use_bcws_dates = False  # If true, determine in-season dates based on BCWS fire season dates and plot ecodivision
+    _start_month_day = 501  # MMDD as integer; required if use_bcws_dates is False
+    _end_month_day = 930  # MMDD as integer; required if use_bcws_dates is False
+    _calculate_percentiles = True
+    _percentile_var_list = ['fwi']
 
-        # Extract weather data and save results
-        extract_weather_data(
-            wx_data_dir=_wx_data_dir,
-            out_dir=_out_dir,
-            out_file_name=_out_file_name,
-            plot_pts_path=_plot_pts_path,
-            plot_id_col_name=_plot_id_col_name,
-            lat_col_name=_lat_col_name,
-            lon_col_name=_lon_col_name,
-            wx_var_list=_wx_var_list,
-            start_year=_start_year,
-            end_year=_end_year,
-            use_bcws_dates=_use_bcws_dates,
-            start_month_day=_start_month_day,
-            end_month_day=_end_month_day,
-            calculate_percentiles=_calculate_percentiles,
-            percentile_var_list=_percentile_var_list,
-        )
+    # Extract weather data and save results
+    extract_weather_data(
+        wx_data_dir=_wx_data_dir,
+        out_dir=_out_dir,
+        out_file_name=_out_file_name,
+        plot_pts_path=_plot_pts_path,
+        plot_id_col_name=_plot_id_col_name,
+        lat_col_name=_lat_col_name,
+        lon_col_name=_lon_col_name,
+        wx_var_list=_wx_var_list,
+        start_year=_start_year,
+        end_year=_end_year,
+        use_bcws_dates=_use_bcws_dates,
+        start_month_day=_start_month_day,
+        end_month_day=_end_month_day,
+        calculate_percentiles=_calculate_percentiles,
+        percentile_var_list=_percentile_var_list,
+    )
