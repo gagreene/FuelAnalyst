@@ -9,7 +9,7 @@ __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 import os
 import numpy as np
 import pandas as pd
-from datetime import datetime as dt
+from dateutil import parser
 
 import sys
 pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..')
@@ -29,7 +29,7 @@ def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFra
     # Assign data types to columns
     fbp_df = df.copy()
 
-    fbp_df['year'] = fbp_df['_date'].apply(lambda y: dt.strptime(y, '%m/%d/%Y %H:%M').year)
+    fbp_df['year'] = fbp_df['_date'].apply(lambda y: parser.parse(y).year)
     fbp_df['BCWFT_rowRef'] = 0
     fbp_df['FuelType'] = ''
     fbp_df['FT_Modifier'] = 0
@@ -98,7 +98,7 @@ def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFra
 def process_fbp_fuel_type(
         master_fuel_df_path: str,
         fbp_prep_df_path: str,
-        ccp_df_path: str,
+        conpyro_df_path: str,
         out_dir: str,
         season: str) -> None:
     """
@@ -106,8 +106,8 @@ def process_fbp_fuel_type(
 
     :param master_fuel_df_path: Path to the master fuel DataFrame CSV file.
     :param fbp_prep_df_path: Path to the FBP preparation DataFrame CSV file.
-    :param ccp_df_path: Path to the CCP DataFrame CSV file to be updated with FBP fuel types.
-    :param out_dir: Directory to save the updated CCP DataFrame CSV file with FBP fuel types.
+    :param conpyro_df_path: Path to the ConPyro DataFrame CSV file to be updated with FBP fuel types.
+    :param out_dir: Directory to save the updated ConPyro DataFrame CSV file with FBP fuel types.
     :param season: Season for fuel typing ('Growing' or 'Dormant').
     :return: DataFrame with added columns for FBP fuel type and modifier.
     """
@@ -130,7 +130,7 @@ def process_fbp_fuel_type(
     fbp_prep_df = (pd.read_csv(fbp_prep_df_path)
                    .drop(columns=fbp_drop_columns)
                    .rename(columns=fbp_rename_columns))
-    ccp_df = pd.read_csv(ccp_df_path)
+    conpyro_df = pd.read_csv(conpyro_df_path)
 
     # Merge the two dataframes on 'unique_id' to get all necessary attributes
     fuel_type_df = master_fuel_df.merge(fbp_prep_df, on='unique_id', how='left')
@@ -139,22 +139,22 @@ def process_fbp_fuel_type(
     # Calculate FBP fuel type
     fuel_type_df = _calc_fbp_fuel_type(fuel_type_df, season)
 
-    print('Assigning FBP fuel types to CCP DataFrame')
-    # Assign FBP fuel types to ccp_df based on unique_id
-    ccp_df = ccp_df.merge(
+    print('Assigning FBP fuel types to ConPyro DataFrame')
+    # Assign FBP fuel types to conpyro_df based on unique_id
+    conpyro_df = conpyro_df.merge(
         fuel_type_df[['unique_id', 'fbp_fuel_type']].rename(columns={'fbp_fuel_type': 'fbp_fuel_type_new'}),
         on='unique_id',
         how='left'
     )
-    # Retain existing fbp_fuel_type values in ccp_df if present (only replace empty values)
-    ccp_df['fbp_fuel_type'] = ccp_df['fbp_fuel_type'].combine_first(ccp_df['fbp_fuel_type_new'])
-    ccp_df = ccp_df.drop(columns=['fbp_fuel_type_new'])
+    # Retain existing fbp_fuel_type values in conpyro_df if present (only replace empty values)
+    conpyro_df['fbp_fuel_type'] = conpyro_df['fbp_fuel_type'].combine_first(conpyro_df['fbp_fuel_type_new'])
+    conpyro_df = conpyro_df.drop(columns=['fbp_fuel_type_new'])
 
-    # Replace ccp_df with updated DataFrame
-    print('Saving updated CCP DataFrame with FBP fuel types')
+    # Replace conpyro_df with updated DataFrame
+    print('Saving updated ConPyro DataFrame with FBP fuel types')
     os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, os.path.basename(ccp_df_path).replace('.csv', '_fbp.csv'))
-    helper.export_csv(ccp_df, out_path)
+    out_path = os.path.join(out_dir, os.path.basename(conpyro_df_path).replace('.csv', '_fbp.csv'))
+    helper.export_csv(conpyro_df, out_path)
 
     return
 
@@ -165,11 +165,11 @@ if __name__ == '__main__':
     test_dir = os.path.join(os.path.dirname(__file__), 'tests')
     _out_dir = os.path.join(test_dir, 'results', 'fbp_fuel_typing')
 
-    # Get stand fire and fofem consume csv paths
+    # Get stand fire and FOFEM consume csv paths
     _master_fuel_df_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'master_fuel_df.csv')
     _fbp_prep_df_path = os.path.join(test_dir, 'test_data', 'fbp_fuel_typing', 'fbp_prep_df.csv')
-    _ccp_df_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'ccp_df.csv')
-    _season = 'growing'
+    _conpyro_df_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'conpyro_df.csv')
+    _season = 'growing'  # Options: 'growing' or 'dormant'
 
     # Run FBP fuel type processing
-    process_fbp_fuel_type(_master_fuel_df_path, _fbp_prep_df_path, _ccp_df_path, _out_dir, _season)
+    process_fbp_fuel_type(_master_fuel_df_path, _fbp_prep_df_path, _conpyro_df_path, _out_dir, _season)

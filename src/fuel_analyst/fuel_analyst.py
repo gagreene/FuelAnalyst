@@ -21,7 +21,7 @@ from src.fuel_analyst.components import plants_regen as pr
 from src.fuel_analyst.components import trees
 from src.fuel_analyst.components import canopy_cover as cc
 from src.fuel_analyst.components import woody_debris as wd
-from src.fuel_analyst.components import ccp_attributes
+from src.fuel_analyst.components import conpyro_attributes
 from src.fuel_analyst.components import fofem_attributes
 
 default_stand_summary_dict = {
@@ -223,9 +223,9 @@ default_woody_debris_dict = {
     'measure_vs_tally_qmd_comparison': True,  # Compare differences (QMD, biomass) between measured and tallied data
 }
 
-default_ccp_dict = {
+default_conpyro_dict = {
     'stand_attributes': {  # All attributes must output a single column
-        'ccp_cfl_ovrstry': {  # This name is fixed for CCP
+        'conpyro_cfl_ovrstry': {  # This name is fixed for ConPyro
             'att_source': 'cfl',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['live', 'conifer'],  # This is fixed (no user options)
@@ -233,10 +233,10 @@ default_ccp_dict = {
             'metrics': ['sum'],  # This is fixed as empty (no user options)
             'units': 'kgpm2',  # This option is fixed
             'classes': {
-                'dbh': [5, float('inf')]  # All trees >= 5 cm DBH
+                'dbh': [0, float('inf')]  # All trees >= 5 cm DBH
             },
         },
-        'ccp_cbd_ovrstry': {  # This name is fixed for CCP
+        'conpyro_cbd_ovrstry': {  # This name is fixed for ConPyro
             'att_source': 'cbd',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['live', 'conifer'],  # This is fixed (no user options)
@@ -244,10 +244,10 @@ default_ccp_dict = {
             'metrics': [],  # This is fixed as empty (no user options for cbd)
             'units': 'kgpm3',  # This option is fixed for cbd
             'classes': {
-                'dbh': [5, float('inf')]  # All trees >= 5 cm DBH
+                'dbh': [0, float('inf')]  # All trees >= 5 cm DBH
             },
         },
-        'ccp_cfl_midstry': {  # This name is fixed for CCP
+        'conpyro_cfl_midstry': {  # This name is fixed for ConPyro
             'att_source': 'cfl',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['live', 'conifer'],  # This is fixed (no user options)
@@ -255,10 +255,10 @@ default_ccp_dict = {
             'metrics': ['sum'],  # This is fixed as empty (no user options)
             'units': 'kgpm2',  # This option is fixed
             'classes': {
-                'dbh': [0, 5]  # All trees < 5 cm DBH
+                'dbh': [0, 0]  # All trees < 5 cm DBH
             },
         },
-        'ccp_cbd_midstry': {  # This name is fixed for CCP
+        'conpyro_cbd_midstry': {  # This name is fixed for ConPyro
             'att_source': 'cbd',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['live', 'conifer'],  # This is fixed (no user options)
@@ -266,10 +266,10 @@ default_ccp_dict = {
             'metrics': [],  # This is fixed as empty (no user options for cbd)
             'units': 'kgpm3',  # This option is fixed for cbd
             'classes': {
-                'dbh': [0, 5]  # All trees < 5 cm DBH
+                'dbh': [0, 0]  # All trees < 5 cm DBH
             },
         },
-        'ccp_dead_branch_fl': {  # This name is fixed for CCP
+        'conpyro_dead_branch_fl': {  # This name is fixed for ConPyro
             'att_source': 'branches',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['dead'],  # This is fixed (no user options)
@@ -277,10 +277,10 @@ default_ccp_dict = {
             'metrics': ['sum'],  # This is the only option
             'units': 'kgpm2',  # This option is fixed
             'classes': {
-                'dbh': [5, float('inf')]  # All trees >= 5 cm DBH
+                'dbh': [0, float('inf')]  # All trees >= 5 cm DBH
             },
         },
-        'ccp_ht_ovrstry_live': {  # This name is fixed for CCP
+        'conpyro_ht_ovrstry_live': {  # This name is fixed for ConPyro
             'att_source': 'ht',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['live', 'conifer'],  # These are fixed (no user options)
@@ -288,10 +288,10 @@ default_ccp_dict = {
             'metrics': ['mean'],  # This is the default (options: min, max, mean)
             'units': 'm',  # This option is fixed
             'classes': {
-                'dbh': [5, float('inf')]  # All trees >= 5 cm DBH
+                'dbh': [0, float('inf')]  # All trees >= 5 cm DBH
             },
         },
-        'ccp_ht_midstry_live': {  # This name is fixed for CCP
+        'conpyro_ht_midstry_live': {  # This name is fixed for ConPyro
             'att_source': 'ht',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['live', 'conifer'],  # These are fixed (no user options)
@@ -299,10 +299,10 @@ default_ccp_dict = {
             'metrics': ['mean'],  # This is the default (options: min, max, mean)
             'units': 'm',  # This option is fixed
             'classes': {
-                'dbh': [0, 5]  # All trees < 5 cm DBH
+                'dbh': [0, 0]  # All trees < 5 cm DBH
             },
         },
-        'ccp_ht_midstry_dead': {  # This name is fixed for CCP
+        'conpyro_ht_midstry_dead': {  # This name is fixed for ConPyro
             'att_source': 'ht',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['dead'],  # This is fixed for ht (no user options)
@@ -310,7 +310,7 @@ default_ccp_dict = {
             'metrics': ['mean'],  # This is the default (options: min, max, mean)
             'units': 'm',  # This option is fixed
             'classes': {
-                'dbh': [0, 5]  # All trees < 5 cm DBH
+                'dbh': [0, 0]  # All trees < 5 cm DBH
             },
         },
         # """
@@ -334,7 +334,7 @@ default_ccp_dict = {
         # - ['dead', 'conifer'] includes all dead conifer trees
         # - ['dead', 'broadleaf'] includes all dead broadleaf trees
         # ""
-        'ccp_cbh_ovrstry': {  # This name is fixed for CCP
+        'conpyro_cbh_ovrstry': {  # This name is fixed for ConPyro
             'att_source': 'cbh',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['live', 'conifer'],  # This is the default (options: see above)
@@ -342,10 +342,10 @@ default_ccp_dict = {
             'metrics': ['mean'],  # This is the default (options: min, max, mean)
             'units': 'm',  # This option is fixed
             'classes': {
-                'dbh': [5, float('inf')]  # All trees >= 5 cm DBH
+                'dbh': [0, float('inf')]  # All trees >= 5 cm DBH
             },
         },
-        'ccp_cbh_midstry': {  # This name is fixed for CCP
+        'conpyro_cbh_midstry': {  # This name is fixed for ConPyro
             'att_source': 'cbh',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['live', 'conifer'],  # This is the default (options: see above)
@@ -353,10 +353,10 @@ default_ccp_dict = {
             'metrics': ['mean'],  # This is the default (options: min, max, mean)
             'units': 'm',  # This option is fixed
             'classes': {
-                'dbh': [0, 5]  # All trees < 5 cm DBH
+                'dbh': [0, 0]  # All trees < 5 cm DBH
             },
         },
-        'ccp_fsg': {  # This name is fixed for CCP
+        'conpyro_fsg': {  # This name is fixed for ConPyro
             'att_source': 'cbh',  # This is default (options: cbh, fsg)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['conifer'],  # This is the default (options: see above)
@@ -388,9 +388,9 @@ default_ccp_dict = {
     },
     'canopy_cover_attribute': 'cc', # This is default (options: cc, cc_cnfr, cc_brdlf)
     'woody_debris_classes': {
-        'ccp': {
+        'conpyro': {
             'process_classes': True,  # Process Canadian woody debris classes
-            'class_extension': 'ccp',  # Extension for Canadian classes
+            'class_extension': 'conpyro',  # Extension for Canadian classes
             'diameter_cutoffs': [0.5, 1, 3, 5, 7],  # Diameter cutoffs for Canadian classes (cm)
             'transect_lengths': [4, 10, 10, 10, 10, 30],  # Transect lengths for Canadian classes (m)
             # Output request for woody fuels
@@ -458,9 +458,9 @@ def fuel_analyst(
         surface_fire_intensity_model: str,
         stand_summary_params: Optional[dict] = None,
         woody_debris_params: Optional[dict] = None,
-        ccp_params: Optional[dict] = None,
+        conpyro_params: Optional[dict] = None,
         fofem_consume_params: Optional[dict] = None,
-        gen_ccp_df: bool = False,
+        gen_conpyro_df: bool = False,
         gen_fofem_tree_df: bool = False,
         gen_fofem_consume_df: bool = False
 ) -> None:
@@ -472,9 +472,9 @@ def fuel_analyst(
     :param surface_fire_intensity_model: Model to use for surface fire intensity calculations.
     :param stand_summary_params: Dictionary containing stand summary parameters.
     :param woody_debris_params: Dictionary containing parameters for woody debris processing.
-    :param ccp_params: Dictionary containing CCP parameters.
+    :param conpyro_params: Dictionary containing ConPyro parameters.
     :param fofem_consume_params: Dictionary containing FOFEM consumption parameters.
-    :param gen_ccp_df: Boolean indicating whether to generate the CCP DataFrame.
+    :param gen_conpyro_df: Boolean indicating whether to generate the ConPyro DataFrame.
     :param gen_fofem_tree_df: Boolean indicating whether to generate the FOFEM tree DataFrame.
     :param gen_fofem_consume_df: Boolean indicating whether to generate the FOFEM consumption DataFrame.
     :return: None
@@ -506,27 +506,27 @@ def fuel_analyst(
     if woody_debris_params is None:
         woody_debris_params = default_woody_debris_dict
 
-    if ccp_params is None:
-        ccp_params = default_ccp_dict
+    if conpyro_params is None:
+        conpyro_params = default_conpyro_dict
 
     if fofem_consume_params is None:
         fofem_consume_params = default_fofem_consume_dict
 
-    if gen_ccp_df:
-        # Verify all forms are present for CCP generation
+    if gen_conpyro_df:
+        # Verify all forms are present for ConPyro generation
         for form in form_select_list:
             in_path = os.path.join(in_dir, dir_dict.get(form))
             missing_forms = [form for form in form_select_list if not os.path.exists(in_path)]
             if missing_forms:
                 raise FileNotFoundError(
-                    f'All Survey123 forms are required to generate the CCP DataFrame. '
+                    f'All Survey123 forms are required to generate the ConPyro DataFrame. '
                     f'The following forms are missing:\n{missing_forms}.'
                 )
 
         stand_summary_params.update(
-            {k: v for k, v in ccp_params['stand_attributes'].items()}
+            {k: v for k, v in conpyro_params['stand_attributes'].items()}
         )
-        woody_debris_params['woody_debris_classes'].update(ccp_params['woody_debris_classes'])
+        woody_debris_params['woody_debris_classes'].update(conpyro_params['woody_debris_classes'])
 
     if gen_fofem_consume_df:
         stand_summary_params.update(
@@ -538,7 +538,7 @@ def fuel_analyst(
     keep_columns = ['unique_id']
     form_df = None
     master_tree_df = None
-    ccp_df = None
+    conpyro_df = None
     fbp_prep_df = None
     fofem_tree_df = None
     fofem_consume_df = None
@@ -575,7 +575,7 @@ def fuel_analyst(
                                                        out_path,
                                                        surface_fire_intensity_model,
                                                        stand_summary_params,
-                                                       gen_ccp_df)
+                                                       gen_conpyro_df)
             elif form == 'cover':
                 form_df, add_columns = cc.process_canopy_cover(in_path, out_path)
             elif form == 'woody':
@@ -604,9 +604,9 @@ def fuel_analyst(
             # Merge the form_df with plot_df based on unique_id
             plot_df = pd.merge(plot_df, form_df, on='unique_id', how='left')
 
-    # ### PROCESS CCP DATA
-    if gen_ccp_df:
-        ccp_df, fbp_prep_df = ccp_attributes.gen_ccp_df(plot_df, ccp_params)
+    # ### PROCESS ConPyro DATA
+    if gen_conpyro_df:
+        conpyro_df, fbp_prep_df = conpyro_attributes.gen_conpyro_df(plot_df, conpyro_params)
 
     # ### PROCESS FOFEM DATA
     if gen_fofem_tree_df:
@@ -631,11 +631,11 @@ def fuel_analyst(
         print(f'Saving the Master Tree DataFrame to: {master_tree_df_path}')
         helper.export_csv(master_tree_df, master_tree_df_path)
 
-    # Save the CCP DataFrame to the output folder if it exists
-    if ccp_df is not None:
-        ccp_df_path = os.path.join(out_dir, 'ccp_df.csv')
-        print(f'Saving the CCP DataFrame to: {ccp_df_path}')
-        helper.export_csv(ccp_df, ccp_df_path)
+    # Save the ConPyro DataFrame to the output folder if it exists
+    if conpyro_df is not None:
+        conpyro_df_path = os.path.join(out_dir, 'conpyro_df.csv')
+        print(f'Saving the ConPyro DataFrame to: {conpyro_df_path}')
+        helper.export_csv(conpyro_df, conpyro_df_path)
 
     if fbp_prep_df is not None:
         fbp_df_path = os.path.join(out_dir, 'fbp_prep_df.csv')
@@ -666,9 +666,9 @@ if __name__ == '__main__':
     _surface_fire_intensity_model = 'Byram'
     _stand_summary_dict = None      # Uses default stand summary settings if None
     _woody_debris_dict = None       # Uses default woody debris settings if None
-    _ccp_dict = None                # Uses default CCP settings if None
+    _conpyro_dict = None                # Uses default ConPyro settings if None
     _fofem_consume_dict = None      # Uses default FOFEM woody debris settings if None
-    _gen_ccp_df = True              # Whether to generate the CCP DataFrame
+    _gen_conpyro_df = True              # Whether to generate the ConPyro DataFrame
     _gen_fofem_tree_df = True       # Whether to generate the FOFEM tree DataFrame
     _gen_fofem_consume_df = True    # Whether to generate the FOFEM consumption DataFrame
 
@@ -678,8 +678,8 @@ if __name__ == '__main__':
                  surface_fire_intensity_model=_surface_fire_intensity_model,
                  stand_summary_params=_stand_summary_dict,
                  woody_debris_params=_woody_debris_dict,
-                 ccp_params=_ccp_dict,
+                 conpyro_params=_conpyro_dict,
                  fofem_consume_params=_fofem_consume_dict,
-                 gen_ccp_df=_gen_ccp_df,
+                 gen_conpyro_df=_gen_conpyro_df,
                  gen_fofem_tree_df=_gen_fofem_tree_df,
                  gen_fofem_consume_df=_gen_fofem_consume_df)

@@ -25,9 +25,9 @@ default_fire_modelling_dict = {
     'conpyro': {
         'plot_id_col_name': 'unique_id',
         'input_params': {
-            'cfo_model': 3,  # Options: Integer from 1 to 4, 10 (see ConPyro documentation for details), or string "use_csv"
-            'sros_model': 1,  #
-            'cros_model': 1,
+            'cfo_model': 5,  # Options: 1, 2, 3, 4, 5, 10, or string "use_csv" (assumes cfo_model column in csv)
+            'sros_model': 13,  # Options: 1, 2, 3, 4, 12, 13, 20, or string "use_csv" (assumes sros_model column in csv)
+            'cros_model': 1,  # Options: 1, 2, or string "use_csv" (assumes cros_model column in csv)
             'smooth_ros': True,
             'model_slope_effects': True,
             'wx_date': 'use_csv',    # Options: Integer in format YYYYMMDD, or string "use_csv" (default)
@@ -55,7 +55,7 @@ default_fire_modelling_dict = {
         'fofem_tree_id_col_name': 'unique_id',
     },
     'fofem_emissions': {
-        'run_model': True,
+        'run_model': False,
         'plot_id_col_name': 'unique_id',
     },
 }
@@ -503,7 +503,6 @@ def _model_fofem_mortality(
     :param out_dir: Directory to save FOFEM mortality output files.
     :param fofem_mortality_params: Dictionary of FOFEM mortality model parameters.
     :param conpyro_params: Dictionary of ConPyro model parameters.
-    :param fofem_ext: String suffix for FOFEM output files.
     :return: DataFrame with FOFEM mortality results merged.
     """
     from src.fuel_analyst.components import fofem_mortality as fm
@@ -585,6 +584,9 @@ def run_conpyro(
     for col in drop_empty_rows_in_cols:
         df = df[df[col].notna()]
 
+    # Take first 10 rows for testing purposes (remove this line for full dataset)
+    # df = df.head(10)
+
     # ### MODEL FIRE BEHAVIOR WITH CONPYRO ###
     print('\n>>>> Running ConPyro...')
     df = _model_fire_behavior(
@@ -656,9 +658,8 @@ if __name__ == '__main__':
     # The ConPyro input dataframe must have weather data attached for ConPyro/FOFEM modelling
     # Required weather columns for ConPyro modelling: 'ws', 'wd', 'ffmc', 'dmc', 'bui', 'temp', 'rh'
     # Required weather columns for FOFEM mortality modelling: 'ws', 'temp'
-    # Required weather columns for FOFEM emissions modelling: 'ws', 'temp'
     _in_dir = os.path.join(test_dir, 'results', 'wx_extract')
-    _conpyro_csv_path = os.path.join(_in_dir, 'ccp_df_wx.csv')
+    _conpyro_csv_path = os.path.join(_in_dir, 'conpyro_df_wx.csv')
     _tree_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'master_tree_df.csv')
     _fofem_consume_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'fofem_consume_df.csv')
     _fire_modelling_dict = None
