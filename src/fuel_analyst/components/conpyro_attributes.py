@@ -19,14 +19,14 @@ except ImportError:
 
 def _calc_veg_fuel_loads(df: pd.DataFrame, veg_fuel_dict: dict) -> pd.DataFrame:
     """
-    Calculate surface vegetation fuel loads based on CCP parameters.
+    Calculate surface vegetation fuel loads based on ConPyro parameters.
 
     :param df: DataFrame containing plot-level data.
 
-    :return: DataFrame with an added 'ccp_shrub_fuel_load' column.
+    :return: DataFrame with an added 'conpyro_shrub_fuel_load' column.
     """
     for fuel_att, fuel_fields in veg_fuel_dict.items():
-        field_name = f'ccp_{fuel_att}_fuel_load'
+        field_name = f'conpyro_{fuel_att}_fuel_load'
         df[field_name] = 0
         for fuel_field in fuel_fields:
             df[field_name] += df[f'{fuel_field}_kgpm2'].fillna(0)
@@ -39,7 +39,7 @@ def _calc_stand_type(df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataF
 
     :param df: DataFrame containing species codes and percentages.
     :param tree_params_df: DataFrame containing tree parameters indexed by species code.
-    :return: DataFrame with an added 'ccp_stand_type' column.
+    :return: DataFrame with an added 'conpyro_stand_type' column.
     """
     spp_code_cols = [f'SPECIES_CD_{x}' for x in range(1, 7)]
 
@@ -59,20 +59,20 @@ def _calc_stand_type(df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataF
     cd1_mask = pd.notnull(df['SPECIES_CD_1'])
 
     # Default empty string
-    df['ccp_stand_type'] = ''
+    df['conpyro_stand_type'] = ''
 
     # Apply MW mask
-    df.loc[mw_mask, 'ccp_stand_type'] = 'MW'
+    df.loc[mw_mask, 'conpyro_stand_type'] = 'MW'
 
     # Apply pct80_mask where MW is not already set
-    df.loc[pct80_mask & ~mw_mask, 'ccp_stand_type'] = df.loc[
+    df.loc[pct80_mask & ~mw_mask, 'conpyro_stand_type'] = df.loc[
         pct80_mask & ~mw_mask, 'SPECIES_CD_1'
-    ].map(tree_params_df['CCP_StandType'])
+    ].map(tree_params_df['ConPyro_StandType'])
 
     # Apply cd1_mask where neither MW nor pct80_mask is set
-    df.loc[cd1_mask & ~mw_mask & ~pct80_mask, 'ccp_stand_type'] = df.loc[
+    df.loc[cd1_mask & ~mw_mask & ~pct80_mask, 'conpyro_stand_type'] = df.loc[
         cd1_mask & ~mw_mask & ~pct80_mask, 'SPECIES_CD_1'
-    ].map(tree_params_df['CCP_StandType'])
+    ].map(tree_params_df['ConPyro_StandType'])
     return df
 
 
@@ -87,17 +87,17 @@ def _calc_stand_density(df: pd.DataFrame, cc_field: str) -> pd.DataFrame:
             density = 'H'  # high density
 
     :param df: DataFrame containing tree counts and plot area.
-    :return: DataFrame with an added 'ccp_density_class' column.
+    :return: DataFrame with an added 'conpyro_density_class' column.
     """
     # Calculate stand density class from canopy cover
     mask_l = (df[cc_field] >= 0) & (df[cc_field] <= 45)
     mask_m = (df[cc_field] > 45) & (df[cc_field] <= 60)
     mask_h = (df[cc_field] > 60) & (df[cc_field] <= 100)
 
-    df['ccp_density_class'] = None
-    df.loc[mask_l, 'ccp_density_class'] = 'L'
-    df.loc[mask_m, 'ccp_density_class'] = 'M'
-    df.loc[mask_h, 'ccp_density_class'] = 'H'
+    df['conpyro_density_class'] = None
+    df.loc[mask_l, 'conpyro_density_class'] = 'L'
+    df.loc[mask_m, 'conpyro_density_class'] = 'M'
+    df.loc[mask_h, 'conpyro_density_class'] = 'H'
     return df
 
 
@@ -131,13 +131,13 @@ def _prep_fbp_df(df: pd.DataFrame) -> pd.DataFrame:
     return fbp_prep_df
 
 
-def gen_ccp_df(df: pd.DataFrame, ccp_params: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
+def gen_conpyro_df(df: pd.DataFrame, conpyro_params: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Read CCP attributes from a CSV file into a pandas DataFrame.
+    Read ConPyro attributes from a CSV file into a pandas DataFrame.
 
     :param df: DataFrame containing plot-level data.
-    :param ccp_params: Dictionary of CCP parameters.
-    :return: DataFrame containing the CCP attributes.
+    :param conpyro_params: Dictionary of ConPyro parameters.
+    :return: DataFrame containing the ConPyro attributes.
     """
     # Load tree parameters and set index
     tree_params_df = helper.get_df(
@@ -145,12 +145,12 @@ def gen_ccp_df(df: pd.DataFrame, ccp_params: dict) -> tuple[pd.DataFrame, pd.Dat
     ).set_index('Species')
 
     df = _calc_stand_type(df, tree_params_df)
-    df = _calc_stand_density(df, ccp_params['canopy_cover_attribute'])
-    df = _calc_veg_fuel_loads(df, ccp_params['vegetative_fuel_loads'])
+    df = _calc_stand_density(df, conpyro_params['canopy_cover_attribute'])
+    df = _calc_veg_fuel_loads(df, conpyro_params['vegetative_fuel_loads'])
     fbp_prep_df = _prep_fbp_df(df)
 
     # Build DataFrame
-    ccp_df = pd.DataFrame({
+    conpyro_df = pd.DataFrame({
         'unique_id': df['unique_id'],
         'plot_id': df['plot_id'],
         'lat': df['y'],
@@ -158,28 +158,28 @@ def gen_ccp_df(df: pd.DataFrame, ccp_params: dict) -> tuple[pd.DataFrame, pd.Dat
         'elevation': df['plot_elevation'],
         'slope': df['plot_slope_pct'],
         'aspect': df['plot_aspect'],
-        'stand_density': df['ccp_density_class'],
-        'stand_type': df['ccp_stand_type'],
+        'stand_density': df['conpyro_density_class'],
+        'stand_type': df['conpyro_stand_type'],
         'fbp_fuel_type': '',
         'pct_cnfr': df['stand_pct_cnfr_live'].fillna(0),
-        'canopy_cover': df[ccp_params['canopy_cover_attribute']].fillna(0),
-        'cfl_ovrstry': df['ccp_cfl_ovrstry'].fillna(0),
-        'cbd_ovrstry': df['ccp_cbd_ovrstry'].fillna(0),
-        'cfl_midstry': df['ccp_cfl_midstry'].fillna(0),
-        'cbd_midstry': df['ccp_cbd_midstry'].fillna(0),
-        'dead_branch_fl': df['ccp_dead_branch_fl'].fillna(0),
-        'ht_ovrstry_live': df['ccp_ht_ovrstry_live'],
-        'ht_midstry_live': df['ccp_ht_midstry_live'],
-        'ht_midstry_dead': df['ccp_ht_midstry_dead'],
-        'cbh_ovrstry': df['ccp_cbh_ovrstry'],
-        'cbh_midstry': df['ccp_cbh_midstry'],
-        'fsg': df['ccp_fsg'],
+        'canopy_cover': df[conpyro_params['canopy_cover_attribute']].fillna(0),
+        'cfl_ovrstry': df['conpyro_cfl_ovrstry'].fillna(0),
+        'cbd_ovrstry': df['conpyro_cbd_ovrstry'].fillna(0),
+        'cfl_midstry': df['conpyro_cfl_midstry'].fillna(0),
+        'cbd_midstry': df['conpyro_cbd_midstry'].fillna(0),
+        'dead_branch_fl': df['conpyro_dead_branch_fl'].fillna(0),
+        'ht_ovrstry_live': df['conpyro_ht_ovrstry_live'],
+        'ht_midstry_live': df['conpyro_ht_midstry_live'],
+        'ht_midstry_dead': df['conpyro_ht_midstry_dead'],
+        'cbh_ovrstry': df['conpyro_cbh_ovrstry'],
+        'cbh_midstry': df['conpyro_cbh_midstry'],
+        'fsg': df['conpyro_fsg'],
         'duff_fuel_load': df['ffl_duff_kgpm2'].fillna(0),
         'litter_fuel_load': df['ffl_litter_kgpm2'].fillna(0),
-        'woody_fuel_load': df['woody_kgpm2_ccp_lt7cm_7'].fillna(0),
-        'herbaceous_fuel_load': df['ccp_herbaceous_fuel_load'].fillna(0),
-        'grass_fuel_load': df['ccp_grass_fuel_load'].fillna(0),
-        'shrub_fuel_load': df['ccp_shrub_fuel_load'].fillna(0),
+        'woody_fuel_load': df['woody_kgpm2_conpyro_lt7cm_7'].fillna(0),
+        'herbaceous_fuel_load': df['conpyro_herbaceous_fuel_load'].fillna(0),
+        'grass_fuel_load': df['conpyro_grass_fuel_load'].fillna(0),
+        'shrub_fuel_load': df['conpyro_shrub_fuel_load'].fillna(0),
     })
 
-    return ccp_df, fbp_prep_df
+    return conpyro_df, fbp_prep_df

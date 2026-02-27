@@ -525,7 +525,7 @@ def _calc_stand_attributes(df: pd.DataFrame,
 def _calc_stand_composition(
         df: pd.DataFrame,
         tree_df: pd.DataFrame,
-        gen_ccp_df: bool,
+        gen_conpyro_df: bool,
 ) -> tuple[pd.DataFrame, list]:
     """
     Calculates stand composition metrics for each plot based on tree basal area.
@@ -583,7 +583,7 @@ def _calc_stand_composition(
         agg = agg[agg['species_ba'] > 0]
 
         # If requested, calculate max height for each species in each plot
-        if gen_ccp_df:
+        if gen_conpyro_df:
             # Get max height by plot and species
             ht_agg = (
                 tree_df.loc[tree_mask]
@@ -607,18 +607,18 @@ def _calc_stand_composition(
         agg['rank'] = agg.groupby('unique_id')['SPECIES_PCT'].rank('first', ascending=False).astype(int)
         agg['code'] = 'SPECIES_CD_' + agg['rank'].astype(str)
         agg['percent'] = 'SPECIES_PCT_' + agg['rank'].astype(str)
-        if gen_ccp_df:
+        if gen_conpyro_df:
             agg['height'] = 'PROJ_HEIGHT_' + agg['rank'].astype(str)
 
         # Pivot to wide format for species codes, percentages, and heights
         spp_code_df = agg.pivot(index='unique_id', columns='code', values='SPECIES_CD').reset_index()
         spp_pct_df = agg.pivot(index='unique_id', columns='percent', values='SPECIES_PCT').reset_index()
-        if gen_ccp_df:
+        if gen_conpyro_df:
             spp_ht_df = agg.pivot(index='unique_id', columns='height', values='species_ht').reset_index()
 
         spp_code_cols = [f'SPECIES_CD_{x}' for x in range(1, 7)]
         spp_pct_cols = [f'SPECIES_PCT_{x}' for x in range(1, 7)]
-        if gen_ccp_df:
+        if gen_conpyro_df:
             spp_ht_code_cols = [f'PROJ_HEIGHT_{x}' for x in range(1, 7)]
 
         # For live trees, add columns for top 6 species codes, percentages, and heights
@@ -633,7 +633,7 @@ def _calc_stand_composition(
                     else:
                         df[c] = 0 if df_src is spp_pct_df else np.nan
                     keep_columns.append(c)
-            if gen_ccp_df:
+            if gen_conpyro_df:
                 map_dict = spp_ht_df.set_index('unique_id').to_dict()
                 for c in spp_ht_code_cols:
                     if c in spp_ht_df.columns:
@@ -1434,7 +1434,7 @@ def process_trees(in_folder: str,
                   out_folder: str,
                   surface_fire_intensity_model: str,
                   stand_summary_params: dict,
-                  gen_ccp_df: bool) -> tuple[pd.DataFrame, list, pd.DataFrame]:
+                  gen_conpyro_df: bool) -> tuple[pd.DataFrame, list, pd.DataFrame]:
     """
     Get the tree data from CSV files.
 
@@ -1443,7 +1443,7 @@ def process_trees(in_folder: str,
     :param surface_fire_intensity_model: Model to use for calculating surface fireline intensity (default is 'Byram').
         Options: ['Byram', 'Thomas']
     :param stand_summary_params: Dictionary containing stand summary parameters.
-    :param gen_ccp_df: Boolean indicating whether to generate CCP DataFrame.
+    :param gen_conpyro_df: Boolean indicating whether to generate ConPyro DataFrame.
     :return: Tuple containing:
         - Updated DataFrame with plot-level attributes.
         - List of columns to keep in the final DataFrame.
@@ -1506,7 +1506,7 @@ def process_trees(in_folder: str,
     master_tree_df = _gen_master_tree_df(df, tree_df)
 
     # ### PROCESS STAND_LEVEL (PER HA) ATTRIBUTES
-    df, add_columns = _calc_stand_composition(df, tree_df, gen_ccp_df)
+    df, add_columns = _calc_stand_composition(df, tree_df, gen_conpyro_df)
     keep_columns.extend(add_columns)
     df, add_columns = _calc_stand_attributes(df, tree_df, stand_summary_params)
     keep_columns.extend(add_columns)
