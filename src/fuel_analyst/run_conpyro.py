@@ -23,6 +23,7 @@ from dependencies.flame_components import flame_components as fc
 
 default_fire_modelling_dict = {
     'conpyro': {
+        'run_model': True,
         'plot_id_col_name': 'unique_id',
         'input_params': {
             'cfo_model': 5,  # Options: 1, 2, 3, 4, 5, 10, or string "use_csv" (assumes cfo_model column in csv)
@@ -551,6 +552,8 @@ def run_conpyro(
 
     :param out_dir: Directory to save output CSV files.
     :param in_conpyro_csv_path: Path to the input CSV file containing required columns for ConPyro.
+        If only running FOFEM mortality or emissions modelling, this should be the path to a CSV file with
+        ConPyro results.
     :param in_tree_csv_path: Optional path to the input CSV file containing tree data for
         FOFEM mortality modelling.
     :param in_fofem_consume_csv_path: Optional path to the input CSV file containing
@@ -576,40 +579,45 @@ def run_conpyro(
     conpyro_out_list = conpyro_params['output_params']['out_request']
     flame_comp_out_list = conpyro_params['output_params']['flame_comp_out_list']
 
-    # Get dataframe of plot data for ConPyro modelling
-    df = pd.read_csv(in_conpyro_csv_path, low_memory=False)
+    if conpyro_params['run_model']:
+        # Create fire behavior output directory and remove any existing files if it already exists
+        fire_dir = os.path.join(out_dir, 'fire_behavior')
+        os.makedirs(fire_dir, exist_ok=True)
+        helper.delete_files(fire_dir)
 
-    # Drop rows with empty values in required columns
-    drop_empty_rows_in_cols = ['stand_density', 'stand_type']
-    for col in drop_empty_rows_in_cols:
-        df = df[df[col].notna()]
+        # Get dataframe of plot data for ConPyro modelling
+        df = pd.read_csv(in_conpyro_csv_path, low_memory=False)
 
-    # Take first 10 rows for testing purposes (remove this line for full dataset)
-    # df = df.head(10)
+        # Drop rows with empty values in required columns
+        drop_empty_rows_in_cols = ['stand_density', 'stand_type']
+        for col in drop_empty_rows_in_cols:
+            df = df[df[col].notna()]
 
-    # ### MODEL FIRE BEHAVIOR WITH CONPYRO ###
-    print('\n>>>> Running ConPyro...')
-    df = _model_fire_behavior(
-        df=df,
-        input_params=input_params,
-        conpyro_out_list=conpyro_out_list,
-        conpyro_params=conpyro_params,
-    )
+        # ### MODEL FIRE BEHAVIOR WITH CONPYRO ###
+        print('\n>>>> Running ConPyro...')
+        df = _model_fire_behavior(
+            df=df,
+            input_params=input_params,
+            conpyro_out_list=conpyro_out_list,
+            conpyro_params=conpyro_params,
+        )
 
-    # ### MODEL FLAME COMPONENTS ###
-    print('\n>>>> Modeling flame components with ConPyro output...')
-    df = _model_flame_components(df, flame_comp_out_list)
+        # ### MODEL FLAME COMPONENTS ###
+        print('\n>>>> Modeling flame components with ConPyro output...')
+        df = _model_flame_components(df, flame_comp_out_list)
 
-
-    # ### SAVE CONPYRO RESULTS TO CSV ###
-    # Create fire behavior output directory and remove any existing files if it already exists
-    fire_dir = os.path.join(out_dir, 'fire_behavior')
-    os.makedirs(fire_dir, exist_ok=True)
-    helper.delete_files(fire_dir)
-    # Save ConPyro results to CSV
-    fire_csv_path = os.path.join(fire_dir, 'conpyro_results.csv')
-    print(f'\tSaving results to {fire_csv_path}...')
-    helper.export_csv(df, fire_csv_path)
+        # Save ConPyro results to CSV
+        fire_csv_path = os.path.join(fire_dir, 'conpyro_results.csv')
+        print(f'\tSaving results to {fire_csv_path}...')
+        helper.export_csv(df, fire_csv_path)
+    else:
+        if os.path.exists(in_conpyro_csv_path):
+            print(f'\nLoading existing ConPyro results from {in_conpyro_csv_path}...')
+            df = pd.read_csv(in_conpyro_csv_path, low_memory=False)
+            fire_csv_path = in_conpyro_csv_path
+        else:
+            raise FileNotFoundError(f'ConPyro results CSV not found at {in_conpyro_csv_path}.'
+                                    f'Please run ConPyro model first or provide existing results CSV.')
 
     fofem_ext = ''
     # ### MODEL FOFEM MORTALITY (IF ENABLED) ###
@@ -659,7 +667,7 @@ if __name__ == '__main__':
     # Required weather columns for ConPyro modelling: 'ws', 'wd', 'ffmc', 'dmc', 'bui', 'temp', 'rh'
     # Required weather columns for FOFEM mortality modelling: 'ws', 'temp'
     _in_dir = os.path.join(test_dir, 'results', 'wx_extract')
-    _conpyro_csv_path = os.path.join(_in_dir, 'conpyro_df_wx.csv')
+    _in_conpyro_csv_path = os.path.join(_in_dir, 'conpyro_df_wx.csv')
     _tree_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'master_tree_df.csv')
     _fofem_consume_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'fofem_consume_df.csv')
     _fire_modelling_dict = None
@@ -667,7 +675,7 @@ if __name__ == '__main__':
     # Run ConPyro modelling
     run_conpyro(
         out_dir=_out_dir,
-        in_conpyro_csv_path=_conpyro_csv_path,
+        in_conpyro_csv_path=_in_conpyro_csv_path,
         in_tree_csv_path=_tree_csv_path,
         in_fofem_consume_csv_path=_fofem_consume_csv_path,
         fire_modelling_params=_fire_modelling_dict,
