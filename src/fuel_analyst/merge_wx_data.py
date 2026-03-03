@@ -209,7 +209,7 @@ if __name__ == '__main__':
     _plot_merge_col_name = 'unique_id'
     _wx_data_path = os.path.join(_out_dir, f'{_out_file_name}.csv')
     _wx_merge_col_name = 'unique_id'  # Assign as None to merge all weather data with each plot
-    _wx_merge_vars = ['temp', 'pcp', 'rh', 'ws', 'wd', 'ffmc', 'dmc', 'dc', 'bui', 'isi', 'fwi', 'fwi_prcnt']
+    _wx_merge_vars = None
     _out_path = os.path.join(_out_dir, f'conpyro_df_wx.csv')
     _add_season = True
     _refine_fbp_seasonally = True
