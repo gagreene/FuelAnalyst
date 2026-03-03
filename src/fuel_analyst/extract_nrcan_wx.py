@@ -506,7 +506,7 @@ if __name__ == '__main__':
     _plot_id_col_name = 'unique_id'
     _lat_col_name = 'lat'  # Always decimal degrees, WGS84 (EPSG:4326) for input CSV; will be reprojected to EPSG:3978
     _lon_col_name = 'long'  # Always decimal degrees, WGS84 (EPSG:4326) for input CSV; will be reprojected to EPSG:3978
-    _wx_var_list = ['temp', 'rh', 'ws', 'wd', 'ffmc', 'dmc', 'dc', 'bui', 'isi', 'fwi']
+    _wx_var_list = ['temp', 'pcp', 'rh', 'ws', 'wd', 'ffmc', 'dmc', 'dc', 'bui', 'isi', 'fwi']
     _start_year = 2005
     _end_year = 2024
     _use_bcws_dates = False  # If true, determine in-season dates based on BCWS fire season dates and plot ecodivision
