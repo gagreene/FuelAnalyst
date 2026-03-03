@@ -9,6 +9,7 @@ __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 import os
 import numpy as np
 import pandas as pd
+from typing import Union
 
 import sys
 pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..')
@@ -50,7 +51,7 @@ def _add_season_column(
     return merged_df
 
 
-def _refine_fbp_fuel_types_by_season(merged_df):
+def _refine_fbp_fuel_types_by_season(merged_df: pd.DataFrame) -> pd.DataFrame:
     """
     Refine seasonal FBP fuel types based on user-defined season.
         - O1a/O1b codes changed to O1a in spring, O1b otherwise.
@@ -97,8 +98,8 @@ def merge_weather_data(
         plot_data_path: str,
         plot_merge_col_name: str,
         wx_data_path: str,
-        wx_merge_col_name: str | None,
-        wx_merge_vars: list[str],
+        wx_merge_col_name: Union[str, None],
+        wx_merge_vars: Union[list[str], None],
         out_path: str,
         add_season: bool = True,
         refine_fbp_seasonally: bool = True,
@@ -138,8 +139,11 @@ def merge_weather_data(
     print('Merging extracted weather data with other plot data...')
     plot_df = helper.get_df(plot_data_path)
     wx_df = helper.get_df(wx_data_path)
-    # Get subset of weather variables to merge
-    wx_merge_vars = [var for var in wx_merge_vars if var in wx_df.columns]
+    # Get weather variables to merge
+    if wx_merge_vars is not None:
+        wx_merge_vars = [var for var in wx_merge_vars if var in wx_df.columns]
+    else:
+        wx_merge_vars = [col for col in wx_df.columns if col != wx_merge_col_name]
     if plot_merge_col_name not in plot_df.columns:
         raise ValueError(f'Plot ID column "{plot_merge_col_name}" not found in '
                          f'plot data columns: {list(plot_df.columns)}')
