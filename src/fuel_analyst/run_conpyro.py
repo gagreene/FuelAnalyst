@@ -285,8 +285,12 @@ def _calc_flame_depth(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _model_fire_behavior(df: pd.DataFrame, input_params: dict, conpyro_out_list: list,
-                         conpyro_params: dict) -> pd.DataFrame:
+def _model_fire_behavior(
+        df: pd.DataFrame,
+        input_params: dict,
+        conpyro_out_list: list,
+        conpyro_params: dict
+) -> pd.DataFrame:
     """
     Run ConPyro for each weather date and time combination and return the resulting DataFrame.
 
