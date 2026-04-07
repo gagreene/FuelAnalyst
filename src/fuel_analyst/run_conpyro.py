@@ -56,7 +56,7 @@ default_fire_modelling_dict = {
         'fofem_tree_id_col_name': 'unique_id',
     },
     'fofem_emissions': {
-        'run_model': False,
+        'run_model': True,
         'plot_id_col_name': 'unique_id',
     },
 }
@@ -665,7 +665,8 @@ def run_conpyro(
 # Test routine for ConPyro modelling
 if __name__ == '__main__':
     # Define input and output folders
-    test_dir = os.path.join(os.path.dirname(__file__), 'tests')
+    # test_dir = os.path.join(os.path.dirname(__file__), 'tests')
+    test_dir = r'E:\UBC_FuelAnalyst_Testing\Student_Data\AFN'
     _out_dir = os.path.join(test_dir, 'results', 'conpyro')
     # The ConPyro input dataframe must have weather data attached for ConPyro/FOFEM modelling
     # Required weather columns for ConPyro modelling: 'ws', 'wd', 'ffmc', 'dmc', 'bui', 'temp', 'rh'
