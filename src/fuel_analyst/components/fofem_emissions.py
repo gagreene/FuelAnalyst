@@ -178,7 +178,7 @@ def _get_merged_consumption_df(
     # Get required columns for merge and emissions processing
     required_cols = [
         plot_id_col_name, 'wx_date', 'hfi',
-        'flame_res_time_min', 'instand_ws_kmph',
+        'flame_res_time_sec', 'instand_ws_mps',
         'temp', 'mc_sa', 'mc_dmc', 'dc', 'cfb'
     ]
 
@@ -281,7 +281,7 @@ def _model_emissions(row: dict, out_dir: str, consume_model: str) -> tuple:
 
     # Check if required columns are present in DataFrame
     required_cols = [
-        'wx_date', 'hfi', 'flame_res_time_min', 'instand_ws_kmph', 'temp'
+        'wx_date', 'hfi', 'flame_res_time_sec', 'instand_ws_mps', 'temp'
     ]
     missing_cols = helper.get_missing_df_columns(pd.DataFrame([row]), required_cols)
     if missing_cols:
@@ -292,8 +292,8 @@ def _model_emissions(row: dict, out_dir: str, consume_model: str) -> tuple:
         out_dir=out_dir,
         unique_id=process_id,
         intensity=row['hfi'],
-        ig_time=row['flame_res_time_min']*60,
-        instand_ws=row['instand_ws_kmph']*0.277778,
+        ig_time=row['flame_res_time_sec'],
+        instand_ws=row['instand_ws_mps'],
         depth=row['fuel_bed_depth_m'],
         amb_temp=row['temp']
     )
