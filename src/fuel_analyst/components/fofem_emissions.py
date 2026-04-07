@@ -68,7 +68,7 @@ def _create_burnup_in_file(
     :param unique_id: Unique identifier for the row (used in output file name).
     :param intensity: Heat per unit area (kJ/m^2).
     :param ig_time: Ignition (flame residence) time (seconds).
-    :param instand_ws: In-stand/mid-flame wind speed (km/h).
+    :param instand_ws: In-stand/mid-flame wind speed (m/s).
     :param amb_temp: Ambient temperature (°C).
     :return: Path to worker-specific Burnup-In directory.
     """
@@ -292,8 +292,8 @@ def _model_emissions(row: dict, out_dir: str, consume_model: str) -> tuple:
         out_dir=out_dir,
         unique_id=process_id,
         intensity=row['hfi'],
-        ig_time=60*row['flame_res_time_min'],
-        instand_ws=row['instand_ws_kmph'],
+        ig_time=row['flame_res_time_min']*60,
+        instand_ws=row['instand_ws_kmph']*0.277778,
         depth=row['fuel_bed_depth_m'],
         amb_temp=row['temp']
     )
