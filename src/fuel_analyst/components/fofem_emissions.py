@@ -26,10 +26,10 @@ from dependencies.pyfofem.src.pyfofem import pyfofem as fofem
 
 # Dictionary of seasons for each month in the year
 default_season_start_dict = {
-    'spring': '0415',
-    'summer': '0615',
-    'fall': '0915',
-    'winter': '1115',
+    'Spring': '0415',
+    'Summer': '0615',
+    'Fall': '0915',
+    'Winter': '1115',
 }
 FOFEM_DIR = os.path.join(pkg_dir, 'dependencies', 'pyfofem', 'src', 'pyfofem', 'supporting_data', 'FOFEM6.7')
 CONSUMPTION_VARS = fofem.CONSUMPTION_VARS
@@ -243,24 +243,24 @@ def _get_season(df: pd.DataFrame, season_start_dict: dict = None) -> pd.DataFram
 
     # Create season start dates
     season_starts = {
-        'spring': int(season_start_dict['spring']),
-        'summer': int(season_start_dict['summer']),
-        'fall': int(season_start_dict['fall']),
-        'winter': int(season_start_dict['winter']),
+        'Spring': int(season_start_dict['Spring']),
+        'Summer': int(season_start_dict['Summer']),
+        'Fall': int(season_start_dict['Fall']),
+        'Winter': int(season_start_dict['Winter']),
     }
 
     def determine_season(row):
         # Get dates from wx_date column in df (formatted as YYYYMMDD)
         date_str = str(row['wx_date'])
         month_day = int(date_str[4:8])  # Extract MMDD as integer
-        if season_starts['spring'] <= month_day < season_starts['summer']:
-            return 'spring'
-        elif season_starts['summer'] <= month_day < season_starts['fall']:
-            return 'summer'
-        elif season_starts['fall'] <= month_day < season_starts['winter']:
-            return 'fall'
+        if season_starts['Spring'] <= month_day < season_starts['Summer']:
+            return 'Spring'
+        elif season_starts['Summer'] <= month_day < season_starts['Fall']:
+            return 'Summer'
+        elif season_starts['Fall'] <= month_day < season_starts['Winter']:
+            return 'Fall'
         else:
-            return 'winter'
+            return 'Winter'
 
     df['season'] = df.apply(determine_season, axis=1)
 
