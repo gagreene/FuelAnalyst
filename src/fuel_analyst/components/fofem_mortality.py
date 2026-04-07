@@ -98,7 +98,7 @@ def process_mortality(
     tree_df = helper.get_df(fofem_tree_csv_path)
 
     # Remove rows with missing required data
-    required_cols = ['instand_ws_kmph', 'canopy_cover', 'ht_ovrstry_live', 'fsg', 'ws', 'hfi', 'fire_type', 'temp']
+    required_cols = ['instand_ws_mps', 'canopy_cover', 'ht_ovrstry_live', 'fsg', 'ws', 'hfi', 'fire_type', 'temp']
     # Only keep columns that exist in plot_fire_df
     filtered_required_cols = [col for col in required_cols if col in plot_fire_df.columns]
     if filtered_required_cols:
@@ -131,7 +131,7 @@ def process_mortality(
         flame_length=get_col('flame_length'),
         char_ht=get_col('char_height'),
         scorch_ht=get_col('scorch_height'),
-        instand_ws=get_col('instand_ws_kmph'),
+        instand_ws=get_col('instand_ws_mps'),
         aspen_sev=aspen_sev,
         tree_code_dict=tree_code_dict
     )
@@ -145,7 +145,7 @@ def process_mortality(
 
     # Calculate stand-level proportion of basal area killed by fire for each scenario
     agg_df = merged_tree_df.groupby([
-        plot_id_col_name, 'wx_date', 'hfi', 'fire_type', 'temp', 'instand_ws_kmph'
+        plot_id_col_name, 'wx_date', 'hfi', 'fire_type', 'temp', 'instand_ws_mps'
     ], as_index=False).agg({
         'ba_live_ha': 'sum',
         'tree_dead_ba_crnsch': 'sum'
@@ -156,8 +156,8 @@ def process_mortality(
     plot_fire_df = pd.merge(
         plot_fire_df,
         agg_df[[plot_id_col_name, 'wx_date', 'hfi', 'fire_type', 'temp',
-                'instand_ws_kmph', 'tree_dead_ba_crnsch', 'prop_dead_ba_crnsch']],
-        on=[plot_id_col_name, 'wx_date', 'hfi', 'fire_type', 'temp', 'instand_ws_kmph'],
+                'instand_ws_mps', 'tree_dead_ba_crnsch', 'prop_dead_ba_crnsch']],
+        on=[plot_id_col_name, 'wx_date', 'hfi', 'fire_type', 'temp', 'instand_ws_mps'],
         how='left'
     )
 
