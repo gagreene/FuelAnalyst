@@ -77,11 +77,11 @@ def _calc_instand_ws(df: pd.DataFrame) -> pd.DataFrame:
 
     # Calculate in-stand wind speed
     df['instand_ws_model'] = pd.Series([nan] * len(df), dtype='object')
-    df['instand_ws_kmph'] = full(len(df), nan)
+    df['instand_ws_mps'] = full(len(df), nan)
     # Use Albini and Baughman (1979) model
     valid_mask = df[required_cols].notna().all(axis=1)
     df.loc[valid_mask, 'instand_ws_model'] = 'Albini and Baughman (1979)'
-    df.loc[valid_mask, 'instand_ws_kmph'] = fc.getMidFlameWS(
+    df.loc[valid_mask, 'instand_ws_mps'] = fc.getMidFlameWS(
         wind_speed = df.loc[valid_mask, 'ws'].to_numpy(),
         canopy_cover = df.loc[valid_mask, 'canopy_cover'].to_numpy(),
         canopy_ht = df.loc[valid_mask, 'ht_ovrstry_live'].to_numpy(),
@@ -158,7 +158,7 @@ def _calc_flame_height(df: pd.DataFrame,
         )
     else:
         # Verify that required columns for the Nelson model exist
-        required_cols = ['fire_type', 'hfi', 'instand_ws_kmph', 'flame_length_m']
+        required_cols = ['fire_type', 'hfi', 'instand_ws_mps', 'flame_length_m']
         missing_cols = set(required_cols) - set(df.columns)
         if missing_cols:
             raise ValueError(f'Required columns for flame length calculation not found in DataFrame: {missing_cols}')
@@ -167,14 +167,14 @@ def _calc_flame_height(df: pd.DataFrame,
         df['flame_ht_model'] = pd.Series([nan] * len(df), dtype='object')
         df['flame_ht_m'] = full(len(df), nan)
         # Use Nelson model
-        nelson_model = df['instand_ws_kmph'].notna() & df['hfi'].notna() & df['fire_type'].notna()
+        nelson_model = df['instand_ws_mps'].notna() & df['hfi'].notna() & df['fire_type'].notna()
         df.loc[nelson_model, 'flame_ht_model'] = 'Nelson and Adkins (1986)'
         df.loc[nelson_model, 'flame_ht_m'] = fc.getFlameHeight(
             model='Nelson',
             flame_length=df.loc[nelson_model, 'flame_length_m'].to_numpy(),
             fire_type=df.loc[nelson_model, 'fire_type'].to_numpy(),
             fire_intensity=df.loc[nelson_model, 'hfi'].to_numpy(),
-            midflame_ws=df.loc[nelson_model, 'instand_ws_kmph'].to_numpy()
+            midflame_ws=df.loc[nelson_model, 'instand_ws_mps'].to_numpy()
         )
 
     return df
@@ -237,7 +237,7 @@ def _calc_flame_res_time(df: pd.DataFrame) -> pd.DataFrame:
     :return: DataFrame with flame residence time values.
     """
     # Verify that required columns exist
-    required_cols = ['hros', 'tfc', 'instand_ws_kmph']
+    required_cols = ['hros', 'tfc', 'instand_ws_mps']
     missing_cols = set(required_cols) - set(df.columns)
     if missing_cols:
         raise ValueError(f'Required columns for flame resident time calculation not found in DataFrame: {missing_cols}')
@@ -245,15 +245,17 @@ def _calc_flame_res_time(df: pd.DataFrame) -> pd.DataFrame:
     # Calculate flame residence time
     df['flame_res_time_model'] = pd.Series([nan] * len(df), dtype='object')
     df['flame_res_time_min'] = full(len(df), nan)
+    df['flame_res_time_sec'] = full(len(df), nan)
     # Use Nelson and Adkins (1988) model
     valid_mask = df[required_cols].notna().all(axis=1)
     df.loc[valid_mask, 'flame_res_time_model'] = 'Nelson and Adkins (1988)'
     df.loc[valid_mask, 'flame_res_time_min'] = fc.getFlameResidenceTime(
         ros=df.loc[valid_mask, 'hros'].to_numpy(),
         fuel_consumption=df.loc[valid_mask, 'tfc'].to_numpy(),
-        midflame_ws=df.loc[valid_mask, 'instand_ws_kmph'].to_numpy(),
+        midflame_ws=df.loc[valid_mask, 'instand_ws_mps'].to_numpy(),
         units='min'
     )
+    df.loc[valid_mask, 'flame_res_time_sec'] = df.loc[valid_mask, 'flame_res_time_min'] * 60
 
     return df
 
