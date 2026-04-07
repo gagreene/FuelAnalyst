@@ -21,25 +21,25 @@ from src.fuel_analyst.components import helper
 
 def _add_season_column(
         merged_df: pd.DataFrame,
-        summer_start: int,
+        Summer_start: int,
         fall_start: int
 ) -> pd.DataFrame:
     """
     Add a 'season' column to merged_df based on 'wx_date' and given seasonal boundaries.
 
     :param merged_df: DataFrame containing merged plot and weather data, with 'wx_date' column
-    :param summer_start: Integer representing the month and day (MMDD) when summer starts (e.g., 615 for June 15)
+    :param Summer_start: Integer representing the month and day (MMDD) when Summer starts (e.g., 615 for June 15)
     :param fall_start: Integer representing the month and day (MMDD) when fall starts (e.g., 915 for September 15)
     :return: DataFrame with added 'season' column
     """
     if 'wx_date' in merged_df.columns:
         merged_df['month_day'] = merged_df['wx_date'].astype(str).str[4:8].astype(int)
         conditions = [
-            merged_df['month_day'] < summer_start,
-            (merged_df['month_day'] >= summer_start) & (merged_df['month_day'] < fall_start),
+            merged_df['month_day'] < Summer_start,
+            (merged_df['month_day'] >= Summer_start) & (merged_df['month_day'] < fall_start),
             merged_df['month_day'] >= fall_start
         ]
-        choices = ['spring', 'summer', 'fall']
+        choices = ['Spring', 'Summer', 'Fall']
         merged_df['season'] = np.select(conditions, choices, default='fall')
         # Move 'season' column immediately after 'wx_date'
         cols = list(merged_df.columns)
@@ -54,42 +54,42 @@ def _add_season_column(
 def _refine_fbp_fuel_types_by_season(merged_df: pd.DataFrame) -> pd.DataFrame:
     """
     Refine seasonal FBP fuel types based on user-defined season.
-        - O1a/O1b codes changed to O1a in spring, O1b otherwise.
-        - M1/M2 codes changed to M2 in summer, M1 otherwise.
-        - M3/M4 codes changed to M4 in summer, M3 otherwise.
-        - D1/D2 codes changed to D2 in summer, D1 otherwise.
+        - O1a/O1b codes changed to O1a in Spring, O1b otherwise.
+        - M1/M2 codes changed to M2 in Summer, M1 otherwise.
+        - M3/M4 codes changed to M4 in Summer, M3 otherwise.
+        - D1/D2 codes changed to D2 in Summer, D1 otherwise.
 
     :param merged_df: DataFrame containing merged plot and weather data, with 'fbp_fuel_type' and 'season' columns
     :return: DataFrame with refined 'fbp_fuel_type' based on season
     """
     if 'fbp_fuel_type' in merged_df.columns and 'season' in merged_df.columns:
         # O1a/O1b
-        merged_df.loc[merged_df['season'] == 'spring', 'fbp_fuel_type'] = (
-            merged_df.loc[merged_df['season'] == 'spring', 'fbp_fuel_type'].str.replace('O1b', 'O1a')
+        merged_df.loc[merged_df['season'] == 'Spring', 'fbp_fuel_type'] = (
+            merged_df.loc[merged_df['season'] == 'Spring', 'fbp_fuel_type'].str.replace('O1b', 'O1a')
         )
-        merged_df.loc[merged_df['season'] != 'spring', 'fbp_fuel_type'] = (
-            merged_df.loc[merged_df['season'] != 'spring', 'fbp_fuel_type'].str.replace('O1a', 'O1b')
+        merged_df.loc[merged_df['season'] != 'Spring', 'fbp_fuel_type'] = (
+            merged_df.loc[merged_df['season'] != 'Spring', 'fbp_fuel_type'].str.replace('O1a', 'O1b')
         )
         # M1/M2
-        merged_df.loc[merged_df['season'] == 'summer', 'fbp_fuel_type'] = (
-            merged_df.loc[merged_df['season'] == 'summer', 'fbp_fuel_type'].str.replace('M1', 'M2')
+        merged_df.loc[merged_df['season'] == 'Summer', 'fbp_fuel_type'] = (
+            merged_df.loc[merged_df['season'] == 'Summer', 'fbp_fuel_type'].str.replace('M1', 'M2')
         )
-        merged_df.loc[merged_df['season'] != 'summer', 'fbp_fuel_type'] = (
-            merged_df.loc[merged_df['season'] != 'summer', 'fbp_fuel_type'].str.replace('M2', 'M1')
+        merged_df.loc[merged_df['season'] != 'Summer', 'fbp_fuel_type'] = (
+            merged_df.loc[merged_df['season'] != 'Summer', 'fbp_fuel_type'].str.replace('M2', 'M1')
         )
         # M3/M4
-        merged_df.loc[merged_df['season'] == 'summer', 'fbp_fuel_type'] = (
-            merged_df.loc[merged_df['season'] == 'summer', 'fbp_fuel_type'].str.replace('M3', 'M4')
+        merged_df.loc[merged_df['season'] == 'Summer', 'fbp_fuel_type'] = (
+            merged_df.loc[merged_df['season'] == 'Summer', 'fbp_fuel_type'].str.replace('M3', 'M4')
         )
-        merged_df.loc[merged_df['season'] != 'summer', 'fbp_fuel_type'] = (
-            merged_df.loc[merged_df['season'] != 'summer', 'fbp_fuel_type'].str.replace('M4', 'M3')
+        merged_df.loc[merged_df['season'] != 'Summer', 'fbp_fuel_type'] = (
+            merged_df.loc[merged_df['season'] != 'Summer', 'fbp_fuel_type'].str.replace('M4', 'M3')
         )
         # D1/D2
-        merged_df.loc[merged_df['season'] == 'summer', 'fbp_fuel_type'] = (
-            merged_df.loc[merged_df['season'] == 'summer', 'fbp_fuel_type'].str.replace('D1', 'D2')
+        merged_df.loc[merged_df['season'] == 'Summer', 'fbp_fuel_type'] = (
+            merged_df.loc[merged_df['season'] == 'Summer', 'fbp_fuel_type'].str.replace('D1', 'D2')
         )
-        merged_df.loc[merged_df['season'] != 'summer', 'fbp_fuel_type'] = (
-            merged_df.loc[merged_df['season'] != 'summer', 'fbp_fuel_type'].str.replace('D2', 'D1')
+        merged_df.loc[merged_df['season'] != 'Summer', 'fbp_fuel_type'] = (
+            merged_df.loc[merged_df['season'] != 'Summer', 'fbp_fuel_type'].str.replace('D2', 'D1')
         )
     return merged_df
 
@@ -121,8 +121,8 @@ def merge_weather_data(
     :param out_path: Path to save the merged CSV file
     :param add_season: Whether to add a 'season' column based on 'wx_date' (default: True)
     :param refine_fbp_seasonally: Whether to refine FBP fuel types based on season
-        (e.g., convert 'D' to 'S' for summer) if 'fbp_fuel_type' column is present (default: True)
-    :param summer_start: Integer representing the month and day (MMDD) when summer starts (default: 615 for June 15)
+        (e.g., convert 'D' to 'S' for Summer) if 'fbp_fuel_type' column is present (default: True)
+    :param summer_start: Integer representing the month and day (MMDD) when Summer starts (default: 615 for June 15)
         Required if add_season or refine_fbp_seasonally is True
     :param fall_start: Integer representing the month and day (MMDD) when fall starts (default: 915 for September 15)
         Required if add_season or refine_fbp_seasonally is True
@@ -130,7 +130,7 @@ def merge_weather_data(
     """
     # Check if required parameters are provided when adding season or refining FBP fuel types
     if (add_season or refine_fbp_seasonally) and (summer_start is None or fall_start is None):
-        raise ValueError('summer_start and fall_start parameters must be provided when add_season or '
+        raise ValueError('Summer_start and fall_start parameters must be provided when add_season or '
                          'refine_fbp_seasonally is True.')
 
     # Ensure output directory exists
@@ -182,7 +182,7 @@ def merge_weather_data(
         )
         merged_df = merged_df.drop(columns=['month_day', 'season'])
 
-    # Add a 'season' column based on 'wx_date' and summer/fall start dates if requested
+    # Add a 'season' column based on 'wx_date' and Summer/fall start dates if requested
     if add_season or refine_fbp_seasonally:
         merged_df = _add_season_column(merged_df, summer_start, fall_start)
 
