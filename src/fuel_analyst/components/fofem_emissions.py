@@ -33,6 +33,7 @@ default_season_start_dict = {
 }
 FOFEM_DIR = os.path.join(pkg_dir, 'dependencies', 'pyfofem', 'src', 'pyfofem', 'supporting_data', 'FOFEM6.7')
 CONSUMPTION_VARS = fofem.CONSUMPTION_VARS
+SOIL_HEAT_VARS = fofem.SOIL_HEAT_VARS
 
 
 def _calc_fuel_moisture_content(df: pd.DataFrame) -> pd.DataFrame:
@@ -411,6 +412,8 @@ def process_emissions(
         consume_model = 'S'
     else:
         consume_model = 'C'
+        global CONSUMPTION_VARS
+        CONSUMPTION_VARS = [var for var in CONSUMPTION_VARS if var not in SOIL_HEAT_VARS]
 
     # Get merged consumption DataFrame
     merged_df = _get_merged_consumption_df(
