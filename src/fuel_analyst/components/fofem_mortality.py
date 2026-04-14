@@ -120,20 +120,24 @@ def process_mortality(
     print('\tProcessing Post-Fire Tree Mortality (via FOFEM CRNSCH model)...')
     def get_col(col):
         return merged_tree_df[col].to_numpy() if col in merged_tree_df.columns else None
-    merged_tree_df['mortality_crnsch'] = fofem.mort_crnsch(
-        spp=get_col('spp'),
-        dbh=get_col('dbh'),
-        ht=get_col('ht'),
-        crown_depth=get_col('crown_depth'),
-        bark_thickness=get_col('bark_thick'),
-        fire_intensity=get_col('hfi'),
-        amb_t=get_col('temp'),
-        flame_length=get_col('flame_length'),
-        char_ht=get_col('char_height'),
-        scorch_ht=get_col('scorch_height'),
-        instand_ws=get_col('instand_ws_mps'),
-        aspen_sev=aspen_sev,
-        tree_code_dict=tree_code_dict
+    params = {
+        'spp': get_col('spp'),
+        'dbh': get_col('dbh'),
+        'ht': get_col('ht'),
+        'crown_depth': get_col('crown_depth'),
+        'bark_thickness': get_col('bark_thick'),
+        'fire_intensity': get_col('hfi'),
+        'amb_t': get_col('temp'),
+        'flame_length': get_col('flame_length'),
+        'char_ht': get_col('char_height'),
+        'scorch_ht': get_col('scorch_height'),
+        'instand_ws': get_col('instand_ws_mps'),
+        'aspen_sev': aspen_sev,
+        'tree_code_dict': tree_code_dict
+    }
+    merged_tree_df['mortality_crnsch'] = fofem.run_fofem_mortality(
+        mort_function='crnsch',
+        params=params,
     )
 
     # Calculate tree-level mortality for each scenario
