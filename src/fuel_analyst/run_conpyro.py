@@ -466,6 +466,7 @@ def _model_fofem_emissions(
         consumption data for emissions modelling.
     :param out_dir: Directory to save FOFEM emissions output files.
     :param conpyro_params: Dictionary of ConPyro model parameters.
+    :param num_workers: Number of parallel workers to use (default 1 = no multiprocessing).
     :return: DataFrame with FOFEM emissions results merged.
     """
     from src.fuel_analyst.components import fofem_emissions as fe
