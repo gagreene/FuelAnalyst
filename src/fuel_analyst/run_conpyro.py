@@ -40,6 +40,7 @@ default_fire_modelling_dict = {
             'smooth_ros': True,
             'model_terrain_effects_on_wind': True,  # Toggle terrain (slope/aspect) effects on wind speed and direction
             'model_terrain_effects_on_ffmc': True,  # Toggle terrain (slope/aspect) effects on FFMC
+            'suppress_messages': True,              # Toggle ConPyro processing messages on/off
             'wx_date': 'use_csv',   # Options: Integer in format YYYYMMDD, or string "use_csv" (default)
                                     #    wx_date used for fine dead fuel and ladder foliar MC calculations
             'fmc': None,            # Options: float, integer, None (default)
