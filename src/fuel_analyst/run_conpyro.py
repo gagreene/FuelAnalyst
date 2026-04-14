@@ -352,8 +352,15 @@ def _single_run_fire_behavior(args):
     return subset_df
 
 
-    # Concatenate all new_df results
-    df = pd.concat(new_df_list, ignore_index=True)
+def _model_fire_behavior(
+        df: pd.DataFrame,
+        input_params: dict,
+        conpyro_out_list: list,
+        conpyro_params: dict,
+        num_workers: int = 1
+) -> pd.DataFrame:
+    """
+    Run ConPyro for each weather date and time combination and return the resulting DataFrame.
 
     # Change string values to int or float (as appropriate) if they are numeric
     for col in df.select_dtypes(include=['object']).columns:
