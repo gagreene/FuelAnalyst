@@ -460,6 +460,7 @@ def process_emissions(
                 consume_models,
                 max_workers=num_workers,
                 desc='Emissions',
+                chunksize=1,
             )
         else:
             with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
