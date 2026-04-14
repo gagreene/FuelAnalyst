@@ -362,7 +362,42 @@ def _model_fire_behavior(
     """
     Run ConPyro for each weather date and time combination and return the resulting DataFrame.
 
-    # Change string values to int or float (as appropriate) if they are numeric
+    :param df: Input DataFrame with required columns.
+    :param input_params: Dictionary of input parameters for ConPyro.
+    :param conpyro_out_list: List of output parameters to request from ConPyro.
+    :param conpyro_params: Dictionary of ConPyro model parameters.
+    :param num_workers: Number of parallel workers to use (default 1 = no multiprocessing).
+    :return: DataFrame with ConPyro results.
+    """
+    # Prepare all combinations
+    wx_dates = (
+        input_params['wx_date'] if isinstance(input_params['wx_date'], list)
+        else [input_params['wx_date']] if isinstance(input_params['wx_date'], (int, type(None)))
+        else list(set(df['wx_date'].astype(int)))
+    )
+    times = (
+        input_params['time'] if isinstance(input_params['time'], list)
+        else [input_params['time']] if isinstance(input_params['time'], (int, type(None)))
+        else list(set(df['wx_date'].astype(int)))
+    )
+    tasks = []
+    for wx_date in wx_dates:
+        for time in times:
+            subset_df = (df[(df['wx_date'] == wx_date)] if input_params['wx_date'] == 'use_csv' else df)
+            subset_df = (subset_df[(subset_df['time'] == time)] if input_params['time'] == 'use_csv' else subset_df)
+            tasks.append((wx_date, time, subset_df.copy(), input_params, conpyro_out_list))
+
+    if num_workers > 1:
+        if _TQDM_PROCESS_MAP_AVAILABLE:
+            results = process_map(_single_run_fire_behavior, tasks, max_workers=num_workers, desc='ConPyro', chunksize=1)
+        else:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+                results = list(tqdm.tqdm(executor.map(_single_run_fire_behavior, tasks), total=len(tasks), desc='ConPyro'))
+    else:
+        results = [
+            _single_run_fire_behavior(task) for task in tqdm.tqdm(tasks, desc='ConPyro')
+        ]
+    df = pd.concat(results, ignore_index=True)
     for col in df.select_dtypes(include=['object']).columns:
         try:
             df[col] = pd.to_numeric(df[col])
