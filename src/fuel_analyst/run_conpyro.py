@@ -629,15 +629,19 @@ def run_conpyro(
     # ### MODEL FOFEM MORTALITY (IF ENABLED) ###
     if fofem_mortality_params['run_model']:
         print('\n>>>> Running FOFEM mortality modelling...')
-        df = _model_fofem_mortality(
-            df=df,
-            fire_csv_path=fire_csv_path,
-            in_tree_csv_path=in_tree_csv_path,
-            out_dir=out_dir,
-            fofem_mortality_params=fofem_mortality_params,
-            conpyro_params=conpyro_params,
-        )
-        fofem_ext += '_mortality'
+        if in_tree_csv_path is not None:
+            df = _model_fofem_mortality(
+                df=df,
+                fire_csv_path=fire_csv_path,
+                in_tree_csv_path=in_tree_csv_path,
+                out_dir=out_dir,
+                fofem_mortality_params=fofem_mortality_params,
+                conpyro_params=conpyro_params,
+            )
+            fofem_ext += '_mortality'
+        else:
+            raise ValueError('The in_tree_csv_path parameter was not provided. '
+                             'Unable to run FOFEM mortality modelling')
 
     # ### MODEL FOFEM EMISSIONS (IF ENABLED) ###
     if fofem_emissions_params['run_model']:
