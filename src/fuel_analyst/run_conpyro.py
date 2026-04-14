@@ -19,6 +19,13 @@ if pkg_dir not in sys.path:
 from src.fuel_analyst.components import helper
 from dependencies.conpyro.src.conpyro import conpyro
 from dependencies.flame_components import flame_components as fc
+import tqdm
+import concurrent.futures
+try:
+    from tqdm.contrib.concurrent import process_map
+    _TQDM_PROCESS_MAP_AVAILABLE = True
+except ImportError:
+    _TQDM_PROCESS_MAP_AVAILABLE = False
 
 
 default_fire_modelling_dict = {
