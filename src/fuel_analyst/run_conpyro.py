@@ -453,7 +453,8 @@ def _model_fofem_emissions(
         fofem_emissions_params: dict,
         in_fofem_consume_csv_path: str,
         out_dir: str,
-        conpyro_params: dict
+        conpyro_params: dict,
+        num_workers: int = 1,
 ) -> pd.DataFrame:
     """
     Run FOFEM emissions modelling and merge results with the input DataFrame.
