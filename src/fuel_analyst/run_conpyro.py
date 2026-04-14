@@ -329,8 +329,11 @@ def _model_fire_behavior(
                             if input_params['cros_model'] != 'use_csv'
                             else subset_df['cros_model'].values.astype(int)),
                 smooth_ros=bool(input_params['smooth_ros']),
-                model_slope_effects=bool(input_params['model_slope_effects']),
-                season=input_params['season'],
+                model_terrain_effects_on_wind=bool(input_params['model_terrain_effects_on_wind']),
+                model_terrain_effects_on_ffmc=bool(input_params['model_terrain_effects_on_ffmc']),
+                season=(input_params['season']
+                        if input_params['season'] != 'use_csv'
+                        else subset_df['season'].values.astype(str)),
                 density=subset_df['stand_density'].values.astype(str),
                 stand_type=subset_df['stand_type'].values.astype(str),
                 ws=subset_df['ws'].values,
