@@ -23,6 +23,12 @@ if pkg_dir not in sys.path:
 from . import helper
 from . import fwis_moisture_content as mc
 from dependencies.pyfofem.src.pyfofem import pyfofem as fofem
+import tqdm
+try:
+    from tqdm.contrib.concurrent import process_map
+    _TQDM_PROCESS_MAP_AVAILABLE = True
+except ImportError:
+    _TQDM_PROCESS_MAP_AVAILABLE = False
 
 # Dictionary of seasons for each month in the year
 default_season_start_dict = {
@@ -389,6 +395,7 @@ def process_emissions(
         fofem_consume_csv_path: str,
         out_dir: str,
         model_soil_heating: bool = False,
+        num_workers: int = 1,
         return_df: bool = False,
 ) -> Union[None, str]:
     """
@@ -400,6 +407,7 @@ def process_emissions(
     :param fofem_consume_csv_path: Path to FOFEM consumption CSV file.
     :param out_dir: Output directory for Burnup-In.brn files.
     :param model_soil_heating: Whether to use FOFEM soil heating consumption model (True) or not (False).
+    :param num_workers: Number of workers for parallel processing
     :param return_df: Whether to return a path to the final DataFrame with emissions results (True) or not (False).
     :return: None if return_df is False, otherwise the DataFrame containing the merged input data and
         FOFEM emissions results.
@@ -437,22 +445,33 @@ def process_emissions(
     merged_df =_calc_fuel_moisture_content(merged_df)
 
     # Model emissions using FOFEM with Burnup-In.brn files
-    if os.cpu_count() >= 4:  # Use multiprocessing if 4 or more CPU cores are available
-        num_workers = os.cpu_count() - 1
+    if num_workers >= 4:  # Use multiprocessing if 4 or more CPU cores are available
         print(
             f'\tProcessing Emissions (via BURNUP model) in parallel with {num_workers} workers...'
         )
-        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
-            results = list(executor.map(
+        records = merged_df.to_dict(orient='records')
+        out_dirs = [out_dir] * len(merged_df)
+        consume_models = [consume_model] * len(merged_df)
+        if _TQDM_PROCESS_MAP_AVAILABLE:
+            results = process_map(
                 _model_emissions,
-                merged_df.to_dict(orient='records'),
-                [out_dir] * len(merged_df),
-                [consume_model] * len(merged_df)
-            ))
+                records,
+                out_dirs,
+                consume_models,
+                max_workers=num_workers,
+                desc='Emissions',
+            )
+        else:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+                results = list(tqdm.tqdm(
+                    executor.map(_model_emissions, records, out_dirs, consume_models),
+                    total=len(records),
+                    desc='Emissions',
+                ))
     else:
         print('\tProcessing Emissions (via BURNUP model)...')
         results = [
-            _model_emissions(row, out_dir, consume_model) for row in merged_df.to_dict(orient='records')
+            _model_emissions(row, out_dir, consume_model) for row in tqdm.tqdm(merged_df.to_dict(orient='records'), desc='Emissions')
         ]
 
     # Unpack results
@@ -508,4 +527,5 @@ if __name__ == '__main__':
         plot_id_col_name=_plot_id_col_name,
         fofem_consume_csv_path=_fofem_consume_csv_path,
         out_dir=_out_dir,
+        num_workers=os.cpu_count() - 1,
     )
