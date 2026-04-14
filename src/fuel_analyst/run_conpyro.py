@@ -482,6 +482,7 @@ def _model_fofem_emissions(
         plot_id_col_name=fofem_emissions_params['plot_id_col_name'],
         fofem_consume_csv_path=in_fofem_consume_csv_path,
         out_dir=emissions_dir,
+        num_workers=num_workers,
         return_df=True,
     )
 
