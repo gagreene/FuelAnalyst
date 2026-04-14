@@ -293,107 +293,64 @@ def _calc_flame_depth(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _model_fire_behavior(
-        df: pd.DataFrame,
-        input_params: dict,
-        conpyro_out_list: list,
-        conpyro_params: dict
-) -> pd.DataFrame:
-    """
-    Run ConPyro for each weather date and time combination and return the resulting DataFrame.
+def _single_run_fire_behavior(args):
+    wx_date, time, subset_df, input_params, conpyro_out_list = args
+    cp = conpyro.ConPyro()
+    cp.initialize(
+        cfo_model=(input_params['cfo_model'] if input_params['cfo_model'] != 'use_csv' else subset_df['cfo_model'].values.astype(int)),
+        sros_model=(input_params['sros_model'] if input_params['sros_model'] != 'use_csv' else subset_df['sros_model'].values.astype(int)),
+        cros_model=(input_params['cros_model'] if input_params['cros_model'] != 'use_csv' else subset_df['cros_model'].values.astype(int)),
+        smooth_ros=bool(input_params['smooth_ros']),
+        model_terrain_effects_on_wind=bool(input_params['model_terrain_effects_on_wind']),
+        model_terrain_effects_on_ffmc=bool(input_params['model_terrain_effects_on_ffmc']),
+        season=(input_params['season'] if input_params['season'] != 'use_csv' else subset_df['season'].values.astype(str)),
+        density=subset_df['stand_density'].values.astype(str),
+        stand_type=subset_df['stand_type'].values.astype(str),
+        ws=subset_df['ws'].values,
+        wd=subset_df['wd'].values,
+        ffmc=subset_df['ffmc'].values,
+        dmc=subset_df['dmc'].values,
+        bui=subset_df['bui'].values,
+        fsg=subset_df['fsg'].values,
+        fuel_type=subset_df['fbp_fuel_type'].values.astype(str),
+        ffl=subset_df[['duff_fuel_load', 'litter_fuel_load']].sum(axis=1).values,
+        wfl=subset_df['woody_fuel_load'].values,
+        gfl=subset_df['herbaceous_fuel_load'].values,
+        pct_cnfr=subset_df['pct_cnfr'].values,
+        cbd=subset_df['cbd_ovrstry'].values,
+        ht_midstry_live=subset_df['ht_midstry_live'].values,
+        ht_midstry_dead=subset_df['ht_midstry_dead'].values,
+        cbh_ovrstry=subset_df['cbh_ovrstry'].values,
+        cbh_midstry=subset_df['cbh_midstry'].values,
+        cfl_ovrstry=subset_df['cfl_ovrstry'].values,
+        cfl_midstry=subset_df['cfl_midstry'].values,
+        dead_branch_fl=subset_df['dead_branch_fl'].values,
+        fmc=(input_params['fmc'] if input_params['fmc'] != 'use_csv' else subset_df['fmc'].values.astype(float)),
+        wx_date=wx_date,
+        time=time,
+        site_elev=subset_df['elevation'].values,
+        stn_elev=subset_df['elevation'].values,
+        temp=subset_df['temp'].values,
+        rh=subset_df['rh'].values,
+        cc=subset_df['canopy_cover'].values,
+        elevation=subset_df['elevation'].values,
+        slope=subset_df['slope'].values,
+        aspect=subset_df['aspect'].values,
+        lat=subset_df['lat'].values,
+        long=subset_df['long'].values,
+        suppress_messages=input_params['suppress_messages'],
+    )
+    cp.run_conpyro()
+    temp_df = pd.DataFrame(
+        column_stack(array(cp.return_params(out_request=conpyro_out_list), dtype=object)),
+        columns=conpyro_out_list
+    )
+    subset_df = subset_df.drop(columns=[col for col in subset_df.columns if col in temp_df.columns], errors='ignore')
+    subset_df = subset_df.reset_index(drop=True)
+    subset_df = pd.concat([subset_df, temp_df], axis=1)
+    del cp, temp_df
+    return subset_df
 
-    :param df: Input DataFrame with required columns.
-    :param input_params: Dictionary of input parameters for ConPyro.
-    :param conpyro_out_list: List of output parameters to request from ConPyro.
-    :param conpyro_params: Dictionary of ConPyro model parameters.
-    :return: DataFrame with ConPyro results.
-    """
-    new_df_list = []
-    for wx_date in (
-            (input_params['wx_date'] if isinstance(input_params['wx_date'], list)
-            else [input_params['wx_date']] if isinstance(input_params['wx_date'], (int, type(None)))
-            else list(set(df['wx_date'].astype(int))))
-    ):
-        for time in (
-                (input_params['time'] if isinstance(input_params['time'], list)
-                else [input_params['time']] if isinstance(input_params['time'], (int, type(None)))
-                else list(set(df['wx_date'].astype(int))))
-        ):
-            subset_df = (df[(df['wx_date'] == wx_date)] if input_params['wx_date'] == 'use_csv' else df)
-            subset_df = (subset_df[(subset_df['time'] == time)] if input_params['time'] == 'use_csv' else subset_df)
-
-            # Initialize ConPyro class
-            cp = conpyro.ConPyro()
-            cp.initialize(
-                cfo_model=(input_params['cfo_model']
-                           if input_params['cfo_model'] != 'use_csv'
-                           else subset_df['cfo_model'].values.astype(int)),
-                sros_model=(input_params['sros_model']
-                            if input_params['sros_model'] != 'use_csv'
-                            else subset_df['sros_model'].values.astype(int)),
-                cros_model=(input_params['cros_model']
-                            if input_params['cros_model'] != 'use_csv'
-                            else subset_df['cros_model'].values.astype(int)),
-                smooth_ros=bool(input_params['smooth_ros']),
-                model_terrain_effects_on_wind=bool(input_params['model_terrain_effects_on_wind']),
-                model_terrain_effects_on_ffmc=bool(input_params['model_terrain_effects_on_ffmc']),
-                season=(input_params['season']
-                        if input_params['season'] != 'use_csv'
-                        else subset_df['season'].values.astype(str)),
-                density=subset_df['stand_density'].values.astype(str),
-                stand_type=subset_df['stand_type'].values.astype(str),
-                ws=subset_df['ws'].values,
-                wd=subset_df['wd'].values,
-                ffmc=subset_df['ffmc'].values,
-                dmc=subset_df['dmc'].values,
-                bui=subset_df['bui'].values,
-                fsg=subset_df['fsg'].values,
-                fuel_type=subset_df['fbp_fuel_type'].values.astype(str),
-                ffl=subset_df[['duff_fuel_load', 'litter_fuel_load']].sum(axis=1).values,
-                wfl=subset_df['woody_fuel_load'].values,
-                gfl=subset_df['herbaceous_fuel_load'].values,
-                pct_cnfr=subset_df['pct_cnfr'].values,
-                cbd=subset_df['cbd_ovrstry'].values,
-                ht_midstry_live=subset_df['ht_midstry_live'].values,
-                ht_midstry_dead=subset_df['ht_midstry_dead'].values,
-                cbh_ovrstry=subset_df['cbh_ovrstry'].values,
-                cbh_midstry=subset_df['cbh_midstry'].values,
-                cfl_ovrstry=subset_df['cfl_ovrstry'].values,
-                cfl_midstry=subset_df['cfl_midstry'].values,
-                dead_branch_fl=subset_df['dead_branch_fl'].values,
-                fmc=(input_params['fmc']
-                     if input_params['fmc'] != 'use_csv'
-                     else subset_df['fmc'].values.astype(float)
-                     ),
-                wx_date=wx_date,
-                time=time,
-                site_elev=subset_df['elevation'].values,
-                stn_elev=subset_df['elevation'].values,
-                temp=subset_df['temp'].values,
-                rh=subset_df['rh'].values,
-                cc=subset_df['canopy_cover'].values,
-                elevation=subset_df['elevation'].values,
-                slope=subset_df['slope'].values,
-                aspect=subset_df['aspect'].values,
-                lat=subset_df['lat'].values,
-                long=subset_df['long'].values,
-            )
-
-            # Run ConPyro
-            cp.run_conpyro()
-
-            # Get requested output parameters
-            temp_df = pd.DataFrame(
-                column_stack(array(cp.return_params(out_request=conpyro_out_list), dtype=object)),
-                columns=conpyro_out_list
-            )
-            # Drop any columns that are already in subset_df to avoid duplication when concatenating
-            subset_df = subset_df.drop(columns=[col for col in subset_df.columns if col in temp_df.columns],
-                                       errors='ignore')
-            subset_df = subset_df.reset_index(drop=True)
-            subset_df = pd.concat([subset_df, temp_df], axis=1)
-            new_df_list.append(subset_df)
-            del cp, temp_df, subset_df
 
     # Concatenate all new_df results
     df = pd.concat(new_df_list, ignore_index=True)
