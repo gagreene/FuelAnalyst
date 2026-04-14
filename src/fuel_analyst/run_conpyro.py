@@ -625,6 +625,7 @@ def run_conpyro(
             input_params=input_params,
             conpyro_out_list=conpyro_out_list,
             conpyro_params=conpyro_params,
+            num_workers=num_workers,
         )
 
         # ### MODEL FLAME COMPONENTS ###
