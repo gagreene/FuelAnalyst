@@ -412,8 +412,6 @@ def process_emissions(
         consume_model = 'S'
     else:
         consume_model = 'C'
-        global CONSUMPTION_VARS
-        CONSUMPTION_VARS = [var for var in CONSUMPTION_VARS if var not in SOIL_HEAT_VARS]
 
     # Get merged consumption DataFrame
     merged_df = _get_merged_consumption_df(
