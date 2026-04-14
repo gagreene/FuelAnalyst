@@ -594,6 +594,7 @@ def run_conpyro(
         fire_modelling_params = default_fire_modelling_dict
 
     # Get ConPyro, FOFEM mortality, and FOFEM emissions parameters from fire_modelling_params
+    num_workers = fire_modelling_params['num_workers']
     conpyro_params = fire_modelling_params['conpyro']
     fofem_mortality_params = fire_modelling_params['fofem_mortality']
     fofem_emissions_params = fire_modelling_params['fofem_emissions']
