@@ -403,8 +403,6 @@ def _model_fire_behavior(
             df[col] = pd.to_numeric(df[col])
         except ValueError:
             pass
-
-    # Sort by plot_id_col_name and wx_date
     df = df.sort_values(by=[conpyro_params['plot_id_col_name'], 'wx_date']).reset_index(drop=True)
 
     return df
