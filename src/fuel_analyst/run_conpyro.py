@@ -674,6 +674,7 @@ def run_conpyro(
                 in_fofem_consume_csv_path=in_fofem_consume_csv_path,
                 out_dir=out_dir,
                 conpyro_params=conpyro_params,
+                num_workers=num_workers,
             )
             fofem_ext += '_emissions'
         else:
