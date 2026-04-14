@@ -30,11 +30,17 @@ default_fire_modelling_dict = {
             'sros_model': 13,  # Options: 1, 2, 3, 4, 12, 13, 20, or string "use_csv" (assumes sros_model column in csv)
             'cros_model': 1,  # Options: 1, 2, or string "use_csv" (assumes cros_model column in csv)
             'smooth_ros': True,
-            'model_slope_effects': True,
-            'wx_date': 'use_csv',    # Options: Integer in format YYYYMMDD, or string "use_csv" (default)
-            'fmc': None,    # Only needed if wx_date is None
-            'season': None,    # Only needed if wx_date is None
-            'time': None,       # Only needed for CFIS (cfo_model == 10); Set to 1200 since not using CFIS by default
+            'model_terrain_effects_on_wind': True,  # Toggle terrain (slope/aspect) effects on wind speed and direction
+            'model_terrain_effects_on_ffmc': True,  # Toggle terrain (slope/aspect) effects on FFMC
+            'wx_date': 'use_csv',   # Options: Integer in format YYYYMMDD, or string "use_csv" (default)
+                                    #    wx_date used for fine dead fuel and ladder foliar MC calculations
+            'fmc': None,            # Options: float, integer, None (default)
+                                    #     fmc overrides wx_date for foliar MC calculations
+            'season': None,         # Options: None (default), "Spring", "Summer", "Fall", "use_csv";
+                                    #     season overrides wx_date for fine dead fuel MC calculations
+            'time': None,           # Options: Integer in format HHMM, None (default), or string "use_csv"
+                                    #     time is only needed for CFIS (cfo_model == 10) to calculate
+                                    #     Rothermel dead fuel moisture content at a specific time of day
         },
         'output_params': {
             'out_request': [
