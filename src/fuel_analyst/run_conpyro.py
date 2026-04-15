@@ -342,6 +342,8 @@ def _single_run_fire_behavior(args):
         temp=subset_df['temp'].values,
         rh=subset_df['rh'].values,
         cc=subset_df['canopy_cover'].values,
+        site_elev=subset_df['elevation'].values,
+        stn_elev=subset_df['elevation'].values,
         elevation=subset_df['elevation'].values,
         slope=subset_df['slope'].values,
         aspect=subset_df['aspect'].values,
