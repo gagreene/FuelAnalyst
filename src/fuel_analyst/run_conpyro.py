@@ -347,6 +347,9 @@ def _single_run_fire_behavior(args):
         elevation=subset_df['elevation'].values,
         lat=subset_df['lat'].values,
         long=subset_df['long'].values,
+        d0=None,
+        dj=None,
+        sfc=None,
         suppress_messages=input_params['suppress_messages'],
     )
     cp.run_conpyro()
