@@ -338,7 +338,6 @@ def _single_run_fire_behavior(args):
         cfl_midstry=None, #subset_df['cfl_midstry'].values,
         dead_branch_fl=None, #subset_df['dead_branch_fl'].values,
         fmc=(input_params['fmc'] if input_params['fmc'] != 'use_csv' else subset_df['fmc'].values.astype(float)),
-        wx_date=wx_date,
         time=time,
         site_elev=subset_df['elevation'].values,
         stn_elev=subset_df['elevation'].values,
