@@ -345,8 +345,6 @@ def _single_run_fire_behavior(args):
         site_elev=subset_df['elevation'].values,
         stn_elev=subset_df['elevation'].values,
         elevation=subset_df['elevation'].values,
-        slope=subset_df['slope'].values,
-        aspect=subset_df['aspect'].values,
         lat=subset_df['lat'].values,
         long=subset_df['long'].values,
         suppress_messages=input_params['suppress_messages'],
