@@ -29,7 +29,7 @@ except ImportError:
 
 
 default_fire_modelling_dict = {
-    'num_workers': max(1, int(os.cpu_count())-1),
+    'num_workers': max(1, os.cpu_count()-1),
     'conpyro': {
         'run_model': True,
         'plot_id_col_name': 'unique_id',
