@@ -339,8 +339,6 @@ def _single_run_fire_behavior(args):
         dead_branch_fl=None, #subset_df['dead_branch_fl'].values,
         fmc=(input_params['fmc'] if input_params['fmc'] != 'use_csv' else subset_df['fmc'].values.astype(float)),
         time=time,
-        site_elev=subset_df['elevation'].values,
-        stn_elev=subset_df['elevation'].values,
         temp=subset_df['temp'].values,
         rh=subset_df['rh'].values,
         cc=subset_df['canopy_cover'].values,
