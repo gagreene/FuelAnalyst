@@ -45,7 +45,7 @@ default_fire_modelling_dict = {
                                     #    wx_date used for fine dead fuel and ladder foliar MC calculations
             'fmc': None,            # Options: float, integer, None (default)
                                     #     fmc overrides wx_date for foliar MC calculations
-            'season': None,         # Options: None (default), "Spring", "Summer", "Fall", "use_csv";
+            'season': None,         # Options: None (default), "Sp", "Sp-Su", "T", "Su", "F", "use_csv";
                                     #     season overrides wx_date for fine dead fuel MC calculations
             'time': None,           # Options: Integer in format HHMM, None (default), or string "use_csv"
                                     #     time is only needed for CFIS (cfo_model == 10) to calculate
