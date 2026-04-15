@@ -329,7 +329,6 @@ def _single_run_fire_behavior(args):
         ffmc=subset_df['ffmc'].values,
         dmc=subset_df['dmc'].values,
         bui=subset_df['bui'].values,
-        fsg=subset_df['fsg'].values,
         fuel_type=subset_df['fbp_fuel_type'].values.astype(str),
         ffl=subset_df[['duff_fuel_load', 'litter_fuel_load']].sum(axis=1).values,
         wfl=subset_df['woody_fuel_load'].values,
