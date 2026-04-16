@@ -632,7 +632,7 @@ def run_conpyro(
         )
 
         # ### MODEL FLAME COMPONENTS ###
-        print('\n>>>> Modeling flame components with ConPyro output...')
+        print('\n>>>> Modelling flame components with ConPyro output...')
         df = _model_flame_components(df, flame_comp_out_list)
 
         # Save ConPyro results to CSV
