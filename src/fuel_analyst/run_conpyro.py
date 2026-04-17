@@ -56,7 +56,8 @@ default_fire_modelling_dict = {
                 'mc_sa', 'mc_dmc', # Needed for FOFEM emissions modelling
                 'fsg', 'cac', 'cfo_prob',
                 'sros', 'cros', 'hros', 'bros',
-                'tfc', 'sfi', 'cfi', 'hfi',
+                'sfc', 'cfc', 'tfc',
+                'sfi', 'cfi', 'hfi',
                 'cfb', 'fire_type'
             ],
             # Leave flame_comp_out_list fixed for the time being - do not let user adjust
