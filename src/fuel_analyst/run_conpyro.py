@@ -150,7 +150,7 @@ def _calc_flame_height(df: pd.DataFrame,
     Calculate flame height using the Nelson model.
 
     :param df: DataFrame with required columns.
-    :param fh_model: Model used to estimate flame height ("Nelson" only currently supported).
+    :param fh_model: Model used to estimate flame height (only "Nelson" & "Finney" models are currently supported).
     :param recalc_crown_fire: If True, recalculate existing crown fire flame heights using Finney model.
     :return: DataFrame with flame height values.
     """
