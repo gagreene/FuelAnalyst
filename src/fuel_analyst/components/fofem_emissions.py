@@ -22,7 +22,8 @@ if pkg_dir not in sys.path:
 
 from . import helper
 from . import fwis_moisture_content as mc
-from dependencies.pyfofem.src.pyfofem import pyfofem as fofem
+from dependencies.pyfofem.src.pyfofem import pyfofem as fofem, TOTAL_DURATION_CONSUMED_VARS, EQUATION_VARS, \
+    SOIL_HEAT_VARS, DEFAULT_CONSUMPTION_VARS
 import tqdm
 try:
     from tqdm.contrib.concurrent import process_map
@@ -38,8 +39,7 @@ default_season_start_dict = {
     'Winter': '1115',
 }
 FOFEM_DIR = os.path.join(pkg_dir, 'dependencies', 'pyfofem', 'src', 'pyfofem', 'supporting_data', 'FOFEM6.7')
-CONSUMPTION_VARS = fofem.CONSUMPTION_VARS
-SOIL_HEAT_VARS = fofem.SOIL_HEAT_VARS
+CONSUMPTION_VARS = fofem.DEFAULT_CONSUMPTION_VARS
 
 
 def _calc_fuel_moisture_content(df: pd.DataFrame) -> pd.DataFrame:
@@ -416,10 +416,14 @@ def process_emissions(
     os.makedirs(out_dir, exist_ok=True)
 
     # Assign FOFEM consumption model based on whether soil heating is being modeled
+    global CONSUMPTION_VARS
     if model_soil_heating:
         consume_model = 'S'
+        CONSUMPTION_VARS = DEFAULT_CONSUMPTION_VARS + TOTAL_DURATION_CONSUMED_VARS + SOIL_HEAT_VARS + EQUATION_VARS
     else:
         consume_model = 'C'
+        CONSUMPTION_VARS = DEFAULT_CONSUMPTION_VARS +TOTAL_DURATION_CONSUMED_VARS + EQUATION_VARS
+
 
     # Get merged consumption DataFrame
     merged_df = _get_merged_consumption_df(
