@@ -37,8 +37,8 @@ default_fire_modelling_dict = {
             'cfo_model': 5,    # Options: 1, 2, 3, 4, 5, 10, or string "use_csv" (assumes cfo_model column in csv)
             'sros_model': 13,  # Options: 1, 2, 3, 4, 12, 13, 20, or string "use_csv" (assumes sros_model column in csv)
             'cros_model': 1,   # Options: 1, 2, or string "use_csv" (assumes cros_model column in csv)
-            'process_ladder': True,     # Toggle ladder fuel processing on/off
-            'smooth_ros': True,         # Toggle ROS smoothing function on/off
+            'process_ladder': False,     # Toggle ladder fuel processing on/off
+            'smooth_ros': True,          # Toggle ROS smoothing function on/off
             'model_terrain_effects_on_wind': True,  # Toggle terrain (slope/aspect) effects on wind speed and direction
             'model_terrain_effects_on_ffmc': True,  # Toggle terrain (slope/aspect) effects on FFMC
             'suppress_messages': True,              # Toggle ConPyro processing messages on/off
@@ -401,7 +401,7 @@ def _model_fire_behavior(
     times = (
         input_params['time'] if isinstance(input_params['time'], list)
         else [input_params['time']] if isinstance(input_params['time'], (int, type(None)))
-        else list(set(df['wx_date'].astype(int)))
+        else list(set(df['time'].astype(int)))
     )
     tasks = []
     for wx_date in wx_dates:
