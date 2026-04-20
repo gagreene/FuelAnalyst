@@ -67,13 +67,21 @@ default_fire_modelling_dict = {
         },
     },
     'fofem_mortality': {
-        'run_model': True,
-        'plot_id_col_name': 'unique_id',
-        'fofem_tree_id_col_name': 'unique_id',
+        'run_model': True,                      # Switch; Default: True
+        'plot_id_col_name': 'unique_id',        # User defined; default: 'unique_id'
+        'fofem_tree_id_col_name': 'unique_id',  # User defined; default: 'unique_id'
     },
     'fofem_emissions': {
-        'run_model': True,
-        'plot_id_col_name': 'unique_id',
+        'run_model': True,                  # Switch; Default: True
+        'model_select': 'pyfofem',          # Options: 'pyfofem', 'fof_gui'; Default: 'pyfofem'
+                                            #     pyfofem uses the pyfofem Python package to model emissions
+                                            #     fof_gui uses the USFS FOFEM GUI executable to batch model emissions
+                                            #        using "legacy" (old) emissions calculation settings
+        'plot_id_col_name': 'unique_id',    # User defined; default: 'unique_id'
+        'emissions_mode': 'expanded',       # Emissions modelling modes for pyfofem
+                                            #     Options: 'legacy', 'default', 'expanded'
+        'model_soil_heating': False,        # If True, pass SoilFamily data to pyfofem soil-heating model
+        'emissions_units': 'Imperial',      # Options: 'Imperial' (kgha), 'SI' (kg/ha)
     },
 }
 
@@ -332,12 +340,12 @@ def _single_run_fire_behavior(args):
         bui=subset_df['bui'].values,
         fuel_type=subset_df['fbp_fuel_type'].values.astype(str),
         pct_cnfr=subset_df['pct_cnfr'].values,
-        ht_midstry_live=subset_df['ht_midstry_live'].values,
-        ht_midstry_dead=subset_df['ht_midstry_dead'].values,
-        cbh_ovrstry=subset_df['cbh_ovrstry'].values,
-        cbh_midstry=subset_df['cbh_midstry'].values,
-        cfl_midstry=subset_df['cfl_midstry'].values,
-        dead_branch_fl=subset_df['dead_branch_fl'].values,
+        ht_midstry_live=None, #subset_df['ht_midstry_live'].values,
+        ht_midstry_dead=None, #subset_df['ht_midstry_dead'].values,
+        cbh_ovrstry=None, #subset_df['cbh_ovrstry'].values,
+        cbh_midstry=None, #subset_df['cbh_midstry'].values,
+        cfl_midstry=None, #subset_df['cfl_midstry'].values,
+        dead_branch_fl=None, #subset_df['dead_branch_fl'].values,
         fmc=(input_params['fmc'] if input_params['fmc'] != 'use_csv' else subset_df['fmc'].values.astype(float)),
         time=time,
         temp=subset_df['temp'].values,
@@ -482,22 +490,45 @@ def _model_fofem_emissions(
     :param num_workers: Number of parallel workers to use (default 1 = no multiprocessing).
     :return: DataFrame with FOFEM emissions results merged.
     """
-    from src.fuel_analyst.components import fofem_emissions as fe
-
     # Create FOFEM emissions output directory and remove any existing files if it already exists
     emissions_dir = os.path.join(out_dir, 'fofem_emissions')
     os.makedirs(emissions_dir, exist_ok=True)
     helper.delete_files(emissions_dir)
 
+    model_select = str(fofem_emissions_params.get('model_select', 'pyfofem')).strip().lower()
+    if model_select == 'pyfofem':
+        from src.fuel_analyst.components import fofem_emissions as fe
+
+        process_emissions_kwargs = {
+            'plot_wx_fire_csv_path': fire_csv_path,
+            'plot_id_col_name': fofem_emissions_params['plot_id_col_name'],
+            'fofem_consume_csv_path': in_fofem_consume_csv_path,
+            'out_dir': emissions_dir,
+            'emissions_mode': fofem_emissions_params.get('emissions_mode', 'legacy'),
+            'model_soil_heating': fofem_emissions_params.get('model_soil_heating', False),
+            'num_workers': num_workers,
+            'return_df': True,
+        }
+    elif model_select == 'fof_gui':
+        from src.fuel_analyst.components import fofem_gui_emissions as fe
+
+        process_emissions_kwargs = {
+            'plot_wx_fire_csv_path': fire_csv_path,
+            'plot_id_col_name': fofem_emissions_params['plot_id_col_name'],
+            'fofem_consume_csv_path': in_fofem_consume_csv_path,
+            'out_dir': emissions_dir,
+            'model_soil_heating': fofem_emissions_params.get('model_soil_heating', False),
+            'num_workers': num_workers,
+            'return_df': True,
+        }
+    else:
+        raise ValueError(
+            f'Invalid fofem_emissions model_select "{fofem_emissions_params.get("model_select")}". '
+            f'Valid options are: ["pyfofem", "fof_gui"]'
+        )
+
     # Run FOFEM emissions modelling with the plot-level fire behavior results from ConPyro
-    emiss_df = fe.process_emissions(
-        plot_wx_fire_csv_path=fire_csv_path,
-        plot_id_col_name=fofem_emissions_params['plot_id_col_name'],
-        fofem_consume_csv_path=in_fofem_consume_csv_path,
-        out_dir=emissions_dir,
-        num_workers=num_workers,
-        return_df=True,
-    )
+    emiss_df = fe.process_emissions(**process_emissions_kwargs)
 
     # Merge emissions results back to original plot_fire_df to preserve all columns
     df = pd.merge(
@@ -699,24 +730,25 @@ def run_conpyro(
 
 # Test routine for ConPyro modelling
 if __name__ == '__main__':
-    # Define input and output folders
-    # test_dir = os.path.join(os.path.dirname(__file__), 'tests')
-    test_dir = r'E:\UBC_FuelAnalyst_Testing\Student_Data\AFN'
-    _out_dir = os.path.join(test_dir, 'results', 'conpyro')
-    # The ConPyro input dataframe must have weather data attached for ConPyro/FOFEM modelling
-    # Required weather columns for ConPyro modelling: 'ws', 'wd', 'ffmc', 'dmc', 'bui', 'temp', 'rh'
-    # Required weather columns for FOFEM mortality modelling: 'ws', 'temp'
-    _in_dir = os.path.join(test_dir, 'results', 'wx_extract')
-    _in_conpyro_csv_path = os.path.join(_in_dir, 'conpyro_df_wx.csv')
-    _tree_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'master_tree_df.csv')
-    _fofem_consume_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'fofem_consume_df.csv')
-    _fire_modelling_dict = None
+    for dset in ['SaltSpringIsland', 'GalianoIsland']:
+        # Define input and output folders
+        # test_dir = os.path.join(os.path.dirname(__file__), 'tests')
+        test_dir = rf'E:\UBC_FuelAnalyst_Testing\Student_Data\{dset}'
+        _out_dir = os.path.join(test_dir, 'results', 'conpyro')
+        # The ConPyro input dataframe must have weather data attached for ConPyro/FOFEM modelling
+        # Required weather columns for ConPyro modelling: 'ws', 'wd', 'ffmc', 'dmc', 'bui', 'temp', 'rh'
+        # Required weather columns for FOFEM mortality modelling: 'ws', 'temp'
+        _in_dir = os.path.join(test_dir, 'results', 'wx_extract')
+        _in_conpyro_csv_path = os.path.join(_in_dir, 'conpyro_df_wx.csv')
+        _tree_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'master_tree_df.csv')
+        _fofem_consume_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'fofem_consume_df.csv')
+        _fire_modelling_dict = default_fire_modelling_dict
 
-    # Run ConPyro modelling
-    run_conpyro(
-        out_dir=_out_dir,
-        in_conpyro_csv_path=_in_conpyro_csv_path,
-        in_tree_csv_path=_tree_csv_path,
-        in_fofem_consume_csv_path=_fofem_consume_csv_path,
-        fire_modelling_params=_fire_modelling_dict,
-    )
+        # Run ConPyro modelling
+        run_conpyro(
+            out_dir=_out_dir,
+            in_conpyro_csv_path=_in_conpyro_csv_path,
+            in_tree_csv_path=_tree_csv_path,
+            in_fofem_consume_csv_path=_fofem_consume_csv_path,
+            fire_modelling_params=_fire_modelling_dict,
+        )
