@@ -340,12 +340,12 @@ def _single_run_fire_behavior(args):
         bui=subset_df['bui'].values,
         fuel_type=subset_df['fbp_fuel_type'].values.astype(str),
         pct_cnfr=subset_df['pct_cnfr'].values,
-        ht_midstry_live=None, #subset_df['ht_midstry_live'].values,
-        ht_midstry_dead=None, #subset_df['ht_midstry_dead'].values,
-        cbh_ovrstry=None, #subset_df['cbh_ovrstry'].values,
-        cbh_midstry=None, #subset_df['cbh_midstry'].values,
-        cfl_midstry=None, #subset_df['cfl_midstry'].values,
-        dead_branch_fl=None, #subset_df['dead_branch_fl'].values,
+        ht_midstry_live=subset_df['ht_midstry_live'].values,
+        ht_midstry_dead=subset_df['ht_midstry_dead'].values,
+        cbh_ovrstry=subset_df['cbh_ovrstry'].values,
+        cbh_midstry=subset_df['cbh_midstry'].values,
+        cfl_midstry=subset_df['cfl_midstry'].values,
+        dead_branch_fl=subset_df['dead_branch_fl'].values,
         fmc=(input_params['fmc'] if input_params['fmc'] != 'use_csv' else subset_df['fmc'].values.astype(float)),
         time=time,
         temp=subset_df['temp'].values,
@@ -730,25 +730,23 @@ def run_conpyro(
 
 # Test routine for ConPyro modelling
 if __name__ == '__main__':
-    for dset in ['SaltSpringIsland', 'GalianoIsland']:
-        # Define input and output folders
-        # test_dir = os.path.join(os.path.dirname(__file__), 'tests')
-        test_dir = rf'E:\UBC_FuelAnalyst_Testing\Student_Data\{dset}'
-        _out_dir = os.path.join(test_dir, 'results', 'conpyro')
-        # The ConPyro input dataframe must have weather data attached for ConPyro/FOFEM modelling
-        # Required weather columns for ConPyro modelling: 'ws', 'wd', 'ffmc', 'dmc', 'bui', 'temp', 'rh'
-        # Required weather columns for FOFEM mortality modelling: 'ws', 'temp'
-        _in_dir = os.path.join(test_dir, 'results', 'wx_extract')
-        _in_conpyro_csv_path = os.path.join(_in_dir, 'conpyro_df_wx.csv')
-        _tree_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'master_tree_df.csv')
-        _fofem_consume_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'fofem_consume_df.csv')
-        _fire_modelling_dict = default_fire_modelling_dict
+    # Define input and output folders
+    test_dir = os.path.join(os.path.dirname(__file__), 'tests')
+    _out_dir = os.path.join(test_dir, 'results', 'conpyro')
+    # The ConPyro input dataframe must have weather data attached for ConPyro/FOFEM modelling
+    # Required weather columns for ConPyro modelling: 'ws', 'wd', 'ffmc', 'dmc', 'bui', 'temp', 'rh'
+    # Required weather columns for FOFEM mortality modelling: 'ws', 'temp'
+    _in_dir = os.path.join(test_dir, 'results', 'wx_extract')
+    _in_conpyro_csv_path = os.path.join(_in_dir, 'conpyro_df_wx.csv')
+    _tree_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'master_tree_df.csv')
+    _fofem_consume_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'fofem_consume_df.csv')
+    _fire_modelling_dict = default_fire_modelling_dict
 
-        # Run ConPyro modelling
-        run_conpyro(
-            out_dir=_out_dir,
-            in_conpyro_csv_path=_in_conpyro_csv_path,
-            in_tree_csv_path=_tree_csv_path,
-            in_fofem_consume_csv_path=_fofem_consume_csv_path,
-            fire_modelling_params=_fire_modelling_dict,
-        )
+    # Run ConPyro modelling
+    run_conpyro(
+        out_dir=_out_dir,
+        in_conpyro_csv_path=_in_conpyro_csv_path,
+        in_tree_csv_path=_tree_csv_path,
+        in_fofem_consume_csv_path=_fofem_consume_csv_path,
+        fire_modelling_params=_fire_modelling_dict,
+    )
