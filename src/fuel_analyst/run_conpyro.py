@@ -34,10 +34,11 @@ default_fire_modelling_dict = {
         'run_model': True,
         'plot_id_col_name': 'unique_id',
         'input_params': {
-            'cfo_model': 5,  # Options: 1, 2, 3, 4, 5, 10, or string "use_csv" (assumes cfo_model column in csv)
+            'cfo_model': 5,    # Options: 1, 2, 3, 4, 5, 10, or string "use_csv" (assumes cfo_model column in csv)
             'sros_model': 13,  # Options: 1, 2, 3, 4, 12, 13, 20, or string "use_csv" (assumes sros_model column in csv)
-            'cros_model': 1,  # Options: 1, 2, or string "use_csv" (assumes cros_model column in csv)
-            'smooth_ros': True,
+            'cros_model': 1,   # Options: 1, 2, or string "use_csv" (assumes cros_model column in csv)
+            'process_ladder': True,     # Toggle ladder fuel processing on/off
+            'smooth_ros': True,         # Toggle ROS smoothing function on/off
             'model_terrain_effects_on_wind': True,  # Toggle terrain (slope/aspect) effects on wind speed and direction
             'model_terrain_effects_on_ffmc': True,  # Toggle terrain (slope/aspect) effects on FFMC
             'suppress_messages': True,              # Toggle ConPyro processing messages on/off
@@ -321,6 +322,7 @@ def _single_run_fire_behavior(args):
         smooth_ros=bool(input_params['smooth_ros']),
         model_terrain_effects_on_wind=bool(input_params['model_terrain_effects_on_wind']),
         model_terrain_effects_on_ffmc=bool(input_params['model_terrain_effects_on_ffmc']),
+        process_ladder=input_params['process_ladder'],
         season=(input_params['season'] if input_params['season'] != 'use_csv' else subset_df['season'].values.astype(str)),
         density=subset_df['stand_density'].values.astype(str),
         stand_type=subset_df['stand_type'].values.astype(str),
