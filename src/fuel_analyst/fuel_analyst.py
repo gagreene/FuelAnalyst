@@ -656,7 +656,6 @@ def fuel_analyst(
 
     return
 
-
 # Test routine for Fuel Analyst
 if __name__ == '__main__':
                   # Define the environment as "dockerized" or not 
@@ -666,8 +665,8 @@ if __name__ == '__main__':
         test_dir = os.getenv('DATA_BASE_DIR', '/app/input_data')
         _out_dir =  os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst')
         ## Run check to make sure the file is available 
-        list_files = 
-        if list_files.len == 0: 
+        list_files = os.listdir(_out_dir)
+        if len(list_files) == 0: 
             print('error - the fuel analyst folder does not have needed for this script. Run "fbp_fuel_type.py" first')
     ## Non-Docker Environment
     else:
