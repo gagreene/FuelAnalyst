@@ -659,10 +659,24 @@ def fuel_analyst(
 
 # Test routine for Fuel Analyst
 if __name__ == '__main__':
-    # Define input and output folders
-    test_dir = os.path.join(os.path.dirname(__file__), 'tests')
-    _in_dir = os.path.join(test_dir, 'test_data', 'Survey123_Data')
-    _out_dir = os.path.join(test_dir, 'results', 'fuel_analyst')
+                  # Define the environment as "dockerized" or not 
+    is_docker = os.path.exists('/.dockerenv')
+    if is_docker:
+        # Docker environment file paths 
+        test_dir = os.getenv('DATA_BASE_DIR', '/app/input_data')
+        _out_dir =  os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst')
+        ## Run check to make sure the file is available 
+        list_files = 
+        if list_files.len == 0: 
+            print('error - the fuel analyst folder does not have needed for this script. Run "fbp_fuel_type.py" first')
+    ## Non-Docker Environment
+    else:
+        # Local Windows development (follow the instructions)
+           # Define input and output folders
+        test_dir = os.path.join(os.path.dirname(__file__), 'tests')
+        _in_dir = os.path.join(test_dir, 'test_data', 'Survey123_Data')
+        _out_dir = os.path.join(test_dir, 'results', 'fuel_analyst')
+ 
     _surface_fire_intensity_model = 'Byram'
     _stand_summary_dict = None      # Uses default stand summary settings if None
     _woody_debris_dict = None       # Uses default woody debris settings if None

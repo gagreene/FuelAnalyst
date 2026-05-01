@@ -12,12 +12,16 @@ services:
     ## this is where you define the way to call the data 
     environment:
       DATA_BASE_DIR: /app/input_data
-      INPUT_SUBDIR: Survey123_Data
-      INPUT_RESULTS: results
-      NRCAN_DATA_DIR: /app/nrcan_data
-      OUTPUT_SUBDIR: /app/output
-      EDITED_OUTPUT_DIR: /app/output/edited_output
-      FIRE_MODEL: Byram
+      DATA_SUBDIR: Survey123_Dat
+      # These files are defined and edited as part of the packages
+      # Builds on results of prior runs
+      OVERVIEW_FILES: /app/test_data/results
+      # Files are a base dataframe to run rom 
+      BASE_FILES: /app/test_data
+      NRCAN_DATA_DIR: /app/weather_data
+      ## output folders
+      OUTPUT_FBP: /app/output/fbp_fuel_typing
+      OUTPUT_FuelAnalyst: /app/output/fuel_analyst
       GEN_CONPYRO: "True"
       GEN_FOFEM_TREE: "True"
       GEN_FOFEM_CONSUME: "True"
