@@ -1,0 +1,27 @@
+services:
+  fuel-analyst:
+    build: .
+    container_name: fuel-analyst-dev
+    ## This is where you mount the data into the function
+    volumes:
+      - .:/app
+      - "/s/Research_Labs/Daniels_Lab/NEW LAB DRIVE/Fire_Models/_NRCAN_Gridded_FWI_Data:/app/nrcan_data"
+      - "/c/Users/ssmithtr/Desktop/SiteModels/FuelAnalyst_test_data/test_data_LLCF-WBFN_2026-04-14:/app/input_data"
+      - "/c/Users/ssmithtr/Desktop/SiteModels/FuelAnalyst_output:/app/output"
+    working_dir: /app
+    ## this is where you define the way to call the data 
+    environment:
+      DATA_BASE_DIR: /app/input_data
+      INPUT_SUBDIR: Survey123_Data
+      INPUT_RESULTS: results
+      NRCAN_DATA_DIR: /app/nrcan_data
+      OUTPUT_SUBDIR: /app/output
+      EDITED_OUTPUT_DIR: /app/output/edited_output
+      FIRE_MODEL: Byram
+      GEN_CONPYRO: "True"
+      GEN_FOFEM_TREE: "True"
+      GEN_FOFEM_CONSUME: "True"
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+

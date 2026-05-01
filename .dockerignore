@@ -1,0 +1,17 @@
+.git
+.gitignore
+.gitmodules
+.idea
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.coverage
+tests/
+*.egg-info/
+dist/
+build/
+reference_docs/
+.DS_Store
+*.db
