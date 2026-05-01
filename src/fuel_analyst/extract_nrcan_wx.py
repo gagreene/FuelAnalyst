@@ -497,10 +497,21 @@ def extract_weather_data(
 
 # Test routine for extracting weather data and saving results
 if __name__ == '__main__':
-    # Define input and output directories
-    _wx_data_dir = r'I:/_Weather_Data/NRCAN_FWIS_Database'  # Parent directory containing NRCAN gridded weather data
-    test_dir = os.path.join(os.path.dirname(__file__), 'tests')
-    _out_dir = os.path.join(test_dir, 'results', 'wx_extract')
+        # Define the environment as "dockerized" or not 
+    is_docker = os.path.exists('/.dockerenv')
+    if is_docker:
+        # Docker environment file paths 
+        _wx_data_dir = os.getenv('NRCAN_DATA_DIR', '/app/weather_data')
+        test_dir = os.getenv('DATA_BASE_DIR', '/app/input_data')
+        _out_dir =  os.path.join('OUTPUT_WX_EXTRACT', 'app/output/wx_extract')
+    ## Non-Docker Environment
+    else:
+        # Local Windows development (follow the instructions)
+          # Define input and output directories
+        _wx_data_dir = r'I:/_Weather_Data/NRCAN_FWIS_Database'  # Parent directory containing NRCAN gridded weather data
+        test_dir = os.path.join(os.path.dirname(__file__), 'tests')
+        _out_dir = os.path.join(test_dir, 'results', 'wx_extract')
+  
     _out_file_name = f'wx_data'
     _plot_pts_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'conpyro_df.csv')
     _plot_id_col_name = 'unique_id'

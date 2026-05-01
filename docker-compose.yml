@@ -19,9 +19,11 @@ services:
       # Files are a base dataframe to run rom 
       BASE_FILES: /app/test_data
       NRCAN_DATA_DIR: /app/weather_data
-      ## output folders
-      OUTPUT_FBP: /app/output/fbp_fuel_typing
+      ## output folders (in order of running)
       OUTPUT_FuelAnalyst: /app/output/fuel_analyst
+      OUTPUT_FBP: /app/output/fbp_fuel_typing
+      OUTPUT_WX_EXTRACT: /app/output/wx_extract
+      OUTPUT_CONPYRO: /app/ouput/conpyro
       GEN_CONPYRO: "True"
       GEN_FOFEM_TREE: "True"
       GEN_FOFEM_CONSUME: "True"

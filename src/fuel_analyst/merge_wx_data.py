@@ -201,16 +201,34 @@ def merge_weather_data(
 
 # Test routine for merging weather data with plot data
 if __name__ == '__main__':
-    # Define input and output directories
-    test_dir = os.path.join(os.path.dirname(__file__), 'tests')
-    _out_dir = os.path.join(test_dir, 'results', 'wx_extract')
-    _out_file_name = 'wx_data'
-    _plot_data_path = os.path.join(test_dir, 'results', 'fbp_fuel_typing', 'conpyro_df_fbp.csv')
+        
+    is_docker = os.path.exists('/.dockerenv')
+    if is_docker:
+        # Docker environment file paths 
+        _wx_data_dir = os.getenv('NRCAN_DATA_DIR', '/app/weather_data')
+        test_dir = os.getenv('DATA_BASE_DIR', '/app/input_data')
+        _out_dir =  os.path.join('OUTPUT_WX_EXTRACT', 'app/output/wx_extract')
+        # Extracted weather data here (defined in extract_nrcan_wx.py)
+        _out_file_name = 'wx_data'
+        _wx_data_path = os.path.join(_out_dir, f'{_out_file_name}.csv')
+        ## Merging with plot data 
+        _plot_data_path = os.path.join('OUTPUT_FBP', 'app/ouput/fpb_fuel_typing', 'conpyro_df_fbp.csv')
+        # output stored 
+        _out_path = os.path.join(_out_dir, f'conpyro_df_wx.csv')
+    ## Non-Docker Environment
+    else:
+        # Local Windows development (follow the instructions)
+        # Define input and output directories
+        test_dir = os.path.join(os.path.dirname(__file__), 'tests')
+        _out_dir = os.path.join(test_dir, 'results', 'wx_extract')
+        _out_file_name = 'wx_data'
+        _plot_data_path = os.path.join(test_dir, 'results', 'fbp_fuel_typing', 'conpyro_df_fbp.csv')
+        _wx_data_path = os.path.join(_out_dir, f'{_out_file_name}.csv')
+    
+    ## Define arguments for script
     _plot_merge_col_name = 'unique_id'
-    _wx_data_path = os.path.join(_out_dir, f'{_out_file_name}.csv')
     _wx_merge_col_name = 'unique_id'  # Assign as None to merge all weather data with each plot
     _wx_merge_vars = None
-    _out_path = os.path.join(_out_dir, f'conpyro_df_wx.csv')
     _add_season = True
     _refine_fbp_seasonally = True
     _summer_start = 615

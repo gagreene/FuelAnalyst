@@ -660,16 +660,31 @@ def run_conpyro(
 
 # Test routine for ConPyro modelling
 if __name__ == '__main__':
-    # Define input and output folders
-    test_dir = os.path.join(os.path.dirname(__file__), 'tests')
-    _out_dir = os.path.join(test_dir, 'results', 'conpyro')
-    # The ConPyro input dataframe must have weather data attached for ConPyro/FOFEM modelling
-    # Required weather columns for ConPyro modelling: 'ws', 'wd', 'ffmc', 'dmc', 'bui', 'temp', 'rh'
-    # Required weather columns for FOFEM mortality modelling: 'ws', 'temp'
-    _in_dir = os.path.join(test_dir, 'results', 'wx_extract')
-    _in_conpyro_csv_path = os.path.join(_in_dir, 'conpyro_df_wx.csv')
-    _tree_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'master_tree_df.csv')
-    _fofem_consume_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'fofem_consume_df.csv')
+    is_docker = os.path.exists('/.dockerenv')
+    if is_docker:
+        # Docker environment file paths 
+        _wx_data_dir = os.getenv('NRCAN_DATA_DIR', '/app/weather_data')
+        test_dir = os.getenv('DATA_BASE_DIR', '/app/input_data')
+        _out_dir =  os.path.join('OUTPUT_CONPYRO', 'app/output/conpyro')
+        _in_dir = os.path.join('OUTPUT_WX_EXTRACT', '/app/output/wx_extract')
+        _in_conpyro_csv_path = os.path.join('OUTPUT_FBP', 'app/outout/fbp_fuel_typing', 'conpyro_df_wx.csv')
+        _tree_csv_path = os.path.join('OUTPUT_FBP', '/app/output/fbp_fuel_typing', 'master_tree_df.csv')
+        _fofem_consume_csv_path = os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst', 'fofem_consume_df.csv')
+    ## Non-Docker Environment
+    else:
+        # Local Windows development (follow the instructions)
+        # Define input and output folders
+        test_dir = os.path.join(os.path.dirname(__file__), 'tests')
+        _out_dir = os.path.join(test_dir, 'results', 'conpyro')
+        # The ConPyro input dataframe must have weather data attached for ConPyro/FOFEM modelling
+        # Required weather columns for ConPyro modelling: 'ws', 'wd', 'ffmc', 'dmc', 'bui', 'temp', 'rh'
+        # Required weather columns for FOFEM mortality modelling: 'ws', 'temp'
+        _in_dir = os.path.join(test_dir, 'results', 'wx_extract')
+        _in_conpyro_csv_path = os.path.join(_in_dir, 'conpyro_df_wx.csv')
+        _tree_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'master_tree_df.csv')
+        _fofem_consume_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'fofem_consume_df.csv')
+
+
     _fire_modelling_dict = None
 
     # Run ConPyro modelling

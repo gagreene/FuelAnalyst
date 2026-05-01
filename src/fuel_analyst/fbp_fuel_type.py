@@ -167,12 +167,17 @@ if __name__ == '__main__':
         # Docker environment file paths 
         test_dir = os.getenv('DATA_BASE_DIR', '/app/input_data')
         _out_dir = os.path.join('app/output/')
-          # Get stand fire and FOFEM consume csv paths (defined by the app)
-        _master_fuel_df_path = os.path.join('BASE_FILES', '/app/test_data','fbp_fuel_typing', 'master_fuel_df.csv')
-        _fbp_prep_df_path = os.path.join('BASE_FILES', '/app/test_data','fbp_fuel_typing', 'fbp_prep_df.csv')
-        # Write out location to ingest in "fuel_analyst.py"
-        _out_dir_conpyro = os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst')
-        _conpyro_df_path = os.path.join(_out_dir_conpyro,'conpyro_df.csv')
+        # Get csv files defined when we running fuel_analyst.py
+        print('Getting csv files generated from running fuel_analsyt')
+        file_available = os.listdir('OUTPUT_FuelAnalyst')
+        if len(file_available) == 0: 
+            print('Files in output directory not available please check')
+        if len(file_available) != 0:
+            print('Running based on outputs of fuel analyst')
+            _master_fuel_df_path = os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst', 'master_fuel_df.csv')
+            _out_dir_conpyro = os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst')
+            _conpyro_df_path = os.path.join(_out_dir_conpyro,'conpyro_df.csv')
+            _fbp_prep_df_path = os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst', 'fbp_prep_df.csv')
     ## Non-Docker Environment
     else:
         # Local Windows development (follow the instructions)

@@ -658,7 +658,7 @@ def fuel_analyst(
 
 # Test routine for Fuel Analyst
 if __name__ == '__main__':
-                  # Define the environment as "dockerized" or not 
+    # Define the environment as "dockerized" or not 
     is_docker = os.path.exists('/.dockerenv')
     if is_docker:
         # Docker environment file paths 
@@ -667,7 +667,7 @@ if __name__ == '__main__':
         ## Run check to make sure the file is available 
         list_files = os.listdir(_out_dir)
         if len(list_files) == 0: 
-            print('error - the fuel analyst folder does not have needed for this script. Run "fbp_fuel_type.py" first')
+            print('Note that you have to manually edit fbp_data_prep.csv after running this script')
     ## Non-Docker Environment
     else:
         # Local Windows development (follow the instructions)
