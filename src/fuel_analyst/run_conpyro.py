@@ -663,7 +663,6 @@ if __name__ == '__main__':
     is_docker = os.path.exists('/.dockerenv')
     if is_docker:
         # Docker environment file paths 
-        _wx_data_dir = os.getenv('NRCAN_DATA_DIR', '/app/weather_data')
         test_dir = os.getenv('DATA_BASE_DIR', '/app/input_data')
         _out_dir =  os.path.join('OUTPUT_CONPYRO', 'app/output/conpyro')
         _in_dir = os.path.join('OUTPUT_WX_EXTRACT', '/app/output/wx_extract')
