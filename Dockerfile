@@ -9,10 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgeos-dev proj-bin libspatialindex-dev \
     && rm -rf /var/lib/apt/lists/*
 # Copy dependencies and install Python packages
-COPY FuelAnalyst/requirements.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-# Copy project source and data
-COPY FuelAnalyst/src /app/src
-COPY FuelAnalyst_test_data /app/test_data
+# Copy project source and dependency files to the container
+COPY src /app/src
+COPY dependencies /app/dependencies
 ENV PYTHONPATH=/app:/app/src
 CMD ["/bin/bash"]

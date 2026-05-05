@@ -207,12 +207,13 @@ if __name__ == '__main__':
         # Docker environment file paths 
         _wx_data_dir = os.getenv('NRCAN_DATA_DIR', '/app/weather_data')
         test_dir = os.getenv('DATA_BASE_DIR', '/app/input_data')
-        _out_dir =  os.path.join('OUTPUT_WX_EXTRACT', 'app/output/wx_extract')
+        _out_dir =  os.getenv('OUTPUT_WX_EXTRACT', 'app/output/wx_extract')
         # Extracted weather data here (defined in extract_nrcan_wx.py)
         _out_file_name = 'wx_data'
         _wx_data_path = os.path.join(_out_dir, f'{_out_file_name}.csv')
         ## Merging with plot data 
-        _plot_data_path = os.path.join('OUTPUT_FBP', 'app/ouput/fpb_fuel_typing', 'conpyro_df_fbp.csv')
+        _plot_data_loc = os.getenv('OUTPUT_FBP', 'app/ouput/fpb_fuel_typing')
+        _plot_data_path = os.path.join(_plot_data_loc, 'conpyro_df_fbp.csv')
         # output stored 
         _out_path = os.path.join(_out_dir, f'conpyro_df_wx.csv')
     ## Non-Docker Environment

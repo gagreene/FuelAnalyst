@@ -1,0 +1,20 @@
+## Build the container
+docker compose up  --build
+# Check input data are there 
+docker exec -it fuel-analyst-dev ls -la /app/input_data
+##  Run the first file 
+docker exec fuel-analyst-dev python /app/src/fuel_analyst/fuel_analyst.py      ## this is running 
+
+## (IMPORTANT) edit fpb_data_prep to add the necessary components 
+
+## Run the next file 
+docker exec fuel-analyst-dev python /app/src/fuel_analyst/fuel_analyst.py
+
+## run the weather extraction file
+docker exec fuel-analyst-dev python /app/src/fuel_analyst/extract_nrcan_wx.py
+
+## run the weather merging file 
+docker exec fuel-analyst-dev python /app/src/fuel_analyst/merge_wx_data.py
+
+## run the conpyro file 
+docker exec fuel-analyst-dev python /app/src/fuel_analyst/extract_nrcan_wx.py

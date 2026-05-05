@@ -5,25 +5,26 @@ services:
     ## This is where you mount the data into the function
     volumes:
       - .:/app
-      - "/s/Research_Labs/Daniels_Lab/NEW LAB DRIVE/Fire_Models/_NRCAN_Gridded_FWI_Data:/app/nrcan_data"
-      - "/c/Users/ssmithtr/Desktop/SiteModels/FuelAnalyst_test_data/test_data_LLCF-WBFN_2026-04-14:/app/input_data"
-      - "/c/Users/ssmithtr/Desktop/SiteModels/FuelAnalyst_output:/app/output"
+      # Output folder
+      - "C:/Users/ssmithtr/Desktop/CleanTest/Docker_Out:/app/output"
+      - "D:/_NRCAN_Gridded_FWI_Data:/app/nrcan_data:ro"
+      - "C:/Users/ssmithtr/Desktop/CleanTest/test_data_LLCF-WBFN_2026-04-14/Survey123_Data:/app/input_data"
     working_dir: /app
     ## this is where you define the way to call the data 
     environment:
       DATA_BASE_DIR: /app/input_data
-      DATA_SUBDIR: Survey123_Dat
+      DATA_SUBDIR: Survey123_Data
       # These files are defined and edited as part of the packages
       # Builds on results of prior runs
       OVERVIEW_FILES: /app/test_data/results
       # Files are a base dataframe to run rom 
       BASE_FILES: /app/test_data
-      NRCAN_DATA_DIR: /app/weather_data
+      NRCAN_DATA_DIR: /app/nrcan_data
       ## output folders (in order of running)
       OUTPUT_FuelAnalyst: /app/output/fuel_analyst
       OUTPUT_FBP: /app/output/fbp_fuel_typing
       OUTPUT_WX_EXTRACT: /app/output/wx_extract
-      OUTPUT_CONPYRO: /app/ouput/conpyro
+      OUTPUT_CONPYRO: /app/output/conpyro
       GEN_CONPYRO: "True"
       GEN_FOFEM_TREE: "True"
       GEN_FOFEM_CONSUME: "True"

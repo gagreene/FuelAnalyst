@@ -658,16 +658,19 @@ def fuel_analyst(
 
 # Test routine for Fuel Analyst
 if __name__ == '__main__':
-    # Define the environment as "dockerized" or not 
     is_docker = os.path.exists('/.dockerenv')
+
     if is_docker:
-        # Docker environment file paths 
-        test_dir = os.getenv('DATA_BASE_DIR', '/app/input_data')
-        _out_dir =  os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst')
-        ## Run check to make sure the file is available 
+    # Docker environment
+        _in_dir = os.getenv('DATA_BASE_DIR', '/app/input_data')
+        _out_dir = os.getenv('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst')
+        
+        # Verify output directory exists and check contents
+        os.makedirs(_out_dir, exist_ok=True)
         list_files = os.listdir(_out_dir)
-        if len(list_files) == 0: 
+        if len(list_files) == 0:
             print('Note that you have to manually edit fbp_data_prep.csv after running this script')
+    # Define the environment as "dockerized" or not 
     ## Non-Docker Environment
     else:
         # Local Windows development (follow the instructions)

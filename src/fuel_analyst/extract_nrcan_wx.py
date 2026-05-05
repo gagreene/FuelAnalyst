@@ -501,9 +501,10 @@ if __name__ == '__main__':
     is_docker = os.path.exists('/.dockerenv')
     if is_docker:
         # Docker environment file paths 
-        _wx_data_dir = os.getenv('NRCAN_DATA_DIR', '/app/weather_data')
+        _wx_data_dir = os.getenv('NRCAN_DATA_DIR', '/app/nrcan_data')
         test_dir = os.getenv('DATA_BASE_DIR', '/app/input_data')
-        _out_dir =  os.path.join('OUTPUT_WX_EXTRACT', 'app/output/wx_extract')
+        _out_dir =  os.getenv('OUTPUT_WX_EXTRACT', 'app/output/wx_extract')
+        _plot_pts_path = os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst', 'conpyro_df.csv')
     ## Non-Docker Environment
     else:
         # Local Windows development (follow the instructions)
@@ -511,9 +512,9 @@ if __name__ == '__main__':
         _wx_data_dir = r'I:/_Weather_Data/NRCAN_FWIS_Database'  # Parent directory containing NRCAN gridded weather data
         test_dir = os.path.join(os.path.dirname(__file__), 'tests')
         _out_dir = os.path.join(test_dir, 'results', 'wx_extract')
+        _plot_pts_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'conpyro_df.csv')
   
     _out_file_name = f'wx_data'
-    _plot_pts_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'conpyro_df.csv')
     _plot_id_col_name = 'unique_id'
     _lat_col_name = 'lat'  # Always decimal degrees, WGS84 (EPSG:4326) for input CSV; will be reprojected to EPSG:3978
     _lon_col_name = 'long'  # Always decimal degrees, WGS84 (EPSG:4326) for input CSV; will be reprojected to EPSG:3978

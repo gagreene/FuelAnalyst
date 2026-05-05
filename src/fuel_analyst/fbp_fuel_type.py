@@ -166,17 +166,13 @@ if __name__ == '__main__':
     if is_docker:
         # Docker environment file paths 
         test_dir = os.getenv('DATA_BASE_DIR', '/app/input_data')
-        _out_dir = os.path.join('app/output/')
-        # Get csv files defined when we running fuel_analyst.py
-        print('Getting csv files generated from running fuel_analsyt')
-        file_available = os.listdir('OUTPUT_FuelAnalyst')
-        if len(file_available) == 0: 
-            print('Files in output directory not available please check')
-        if len(file_available) != 0:
-            print('Running based on outputs of fuel analyst')
+        _out_dir = os.getenv('OUTPUT_FBP', '/app/output/fbp_fuel_typing')
+        _prior_file = os.getenv('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst')
+        if not os.path.exists(_prior_file) or len(os.listdir(_prior_file)) == 0:
+            print('Files created in prior fuel analyst steps not found. Please run fuel analyst first to generate the necessary files for FBP fuel typing.')
+        if os.path.exists(_prior_file) and len(os.listdir(_prior_file)) > 0:
             _master_fuel_df_path = os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst', 'master_fuel_df.csv')
-            _out_dir_conpyro = os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst')
-            _conpyro_df_path = os.path.join(_out_dir_conpyro,'conpyro_df.csv')
+            _conpyro_df_path = os.path.join(_prior_file,'conpyro_df.csv')
             _fbp_prep_df_path = os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst', 'fbp_prep_df.csv')
     ## Non-Docker Environment
     else:
