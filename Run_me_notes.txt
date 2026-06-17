@@ -5,10 +5,10 @@ docker exec -it fuel-analyst-dev ls -la /app/input_data
 ##  Run the first file 
 docker exec fuel-analyst-dev python /app/src/fuel_analyst/fuel_analyst.py      ## this is running 
 
-## (IMPORTANT) edit fpb_data_prep to add the necessary components 
+docker exec fuel-analyst-dev python /app/src/fuel_analyst/extract_BECType.py 
 
 ## Run the next file 
-docker exec fuel-analyst-dev python /app/src/fuel_analyst/fuel_analyst.py
+docker exec fuel-analyst-dev python /app/src/fuel_analyst/fbp_fuel_type.py
 
 ## run the weather extraction file
 docker exec fuel-analyst-dev python /app/src/fuel_analyst/extract_nrcan_wx.py
@@ -17,4 +17,4 @@ docker exec fuel-analyst-dev python /app/src/fuel_analyst/extract_nrcan_wx.py
 docker exec fuel-analyst-dev python /app/src/fuel_analyst/merge_wx_data.py
 
 ## run the conpyro file 
-docker exec fuel-analyst-dev python /app/src/fuel_analyst/extract_nrcan_wx.py
+docker exec fuel-analyst-dev python /app/src/fuel_analyst/run_conpyro.py

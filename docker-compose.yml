@@ -8,7 +8,8 @@ services:
       # Output folder
       - "C:/Users/ssmithtr/Desktop/CleanTest/Docker_Out:/app/output"
       - "D:/_NRCAN_Gridded_FWI_Data:/app/nrcan_data:ro"
-      - "C:/Users/ssmithtr/Desktop/CleanTest/test_data_LLCF-WBFN_2026-04-14/Survey123_Data:/app/input_data"
+      - "C:\\Users\\ssmithtr\\Desktop\\CleanTest\\TestData\\SurveyData:/app/input_data"
+      - "C:\\Users\\ssmithtr\\Desktop\\CleanTest\\BEC_data:/app/BEC_data:ro"
     working_dir: /app
     ## this is where you define the way to call the data 
     environment:
@@ -20,6 +21,8 @@ services:
       # Files are a base dataframe to run rom 
       BASE_FILES: /app/test_data
       NRCAN_DATA_DIR: /app/nrcan_data
+      ##  BEC DATA 
+      BEC_DATA_DIR: /app/BEC_data
       ## output folders (in order of running)
       OUTPUT_FuelAnalyst: /app/output/fuel_analyst
       OUTPUT_FBP: /app/output/fbp_fuel_typing

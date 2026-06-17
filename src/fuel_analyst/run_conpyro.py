@@ -666,7 +666,7 @@ if __name__ == '__main__':
         test_dir = os.getenv('DATA_BASE_DIR', '/app/input_data')
         _out_dir =  os.getenv('OUTPUT_CONPYRO', 'app/output/conpyro')
         _in_dir = os.getenv('OUTPUT_WX_EXTRACT', '/app/output/wx_extract')
-        _in_conpyro_csv_path  =  os.path.join('OUTPUT_WX_EXTRACT', 'app/output/wx_extract', 'conpyro_df_wx.csv')
+        _in_conpyro_csv_path  =  os.path.join(_in_dir, 'conpyro_df_wx.csv')
         _tree_csv_path = os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst', 'master_tree_df.csv')
         _fofem_consume_csv_path = os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst', 'fofem_consume_df.csv')
     ## Non-Docker Environment

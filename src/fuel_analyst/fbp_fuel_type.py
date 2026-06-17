@@ -173,7 +173,7 @@ if __name__ == '__main__':
         if os.path.exists(_prior_file) and len(os.listdir(_prior_file)) > 0:
             _master_fuel_df_path = os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst', 'master_fuel_df.csv')
             _conpyro_df_path = os.path.join(_prior_file,'conpyro_df.csv')
-            _fbp_prep_df_path = os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst', 'fbp_prep_df.csv')
+            _fbp_prep_df_path = os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst', 'fbp_prep_df_BEC.csv')
     ## Non-Docker Environment
     else:
         # Local Windows development (follow the instructions)
