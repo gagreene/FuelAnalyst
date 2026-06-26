@@ -7,6 +7,7 @@ docker exec fuel-analyst-dev python /app/src/fuel_analyst/fuel_analyst.py      #
 
 docker exec fuel-analyst-dev python /app/src/fuel_analyst/extract_BECType.py 
 
+## check that there are not any empty things in the code 
 ## Run the next file 
 docker exec fuel-analyst-dev python /app/src/fuel_analyst/fbp_fuel_type.py
 

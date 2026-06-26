@@ -138,21 +138,35 @@ def merge_weather_data(
 
     print('Merging extracted weather data with other plot data...')
     plot_df = helper.get_df(plot_data_path)
+    ## remove plots that had missing lat and long and were skipped in weather extracti on
+    ## get plots with missing spatial data 
+    missing_coords = plot_df[plot_df['lat'].isna() | plot_df['long'].isna()]
+    missing_fbp = plot_df[plot_df['fbp_fuel_type'] == 'NoMatchingFuelType_ERROR']
+    if len(missing_coords) > 0:
+        print(f'Warning: {len(missing_coords)} plots have missing lat or long data and will be skipped in the merge:')
+        print(missing_coords[plot_merge_col_name].to_list())
+    if len(missing_fbp) > 0:
+        print(f'Warning: {len(missing_fbp)} plots have missing FBP fuel type data and may not be merged with weather data:')
+        print(missing_fbp[plot_merge_col_name].to_list())
+    ## combine missing into one dataframe
+    missing_data = pd.concat([missing_coords, missing_fbp]).drop_duplicates()
+    ## subset missing data from plot_df to get the plots that will be merged with weather data  
+    plot_df_sub = plot_df[~plot_df['unique_id'].isin(missing_data['unique_id'])]    
     wx_df = helper.get_df(wx_data_path)
     # Get weather variables to merge
     if wx_merge_vars is not None:
         wx_merge_vars = [var for var in wx_merge_vars if var in wx_df.columns]
     else:
         wx_merge_vars = [col for col in wx_df.columns if col != wx_merge_col_name]
-    if plot_merge_col_name not in plot_df.columns:
+    if plot_merge_col_name not in plot_df_sub.columns:
         raise ValueError(f'Plot ID column "{plot_merge_col_name}" not found in '
-                         f'plot data columns: {list(plot_df.columns)}')
+                         f'plot data columns: {list(plot_df_sub.columns)}')
     if wx_merge_col_name is not None:
         if wx_merge_col_name not in wx_df.columns:
             raise ValueError(f'Plot ID column "{wx_merge_col_name}" not found in '
                              f'weather data columns: {list(wx_df.columns)}')
         # Merge on the specified ID columns
-        merged_df = plot_df.merge(
+        merged_df = plot_df_sub.merge(
             wx_df[[wx_merge_col_name] + wx_merge_vars],
             left_on=plot_merge_col_name,
             right_on=wx_merge_col_name,
@@ -165,9 +179,9 @@ def merge_weather_data(
         # Filter wx_df to only include the specified weather variables
         wx_df = wx_df[wx_merge_vars]
         # Cartesian product: merge all wx_df rows with each plot_df row
-        plot_df['_tmp_key'] = 1
+        plot_df_sub['_tmp_key'] = 1
         wx_df['_tmp_key'] = 1
-        merged_df = plot_df.merge(wx_df, on='_tmp_key').drop('_tmp_key', axis=1)
+        merged_df = plot_df_sub.merge(wx_df, on='_tmp_key').drop('_tmp_key', axis=1)
 
     # Change FBP fuel types to match season of weather data (if applicable)
     if 'fbp_fuel_type' in merged_df.columns:
@@ -194,7 +208,9 @@ def merge_weather_data(
             merged_df = merged_df.drop(columns=['season'], errors='ignore')
 
     merged_df.to_csv(out_path, index=False)
+    missing_data.to_csv(os.path.splitext(out_path)[0] + '_missing_data.csv', index=False)   
     print('Saved merged data: ', out_path)
+    print('Saved missing data (plots with missing lat/long or FBP fuel type): ', os.path.splitext(out_path)[0] + '_missing_data.csv')
 
     return
 

@@ -452,6 +452,13 @@ def extract_weather_data(
     # Load plot locations
     print('Loading plot location data...')
     plots = _load_plots(plot_pts_path, lat_col_name, lon_col_name)
+    ## drop plots that have not lat or long data, print their unique_ids and say they are skipped
+    plots_sub = plots.dropna(subset=[lat_col_name, lon_col_name])
+    if len(plots_sub) < len(plots):
+        missing_coords = plots[plots[lat_col_name].isna() | plots[lon_col_name].isna()]
+        print(f'Warning: {len(missing_coords)} plots have missing lat or long data and will be skipped:')
+        print(missing_coords[plot_id_col_name].to_list())
+        plots = plots_sub
 
     # Sample weather data for all variables and merge results
     print('Sampling weather data for variables: ', wx_var_list)

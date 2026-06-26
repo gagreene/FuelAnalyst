@@ -5,11 +5,19 @@ services:
     ## This is where you mount the data into the function
     volumes:
       - .:/app
-      # Output folder
-      - "C:/Users/ssmithtr/Desktop/CleanTest/Docker_Out:/app/output"
+      - type: bind
+        source: ${INPUT_DIR}
+        target: /app/input_data
+      - type: bind
+        source: ${OUTPUT_DIR}
+        target: /app/output
+      ## These are stationary (not changing) data that are used for processing. 
+      ## Weather Datat
       - "D:/_NRCAN_Gridded_FWI_Data:/app/nrcan_data:ro"
-      - "C:\\Users\\ssmithtr\\Desktop\\CleanTest\\TestData\\SurveyData:/app/input_data"
+      ## BEC  ecosystem data 
       - "C:\\Users\\ssmithtr\\Desktop\\CleanTest\\BEC_data:/app/BEC_data:ro"
+    env_file: 
+        - ./.env  
     working_dir: /app
     ## this is where you define the way to call the data 
     environment:

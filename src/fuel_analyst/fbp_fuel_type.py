@@ -135,7 +135,15 @@ def process_fbp_fuel_type(
     # Merge the two dataframes on 'unique_id' to get all necessary attributes
     fuel_type_df = master_fuel_df.merge(fbp_prep_df, on='unique_id', how='left')
     fuel_type_df['_date'] = fuel_type_df['_date'].astype(str)
-
+    ##  drop rows with missing values needed for fuel typing 
+    fuel_type_df = fuel_type_df.dropna(subset=['BEC_ZONE_CODE', 'BEC_SUBZONE', 'PROJ_AGE_1', 'HARVEST_DATE', 'EARLIEST_NONLOGGING_DIST_DATE'])
+    ## write these missing rows to a csv for review
+    missing_rows = master_fuel_df[~master_fuel_df['unique_id'].isin(fuel_type_df['unique_id'])]
+    if not missing_rows.empty:
+        missing_rows_path = os.path.join(out_dir, 'fpb_data_prep_missing_rows.csv')
+        os.makedirs(out_dir, exist_ok=True)
+        missing_rows.to_csv(missing_rows_path, index=False)
+        print(f"Missing rows for fuel typing have been saved to: {missing_rows_path}")
     # Calculate FBP fuel type
     fuel_type_df = _calc_fbp_fuel_type(fuel_type_df, season)
 
