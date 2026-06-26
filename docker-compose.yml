@@ -8,9 +8,8 @@ services:
       - type: bind
         source: ${INPUT_DIR}
         target: /app/input_data
-      - type: bind
-        source: ${OUTPUT_DIR}
-        target: /app/output
+        ## output folder for the results of the processing 
+      - "C:/Users/ssmithtr/Desktop/CleanTest/Docker_Out:/app/output"
       ## These are stationary (not changing) data that are used for processing. 
       ## Weather Datat
       - "D:/_NRCAN_Gridded_FWI_Data:/app/nrcan_data:ro"

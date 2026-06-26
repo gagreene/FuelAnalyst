@@ -131,12 +131,14 @@ def process_fbp_fuel_type(
                    .drop(columns=fbp_drop_columns)
                    .rename(columns=fbp_rename_columns))
     conpyro_df = pd.read_csv(conpyro_df_path)
-
+    
     # Merge the two dataframes on 'unique_id' to get all necessary attributes
     fuel_type_df = master_fuel_df.merge(fbp_prep_df, on='unique_id', how='left')
     fuel_type_df['_date'] = fuel_type_df['_date'].astype(str)
     ##  drop rows with missing values needed for fuel typing 
-    fuel_type_df = fuel_type_df.dropna(subset=['BEC_ZONE_CODE', 'BEC_SUBZONE', 'PROJ_AGE_1', 'HARVEST_DATE', 'EARLIEST_NONLOGGING_DIST_DATE'])
+    fuel_type_df = fuel_type_df.dropna(subset=['BEC_ZONE_CODE', 
+                                               'BEC_SUBZONE', 'PROJ_AGE_1', 'HARVEST_DATE', 
+                                               'EARLIEST_NONLOGGING_DIST_DATE'])
     ## write these missing rows to a csv for review
     missing_rows = master_fuel_df[~master_fuel_df['unique_id'].isin(fuel_type_df['unique_id'])]
     if not missing_rows.empty:
