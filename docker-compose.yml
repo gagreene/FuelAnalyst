@@ -3,6 +3,7 @@ services:
     build: .
     container_name: fuel-analyst-dev
     ## This is where you mount the data into the function
+    
     volumes:
       - .:/app
       - type: bind
