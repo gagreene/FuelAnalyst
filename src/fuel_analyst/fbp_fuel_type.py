@@ -136,19 +136,23 @@ def process_fbp_fuel_type(
     fuel_type_df = master_fuel_df.merge(fbp_prep_df, on='unique_id', how='left')
     fuel_type_df['_date'] = fuel_type_df['_date'].astype(str)
     ##  drop rows with missing values needed for fuel typing 
-    fuel_type_df = fuel_type_df.dropna(subset=['BEC_ZONE_CODE', 
-                                               'BEC_SUBZONE', 'PROJ_AGE_1', 'HARVEST_DATE', 
-                                               'EARLIEST_NONLOGGING_DIST_DATE'])
-    ## write these missing rows to a csv for review
-    missing_rows = master_fuel_df[~master_fuel_df['unique_id'].isin(fuel_type_df['unique_id'])]
+    
+    required_cols = [
+    'BEC_ZONE_CODE', 'BEC_SUBZONE', 'PROJ_AGE_1',
+    'HARVEST_DATE', 'EARLIEST_NONLOGGING_DIST_DATE'
+]
+    # Drop only rows missing ALL five columns
+    mask = fuel_type_df[required_cols].isnull().all(axis=1)
+    missing_rows = fuel_type_df[mask]
     if not missing_rows.empty:
         missing_rows_path = os.path.join(out_dir, 'fpb_data_prep_missing_rows.csv')
         os.makedirs(out_dir, exist_ok=True)
         missing_rows.to_csv(missing_rows_path, index=False)
-        print(f"Missing rows for fuel typing have been saved to: {missing_rows_path}")
-    # Calculate FBP fuel type
+        print(f"Rows missing all required columns saved to: {missing_rows_path}")
+        # Keep rows that have at least one of the required columns populated
+    fuel_type_df = fuel_type_df[~mask]
     fuel_type_df = _calc_fbp_fuel_type(fuel_type_df, season)
-
+    print(fuel_type_df.head())
     print('Assigning FBP fuel types to ConPyro DataFrame')
     # Assign FBP fuel types to conpyro_df based on unique_id
     conpyro_df = conpyro_df.merge(
