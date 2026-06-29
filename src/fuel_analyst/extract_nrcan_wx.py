@@ -21,6 +21,8 @@ pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..')
 if pkg_dir not in sys.path:
     sys.path.insert(0, pkg_dir)
 
+from src.fuel_analyst.components import helper
+
 
 # Define constants for ecodivision shapefile and BCWS fire season dates by ecodivision
 ECODIVISION_PATH = os.path.join(
@@ -499,10 +501,10 @@ def extract_weather_data(
 if __name__ == '__main__':
     # Define input and output directories
     _wx_data_dir = r'I:/_Weather_Data/NRCAN_FWIS_Database'  # Parent directory containing NRCAN gridded weather data
-    test_dir = os.path.join(os.path.dirname(__file__), 'tests')
-    _out_dir = os.path.join(test_dir, 'results', 'wx_extract')
+    examples_dir = helper.get_examples_dir(os.path.dirname(__file__))
+    _out_dir = os.path.join(examples_dir, 'results', 'wx_extract')
     _out_file_name = f'wx_data'
-    _plot_pts_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'conpyro_df.csv')
+    _plot_pts_path = os.path.join(examples_dir, 'results', 'fuel_analyst', 'conpyro_df.csv')
     _plot_id_col_name = 'unique_id'
     _lat_col_name = 'lat'  # Always decimal degrees, WGS84 (EPSG:4326) for input CSV; will be reprojected to EPSG:3978
     _lon_col_name = 'long'  # Always decimal degrees, WGS84 (EPSG:4326) for input CSV; will be reprojected to EPSG:3978

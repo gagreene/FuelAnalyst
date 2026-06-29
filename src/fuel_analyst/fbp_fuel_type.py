@@ -162,13 +162,13 @@ def process_fbp_fuel_type(
 # Test routine for calculating FBP fuel types
 if __name__ == '__main__':
     # Define input and output folders
-    test_dir = os.path.join(os.path.dirname(__file__), 'tests')
-    _out_dir = os.path.join(test_dir, 'results', 'fbp_fuel_typing')
+    examples_dir = helper.get_examples_dir(os.path.dirname(__file__))
+    _out_dir = os.path.join(examples_dir, 'results', 'fbp_fuel_typing')
 
     # Get stand fire and FOFEM consume csv paths
-    _master_fuel_df_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'master_fuel_df.csv')
-    _fbp_prep_df_path = os.path.join(test_dir, 'test_data', 'fbp_fuel_typing', 'fbp_prep_df.csv')
-    _conpyro_df_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'conpyro_df.csv')
+    _master_fuel_df_path = os.path.join(examples_dir, 'results', 'fuel_analyst', 'master_fuel_df.csv')
+    _fbp_prep_df_path = os.path.join(examples_dir, 'data', 'fbp_fuel_typing', 'fbp_prep_df.csv')
+    _conpyro_df_path = os.path.join(examples_dir, 'results', 'fuel_analyst', 'conpyro_df.csv')
     _season = 'growing'  # Options: 'growing' or 'dormant'
 
     # Run FBP fuel type processing

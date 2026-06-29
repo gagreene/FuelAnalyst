@@ -516,10 +516,10 @@ def process_emissions(
 # Test routine for FOFEM emissions processing
 if __name__ == '__main__':
     # Define input and output folders
-    test_dir = os.path.join(os.path.dirname(__file__), '../tests')
-    _in_fofem_consume_dir = os.path.join(test_dir, 'results', 'fuel_analyst')
-    _in_fire_data_dir = os.path.join(test_dir, 'results', 'fofem_mortality')
-    _out_dir = os.path.join(test_dir, 'results', 'fofem_emissions')
+    examples_dir = helper.get_examples_dir(os.path.dirname(__file__))
+    _in_fofem_consume_dir = os.path.join(examples_dir, 'results', 'fuel_analyst')
+    _in_fire_data_dir = os.path.join(examples_dir, 'results', 'fofem_mortality')
+    _out_dir = os.path.join(examples_dir, 'results', 'fofem_emissions')
 
     # Get stand fire and fofem consume csv paths
     _plot_wx_fire_csv_path = os.path.join(_in_fire_data_dir, 'fofem_severity_results.csv')

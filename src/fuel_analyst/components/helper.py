@@ -77,6 +77,38 @@ def file_exists(file_path: str) -> bool:
     return os.path.isfile(file_path)
 
 
+def get_repo_root(start_dir: str) -> str:
+    """
+    Find the repository root by walking upward from a starting directory.
+
+    :param start_dir: Directory to start searching from.
+    :return: Absolute path to the repository root.
+    """
+    current_dir = os.path.abspath(start_dir)
+
+    while True:
+        if (
+            os.path.isdir(os.path.join(current_dir, 'src', 'fuel_analyst'))
+            and os.path.isfile(os.path.join(current_dir, 'requirements.txt'))
+        ):
+            return current_dir
+
+        parent_dir = os.path.dirname(current_dir)
+        if parent_dir == current_dir:
+            raise FileNotFoundError(f'Could not locate the repository root from: {start_dir}')
+        current_dir = parent_dir
+
+
+def get_examples_dir(start_dir: str) -> str:
+    """
+    Get the root-level examples directory for sample inputs and outputs.
+
+    :param start_dir: Directory to start searching from.
+    :return: Absolute path to the repository examples directory.
+    """
+    return os.path.join(get_repo_root(start_dir), 'examples')
+
+
 def get_df(csv_path: str) -> pd.DataFrame:
     """
     Read a CSV file into a pandas DataFrame.

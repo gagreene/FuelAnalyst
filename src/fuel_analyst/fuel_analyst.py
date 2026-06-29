@@ -660,9 +660,9 @@ def fuel_analyst(
 # Test routine for Fuel Analyst
 if __name__ == '__main__':
     # Define input and output folders
-    test_dir = os.path.join(os.path.dirname(__file__), 'tests')
-    _in_dir = os.path.join(test_dir, 'test_data', 'Survey123_Data')
-    _out_dir = os.path.join(test_dir, 'results', 'fuel_analyst')
+    examples_dir = helper.get_examples_dir(os.path.dirname(__file__))
+    _in_dir = os.path.join(examples_dir, 'data', 'Survey123_Data')
+    _out_dir = os.path.join(examples_dir, 'results', 'fuel_analyst')
     _surface_fire_intensity_model = 'Byram'
     _stand_summary_dict = None      # Uses default stand summary settings if None
     _woody_debris_dict = None       # Uses default woody debris settings if None

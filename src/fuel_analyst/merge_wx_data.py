@@ -202,10 +202,10 @@ def merge_weather_data(
 # Test routine for merging weather data with plot data
 if __name__ == '__main__':
     # Define input and output directories
-    test_dir = os.path.join(os.path.dirname(__file__), 'tests')
-    _out_dir = os.path.join(test_dir, 'results', 'wx_extract')
+    examples_dir = helper.get_examples_dir(os.path.dirname(__file__))
+    _out_dir = os.path.join(examples_dir, 'results', 'wx_extract')
     _out_file_name = 'wx_data'
-    _plot_data_path = os.path.join(test_dir, 'results', 'fbp_fuel_typing', 'conpyro_df_fbp.csv')
+    _plot_data_path = os.path.join(examples_dir, 'results', 'fbp_fuel_typing', 'conpyro_df_fbp.csv')
     _plot_merge_col_name = 'unique_id'
     _wx_data_path = os.path.join(_out_dir, f'{_out_file_name}.csv')
     _wx_merge_col_name = 'unique_id'  # Assign as None to merge all weather data with each plot

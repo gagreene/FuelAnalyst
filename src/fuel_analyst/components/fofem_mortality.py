@@ -191,10 +191,10 @@ def process_mortality(
 # Test routine for FOFEM mortality processing
 if __name__ == '__main__':
     # Define input and output folders
-    test_dir = os.path.join(os.path.dirname(__file__), '..', 'tests')
-    _in_tree_data_dir = os.path.join(test_dir, 'results', 'fuel_analyst')
-    _in_fire_data_dir = os.path.join(test_dir, 'results', 'conpyro')
-    _out_dir = os.path.join(test_dir, 'results', 'fofem_mortality')
+    examples_dir = helper.get_examples_dir(os.path.dirname(__file__))
+    _in_tree_data_dir = os.path.join(examples_dir, 'results', 'fuel_analyst')
+    _in_fire_data_dir = os.path.join(examples_dir, 'results', 'conpyro')
+    _out_dir = os.path.join(examples_dir, 'results', 'fofem_mortality')
     _aspen_sev = 'low'
 
     # Get stand fire and tree csv paths

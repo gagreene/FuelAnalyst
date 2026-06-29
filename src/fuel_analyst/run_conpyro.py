@@ -733,15 +733,15 @@ def run_conpyro(
 # Test routine for ConPyro modelling
 if __name__ == '__main__':
     # Define input and output folders
-    test_dir = os.path.join(os.path.dirname(__file__), 'tests')
-    _out_dir = os.path.join(test_dir, 'results', 'conpyro')
+    examples_dir = helper.get_examples_dir(os.path.dirname(__file__))
+    _out_dir = os.path.join(examples_dir, 'results', 'conpyro')
     # The ConPyro input dataframe must have weather data attached for ConPyro/FOFEM modelling
     # Required weather columns for ConPyro modelling: 'ws', 'wd', 'ffmc', 'dmc', 'bui', 'temp', 'rh'
     # Required weather columns for FOFEM mortality modelling: 'ws', 'temp'
-    _in_dir = os.path.join(test_dir, 'results', 'wx_extract')
+    _in_dir = os.path.join(examples_dir, 'results', 'wx_extract')
     _in_conpyro_csv_path = os.path.join(_in_dir, 'conpyro_df_wx.csv')
-    _tree_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'master_tree_df.csv')
-    _fofem_consume_csv_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'fofem_consume_df.csv')
+    _tree_csv_path = os.path.join(examples_dir, 'results', 'fuel_analyst', 'master_tree_df.csv')
+    _fofem_consume_csv_path = os.path.join(examples_dir, 'results', 'fuel_analyst', 'fofem_consume_df.csv')
     _fire_modelling_dict = default_fire_modelling_dict
 
     # Run ConPyro modelling
