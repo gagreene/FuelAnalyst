@@ -143,7 +143,7 @@ def merge_weather_data(
     if wx_merge_vars is not None:
         wx_merge_vars = [var for var in wx_merge_vars if var in wx_df.columns]
     else:
-        wx_merge_vars = [col for col in wx_df.columns if col != wx_merge_col_name]
+        wx_merge_vars = [col for col in wx_df.columns if ((col != wx_merge_col_name) and (col != plot_merge_col_name))]
     if plot_merge_col_name not in plot_df.columns:
         raise ValueError(f'Plot ID column "{plot_merge_col_name}" not found in '
                          f'plot data columns: {list(plot_df.columns)}')
@@ -187,7 +187,7 @@ def merge_weather_data(
         merged_df = _add_season_column(merged_df, summer_start, fall_start)
 
     # Refine FBP fuel types based on season
-    if refine_fbp_seasonally:
+    if refine_fbp_seasonally and ('fbp_fuel_type' in merged_df.columns):
         merged_df = _refine_fbp_fuel_types_by_season(merged_df)
         # Drop 'season' column if it was only added for refining FBP fuel types and not requested to be kept
         if not add_season:

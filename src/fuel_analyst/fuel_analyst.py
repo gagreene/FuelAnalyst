@@ -233,7 +233,7 @@ default_conpyro_dict = {
             'metrics': ['sum'],  # This is fixed as empty (no user options)
             'units': 'kgpm2',  # This option is fixed
             'classes': {
-                'dbh': [0, float('inf')]  # All trees >= 5 cm DBH
+                'dbh': [0, float('inf')]  # All trees
             },
         },
         'conpyro_cbd_ovrstry': {  # This name is fixed for ConPyro
@@ -244,7 +244,7 @@ default_conpyro_dict = {
             'metrics': [],  # This is fixed as empty (no user options for cbd)
             'units': 'kgpm3',  # This option is fixed for cbd
             'classes': {
-                'dbh': [0, float('inf')]  # All trees >= 5 cm DBH
+                'dbh': [0, float('inf')]  # All trees
             },
         },
         'conpyro_cfl_midstry': {  # This name is fixed for ConPyro
@@ -255,7 +255,7 @@ default_conpyro_dict = {
             'metrics': ['sum'],  # This is fixed as empty (no user options)
             'units': 'kgpm2',  # This option is fixed
             'classes': {
-                'dbh': [0, 0]  # All trees < 5 cm DBH
+                'dbh': [0, 0]  # Midstory trees excluded
             },
         },
         'conpyro_cbd_midstry': {  # This name is fixed for ConPyro
@@ -266,10 +266,10 @@ default_conpyro_dict = {
             'metrics': [],  # This is fixed as empty (no user options for cbd)
             'units': 'kgpm3',  # This option is fixed for cbd
             'classes': {
-                'dbh': [0, 0]  # All trees < 5 cm DBH
+                'dbh': [0, 0]  # Midstory trees excluded
             },
         },
-        'conpyro_dead_branch_fl': {  # This name is fixed for ConPyro
+        'conpyro_dead_branch_fl_midstry': {  # This name is fixed for ConPyro
             'att_source': 'branches',  # This is fixed (no user options)
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['dead'],  # This is fixed (no user options)
@@ -277,7 +277,7 @@ default_conpyro_dict = {
             'metrics': ['sum'],  # This is the only option
             'units': 'kgpm2',  # This option is fixed
             'classes': {
-                'dbh': [0, float('inf')]  # All trees >= 5 cm DBH
+                'dbh': [0, 0]  # Midstory trees excluded
             },
         },
         'conpyro_ht_ovrstry_live': {  # This name is fixed for ConPyro
@@ -288,7 +288,7 @@ default_conpyro_dict = {
             'metrics': ['mean'],  # This is the default (options: min, max, mean)
             'units': 'm',  # This option is fixed
             'classes': {
-                'dbh': [0, float('inf')]  # All trees >= 5 cm DBH
+                'dbh': [0, float('inf')]  # All trees
             },
         },
         'conpyro_ht_midstry_live': {  # This name is fixed for ConPyro
@@ -299,7 +299,7 @@ default_conpyro_dict = {
             'metrics': ['mean'],  # This is the default (options: min, max, mean)
             'units': 'm',  # This option is fixed
             'classes': {
-                'dbh': [0, 0]  # All trees < 5 cm DBH
+                'dbh': [0, 0]  # Midstory trees excluded
             },
         },
         'conpyro_ht_midstry_dead': {  # This name is fixed for ConPyro
@@ -310,7 +310,7 @@ default_conpyro_dict = {
             'metrics': ['mean'],  # This is the default (options: min, max, mean)
             'units': 'm',  # This option is fixed
             'classes': {
-                'dbh': [0, 0]  # All trees < 5 cm DBH
+                'dbh': [0, 0]  # Midstory trees excluded
             },
         },
         # """
@@ -342,7 +342,7 @@ default_conpyro_dict = {
             'metrics': ['mean'],  # This is the default (options: min, max, mean)
             'units': 'm',  # This option is fixed
             'classes': {
-                'dbh': [0, float('inf')]  # All trees >= 5 cm DBH
+                'dbh': [0, float('inf')]  # All trees
             },
         },
         'conpyro_cbh_midstry': {  # This name is fixed for ConPyro
@@ -353,7 +353,7 @@ default_conpyro_dict = {
             'metrics': ['mean'],  # This is the default (options: min, max, mean)
             'units': 'm',  # This option is fixed
             'classes': {
-                'dbh': [0, 0]  # All trees < 5 cm DBH
+                'dbh': [0, 0]  # Midstory trees excluded
             },
         },
         'conpyro_fsg': {  # This name is fixed for ConPyro
@@ -364,7 +364,7 @@ default_conpyro_dict = {
             'metrics': ['mean'],  # This is the default (options: min, max, mean)
             'units': 'm',  # This option is fixed
             'classes': {
-                'dbh': [0, float('inf')]  # All trees >= 0 cm DBH
+                'dbh': [0, float('inf')]  # All trees
             },
         },
     },
@@ -666,9 +666,9 @@ if __name__ == '__main__':
     _surface_fire_intensity_model = 'Byram'
     _stand_summary_dict = None      # Uses default stand summary settings if None
     _woody_debris_dict = None       # Uses default woody debris settings if None
-    _conpyro_dict = None                # Uses default ConPyro settings if None
+    _conpyro_dict = None            # Uses default ConPyro settings if None
     _fofem_consume_dict = None      # Uses default FOFEM woody debris settings if None
-    _gen_conpyro_df = True              # Whether to generate the ConPyro DataFrame
+    _gen_conpyro_df = True          # Whether to generate the ConPyro DataFrame
     _gen_fofem_tree_df = True       # Whether to generate the FOFEM tree DataFrame
     _gen_fofem_consume_df = True    # Whether to generate the FOFEM consumption DataFrame
 

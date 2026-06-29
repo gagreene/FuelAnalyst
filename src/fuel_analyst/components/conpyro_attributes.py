@@ -167,7 +167,7 @@ def gen_conpyro_df(df: pd.DataFrame, conpyro_params: dict) -> tuple[pd.DataFrame
         'cbd_ovrstry': df['conpyro_cbd_ovrstry'].fillna(0),
         'cfl_midstry': df['conpyro_cfl_midstry'].fillna(0),
         'cbd_midstry': df['conpyro_cbd_midstry'].fillna(0),
-        'dead_branch_fl': df['conpyro_dead_branch_fl'].fillna(0),
+        'dead_branch_fl_midstry': df['conpyro_dead_branch_fl_midstry'].fillna(0),
         'ht_ovrstry_live': df['conpyro_ht_ovrstry_live'],
         'ht_midstry_live': df['conpyro_ht_midstry_live'],
         'ht_midstry_dead': df['conpyro_ht_midstry_dead'],
