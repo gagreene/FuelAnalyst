@@ -7,7 +7,6 @@ Created on Tue May 27, 9:25:00 2025
 __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
 import csv as CSV
-from datetime import datetime as dt
 import os
 import re
 import shutil
@@ -144,18 +143,29 @@ def get_repo_root(start_dir: str) -> str:
 
 
 def get_unique_id(df: pd.DataFrame) -> pd.DataFrame:
-    try:
-        df['year'] = df['_date'].apply(lambda y: dt.strptime(y, '%m/%d/%Y %H:%M').year)
-    except ValueError:
-        try:
-            df['year'] = df['_date'].apply(lambda y: dt.strptime(y, '%m/%d/%Y %H:%M:%S %p').year)
-        except ValueError:
-            print("Date format in '_date' column is not recognized. Please check the date format.")
+    # Parse _date to datetime; try both known formats
+    parsed = pd.to_datetime(df['_date'], format='%m/%d/%Y %H:%M', errors='coerce')
+    mask = parsed.isna()
+    if mask.any():
+        parsed = parsed.copy()
+        parsed[mask] = pd.to_datetime(df.loc[mask, '_date'], format='%m/%d/%Y %H:%M:%S %p', errors='coerce')
+
+    still_missing = parsed.isna()
+    if still_missing.any():
+        bad_samples = df.loc[still_missing, '_date'].head(3).tolist()
+        raise ValueError(
+            f"'_date' column contains {still_missing.sum()} unparseable value(s). "
+            f"Expected '%m/%d/%Y %H:%M' or '%m/%d/%Y %H:%M:%S %p'. "
+            f"Sample bad values: {bad_samples}"
+        )
+
+    df['year'] = parsed.dt.year
     df['unique_id'] = df[['treatment_area', 'treatment_unit', 'treatment_type', 'plot_id', 'year']].apply(
         lambda x: '_'.join(x.astype(str)), axis=1)
 
-    # Drop duplicate rows based on 'unique_id', keeping the most recent entry based on _date column
-    df = df.sort_values(by='_date').drop_duplicates(subset='unique_id', keep='last')
+    # Sort by parsed datetime (not raw string) so keep='last' correctly retains most recent
+    df = df.assign(_date_parsed=parsed).sort_values(by='_date_parsed').drop_duplicates(subset='unique_id', keep='last')
+    df = df.drop(columns=['_date_parsed'])
 
     return df
 
