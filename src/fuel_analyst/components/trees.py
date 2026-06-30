@@ -44,6 +44,12 @@ tree_component_index_dict = {
     'foliage': 3
 }
 
+# Decay class thresholds for "dead/more decayed" classification
+# Conifer: classes 1-9; class >=6 treated as dead (use modeled height, degraded biomass)
+# Broadleaf: classes 1-6; class >=5 treated as dead
+_DEAD_DECAY_THRESHOLD_CONIFER = 6
+_DEAD_DECAY_THRESHOLD_BROADLEAF = 5
+
 tree_conifer_decay_class_dict = {
     1: [1, 1, 1, 1],
     2: [1, 1, 1, 1],
@@ -749,14 +755,16 @@ def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> p
             mask_live = (
                 (tree_df.tree_species == spp) &
                 (tree_df.tree_dcy_class > 0) &
-                ((tree_df.tree_dcy_class_cnfr < 6) | (tree_df.tree_dcy_class_brdlf < 5)) &
+                ((tree_df.tree_dcy_class_cnfr < _DEAD_DECAY_THRESHOLD_CONIFER) |
+                 (tree_df.tree_dcy_class_brdlf < _DEAD_DECAY_THRESHOLD_BROADLEAF)) &
                 (tree_df.tree_dbh > 0) &
                 (tree_df.tree_ht > 0)
             )
             mask_dead = (
                 (tree_df.tree_species == spp) &
                 (tree_df.tree_dcy_class > 0) &
-                ((tree_df.tree_dcy_class_cnfr >= 6) | (tree_df.tree_dcy_class_brdlf >= 5)) &
+                ((tree_df.tree_dcy_class_cnfr >= _DEAD_DECAY_THRESHOLD_CONIFER) |
+                 (tree_df.tree_dcy_class_brdlf >= _DEAD_DECAY_THRESHOLD_BROADLEAF)) &
                 (tree_df.tree_dbh > 0) &
                 (tree_df.tree_ht > 0)
             )
@@ -1155,12 +1163,12 @@ def _calc_tree_missing_heights(tree_df: pd.DataFrame, tree_params_df: pd.DataFra
     # Set of valid species codes present in the data
     spp_set = set(tree_df['tree_species'].dropna())
 
-    # Mask for trees missing heights (decay class conifer < 6 or broadleaf < 5, and valid DBH)
+    # Mask for trees missing heights (less-decayed, and valid DBH)
     mask_missing = (
         (tree_df['tree_dens_ha'] > 0) &
         (
-            (tree_df['tree_dcy_class_cnfr'] < 6) |
-            (tree_df['tree_dcy_class_brdlf'] < 5)
+            (tree_df['tree_dcy_class_cnfr'] < _DEAD_DECAY_THRESHOLD_CONIFER) |
+            (tree_df['tree_dcy_class_brdlf'] < _DEAD_DECAY_THRESHOLD_BROADLEAF)
         ) &
         tree_df['tree_ht'].isnull() &
         tree_df['tree_dbh'].notnull()
@@ -1171,11 +1179,11 @@ def _calc_tree_missing_heights(tree_df: pd.DataFrame, tree_params_df: pd.DataFra
     # Assign modeled heights to dead trees with missing height values
     tree_df.loc[mask_missing, 'tree_ht'] = tree_df.loc[mask_missing, 'tree_ht_modeled']
 
-    # Mask for dead trees (decay class conifer >= 6 or broadleaf >= 5, and valid DBH)
+    # Mask for dead/more-decayed trees (use modeled height, and valid DBH)
     mask_dead = (
         (
-            (tree_df['tree_dcy_class_cnfr'] >= 6) |
-            (tree_df['tree_dcy_class_brdlf'] >= 5)
+            (tree_df['tree_dcy_class_cnfr'] >= _DEAD_DECAY_THRESHOLD_CONIFER) |
+            (tree_df['tree_dcy_class_brdlf'] >= _DEAD_DECAY_THRESHOLD_BROADLEAF)
         ) &
         tree_df['tree_dbh'].notnull()
     )
