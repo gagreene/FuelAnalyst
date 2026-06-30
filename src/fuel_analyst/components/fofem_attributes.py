@@ -14,6 +14,12 @@ def gen_fofem_tree_df(df: pd.DataFrame, master_tree_df: pd.DataFrame) -> pd.Data
     """
     Generate a DataFrame formatted for FOFEM tree mortality modeling.
 
+    All output values use US units as required by FOFEM:
+      - TreeExpansionFactor: trees/acre (input: trees/ha)
+      - Diameter: inches (input: cm)
+      - TreeHeight, CrownBaseHeight: feet (input: m)
+      - CrownRatio: percent (dimensionless ratio, no conversion needed)
+
     :param df: DataFrame with plot-level data (must include 'unique_id', 'treatment_type', 'year').
     :param master_tree_df: DataFrame with processed tree-level data.
     :return: DataFrame with FOFEM tree mortality variables.
@@ -30,8 +36,8 @@ def gen_fofem_tree_df(df: pd.DataFrame, master_tree_df: pd.DataFrame) -> pd.Data
         'TreeSpecies': master_tree_df['spp_fofem'],
         'TreeExpansionFactor': master_tree_df['dens_live_ha'] / 2.47105,  # ha to acre
         'Diameter': master_tree_df['dbh'] / 2.54,  # cm to inches
-        'TreeHeight': master_tree_df['ht'] / 3.28084,  # m to feet
-        'CrownBaseHeight': (master_tree_df['ht'] - master_tree_df['crown_depth']) / 3.28084,  # m to feet
+        'TreeHeight': master_tree_df['ht'] * 3.28084,  # m to feet
+        'CrownBaseHeight': (master_tree_df['ht'] - master_tree_df['crown_depth']) * 3.28084,  # m to feet
         'TreeStatus': np.where(
             (master_tree_df['decay_cnfr'] == 1) | (master_tree_df['decay_brdlf'] == 1), 'H',
             np.where((master_tree_df['decay_cnfr'] == 2) | (master_tree_df['decay_brdlf'] == 2), 'U', 'L')
