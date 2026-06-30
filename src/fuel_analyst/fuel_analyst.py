@@ -501,10 +501,11 @@ def fuel_analyst(
     }
 
     if stand_summary_params is None:
-        stand_summary_params = default_stand_summary_dict
+        stand_summary_params = default_stand_summary_dict.copy()
 
     if woody_debris_params is None:
-        woody_debris_params = default_woody_debris_dict
+        woody_debris_params = default_woody_debris_dict.copy()
+        woody_debris_params['woody_debris_classes'] = default_woody_debris_dict['woody_debris_classes'].copy()
 
     if conpyro_params is None:
         conpyro_params = default_conpyro_dict
