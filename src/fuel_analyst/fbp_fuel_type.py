@@ -175,31 +175,14 @@ def process_fbp_fuel_type(
 
 # Test routine for calculating FBP fuel types
 if __name__ == '__main__':
-    # Define the environment as "dockerized" or not 
-    is_docker = os.path.exists('/.dockerenv')
-    if is_docker:
-        # Docker environment file paths 
-        test_dir = os.getenv('DATA_BASE_DIR', '/app/input_data')
-        _out_dir = os.getenv('OUTPUT_FBP', '/app/output/fbp_fuel_typing')
-        _prior_file = os.getenv('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst')
-        if not os.path.exists(_prior_file) or len(os.listdir(_prior_file)) == 0:
-            print('Files created in prior fuel analyst steps not found. Please run fuel analyst first to generate the necessary files for FBP fuel typing.')
-        if os.path.exists(_prior_file) and len(os.listdir(_prior_file)) > 0:
-            _master_fuel_df_path = os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst', 'master_fuel_df.csv')
-            _conpyro_df_path = os.path.join(_prior_file,'conpyro_df.csv')
-            _fbp_prep_df_path = os.path.join('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst', 'fbp_prep_df_BEC.csv')
-    ## Non-Docker Environment
-    else:
-        # Local Windows development (follow the instructions)
-        # Define input folder 
-        test_dir = r'C:\Users\ssmithtr\Desktop\SiteModels\FuelAnalyst_test_data\test_data_LLCF-WBFN_2026-04-14'
-        ## define output folder 
-        _out_dir = os.path.join(test_dir, 'results', 'fbp_fuel_typing')
-        _master_fuel_df_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'master_fuel_df.csv')
-        _fbp_prep_df_path = os.path.join(test_dir, 'test_data', 'fbp_fuel_typing', 'fbp_prep_df.csv')
-        _conpyro_df_path = os.path.join(test_dir, 'results', 'fuel_analyst', 'conpyro_df.csv')
-    
-    # define growing season type
+    # Define input and output folders
+    examples_dir = helper.get_examples_dir(os.path.dirname(__file__))
+    _out_dir = os.path.join(examples_dir, 'results', 'fbp_fuel_typing')
+
+    # Get stand fire and FOFEM consume csv paths
+    _master_fuel_df_path = os.path.join(examples_dir, 'results', 'fuel_analyst', 'master_fuel_df.csv')
+    _fbp_prep_df_path = os.path.join(examples_dir, 'data', 'fbp_fuel_typing', 'fbp_prep_df.csv')
+    _conpyro_df_path = os.path.join(examples_dir, 'results', 'fuel_analyst', 'conpyro_df.csv')
     _season = 'growing'  # Options: 'growing' or 'dormant'
   
     # Run FBP fuel type processing

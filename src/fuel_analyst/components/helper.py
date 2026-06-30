@@ -6,12 +6,12 @@ Created on Tue May 27, 9:25:00 2025
 """
 __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
+import csv as CSV
+from datetime import datetime as dt
 import os
+import re
 import shutil
 import pandas as pd
-from datetime import datetime as dt
-import re
-import csv as CSV
 
 
 def add_line_to_csv(file_path: str, add_list: list, position: int) -> None:
@@ -77,6 +77,16 @@ def file_exists(file_path: str) -> bool:
     return os.path.isfile(file_path)
 
 
+def get_development_dir(start_dir: str) -> str:
+    """
+    Get the root-level development directory for experimental scripts.
+
+    :param start_dir: Directory to start searching from.
+    :return: Absolute path to the repository development directory.
+    """
+    return os.path.join(get_repo_root(start_dir), 'development')
+
+
 def get_df(csv_path: str) -> pd.DataFrame:
     """
     Read a CSV file into a pandas DataFrame.
@@ -89,16 +99,48 @@ def get_df(csv_path: str) -> pd.DataFrame:
     return pd.read_csv(csv_path, header=0, index_col=False, low_memory=False)
 
 
-def get_missing_df_columns(df: pd.DataFrame, required_columns: list) -> bool:
+def get_examples_dir(start_dir: str) -> str:
+    """
+    Get the root-level examples directory for sample inputs and outputs.
+
+    :param start_dir: Directory to start searching from.
+    :return: Absolute path to the repository examples directory.
+    """
+    return os.path.join(get_repo_root(start_dir), 'examples')
+
+
+def get_missing_df_columns(df: pd.DataFrame, required_columns: list) -> list:
     """
     Get a list of missing columns from a DataFrame based on a list of required column names.
 
     :param df: DataFrame to check.
     :param required_columns: List of required column names.
-    :return: True if all required columns exist, False otherwise.
+    :return: List of missing required columns.
     """
     missing_columns = [col for col in required_columns if col not in df.columns]
     return missing_columns
+
+
+def get_repo_root(start_dir: str) -> str:
+    """
+    Find the repository root by walking upward from a starting directory.
+
+    :param start_dir: Directory to start searching from.
+    :return: Absolute path to the repository root.
+    """
+    current_dir = os.path.abspath(start_dir)
+
+    while True:
+        if (
+            os.path.isdir(os.path.join(current_dir, 'src', 'fuel_analyst'))
+            and os.path.isfile(os.path.join(current_dir, 'requirements.txt'))
+        ):
+            return current_dir
+
+        parent_dir = os.path.dirname(current_dir)
+        if parent_dir == current_dir:
+            raise FileNotFoundError(f'Could not locate the repository root from: {start_dir}')
+        current_dir = parent_dir
 
 
 def get_unique_id(df: pd.DataFrame) -> pd.DataFrame:

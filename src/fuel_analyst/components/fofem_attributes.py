@@ -128,29 +128,26 @@ def gen_fofem_consumption_df(
             'wfl1000HourMoisture': fofem_moist_regime[2],
             'Duff': (df['ffl_duff_kgpm2'] * conv).round(2).fillna(0),
             'DuffMoisture': fofem_moist_regime[0],
-            'DuffDepth': (df['stand_duff_depth_cm'] / 2.54).round(2).fillna(0),  # Convert cm to inches
+            'DuffDepth': (df['stand_duff_depth_cm'] / 2.54).round(2).fillna(0),
             'Herbaceous': (df['herbs_kgpm2'] * conv).round(2).fillna(0),
             'Shrub': (df['shrubs_kgpm2'] * conv).round(2).fillna(0),
             'CrownFoliage': (df['stand_foliage_fofem_kgpm2_sum'] * conv).round(2).fillna(0),
             'CrownBranch': (df['stand_branches_fofem_kgpm2_sum'] * conv).round(2).fillna(0),
-            'PercentCrownBurned': 0,  # Default value
+            'PercentCrownBurned': 0,
             'Region': fofem_region,
             'CoverGroup': fofem_cover_group,
             'Season': fofem_season,
             'FuelCategory': fofem_fuel_category,
             'SoilFamily': df['SoilFamily'] if model_soil_heat else 'NA',
             'SoilMoisture': fofem_moist_regime[3],
-            # FOFEM consumption equation placeholders
             'LitterLoad_ConsumEq1': -1,
             'PctDuff_ConsumEq2': -1,
             'DuffDepth_ConsumEq3': -1,
             'MSE_ConsumEq4': -1,
             'Herb_ConsumEq5': -1,
             'Shrub_ConsumEq6': -1,
-            # Add temporary fuel bed depth variable for use in Burnup-In file for FOFEM emissions modeling.
-            # Will be removed from consumption DataFrame prior to use in emissions modelling.
             'remove_hereafter': np.nan,
-            'fuel_bed_depth_m': (df['fuel_bed_depth_m']).round(2).fillna(0),  # Keep in m
+            'fuel_bed_depth_m': (df['fuel_bed_depth_m']).round(2).fillna(0),
         })
 
         return fofem_consume_df

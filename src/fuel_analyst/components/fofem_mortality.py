@@ -98,7 +98,7 @@ def process_mortality(
     tree_df = helper.get_df(fofem_tree_csv_path)
 
     # Remove rows with missing required data
-    required_cols = ['instand_ws_kmph', 'canopy_cover', 'ht_ovrstry_live', 'fsg', 'ws', 'hfi', 'fire_type', 'temp']
+    required_cols = ['instand_ws_mps', 'canopy_cover', 'ht_ovrstry_live', 'fsg', 'ws', 'hfi', 'fire_type', 'temp']
     # Only keep columns that exist in plot_fire_df
     filtered_required_cols = [col for col in required_cols if col in plot_fire_df.columns]
     if filtered_required_cols:
@@ -120,20 +120,24 @@ def process_mortality(
     print('\tProcessing Post-Fire Tree Mortality (via FOFEM CRNSCH model)...')
     def get_col(col):
         return merged_tree_df[col].to_numpy() if col in merged_tree_df.columns else None
-    merged_tree_df['mortality_crnsch'] = fofem.mort_crnsch(
-        spp=get_col('spp'),
-        dbh=get_col('dbh'),
-        ht=get_col('ht'),
-        crown_depth=get_col('crown_depth'),
-        bark_thickness=get_col('bark_thick'),
-        fire_intensity=get_col('hfi'),
-        amb_t=get_col('temp'),
-        flame_length=get_col('flame_length'),
-        char_ht=get_col('char_height'),
-        scorch_ht=get_col('scorch_height'),
-        instand_ws=get_col('instand_ws_kmph'),
-        aspen_sev=aspen_sev,
-        tree_code_dict=tree_code_dict
+    params = {
+        'spp': get_col('spp'),
+        'dbh': get_col('dbh'),
+        'ht': get_col('ht'),
+        'crown_depth': get_col('crown_depth'),
+        'bark_thickness': get_col('bark_thick'),
+        'fire_intensity': get_col('hfi'),
+        'amb_t': get_col('temp'),
+        'flame_length': get_col('flame_length'),
+        'char_ht': get_col('char_height'),
+        'scorch_ht': get_col('scorch_height'),
+        'instand_ws': get_col('instand_ws_mps'),
+        'aspen_sev': aspen_sev,
+        'tree_code_dict': tree_code_dict
+    }
+    merged_tree_df['mortality_crnsch'] = fofem.run_fofem_mortality(
+        mort_function='crnsch',
+        params=params,
     )
 
     # Calculate tree-level mortality for each scenario
@@ -145,7 +149,7 @@ def process_mortality(
 
     # Calculate stand-level proportion of basal area killed by fire for each scenario
     agg_df = merged_tree_df.groupby([
-        plot_id_col_name, 'wx_date', 'hfi', 'fire_type', 'temp', 'instand_ws_kmph'
+        plot_id_col_name, 'wx_date', 'hfi', 'fire_type', 'temp', 'instand_ws_mps'
     ], as_index=False).agg({
         'ba_live_ha': 'sum',
         'tree_dead_ba_crnsch': 'sum'
@@ -156,8 +160,8 @@ def process_mortality(
     plot_fire_df = pd.merge(
         plot_fire_df,
         agg_df[[plot_id_col_name, 'wx_date', 'hfi', 'fire_type', 'temp',
-                'instand_ws_kmph', 'tree_dead_ba_crnsch', 'prop_dead_ba_crnsch']],
-        on=[plot_id_col_name, 'wx_date', 'hfi', 'fire_type', 'temp', 'instand_ws_kmph'],
+                'instand_ws_mps', 'tree_dead_ba_crnsch', 'prop_dead_ba_crnsch']],
+        on=[plot_id_col_name, 'wx_date', 'hfi', 'fire_type', 'temp', 'instand_ws_mps'],
         how='left'
     )
 
@@ -187,10 +191,10 @@ def process_mortality(
 # Test routine for FOFEM mortality processing
 if __name__ == '__main__':
     # Define input and output folders
-    test_dir = os.path.join(os.path.dirname(__file__), '..', 'tests')
-    _in_tree_data_dir = os.path.join(test_dir, 'results', 'fuel_analyst')
-    _in_fire_data_dir = os.path.join(test_dir, 'results', 'conpyro')
-    _out_dir = os.path.join(test_dir, 'results', 'fofem_mortality')
+    examples_dir = helper.get_examples_dir(os.path.dirname(__file__))
+    _in_tree_data_dir = os.path.join(examples_dir, 'results', 'fuel_analyst')
+    _in_fire_data_dir = os.path.join(examples_dir, 'results', 'conpyro')
+    _out_dir = os.path.join(examples_dir, 'results', 'fofem_mortality')
     _aspen_sev = 'low'
 
     # Get stand fire and tree csv paths
