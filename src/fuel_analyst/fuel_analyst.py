@@ -515,14 +515,15 @@ def fuel_analyst(
 
     if gen_conpyro_df:
         # Verify all forms are present for ConPyro generation
-        for form in form_select_list:
-            in_path = os.path.join(in_dir, dir_dict.get(form))
-            missing_forms = [form for form in form_select_list if not os.path.exists(in_path)]
-            if missing_forms:
-                raise FileNotFoundError(
-                    f'All Survey123 forms are required to generate the ConPyro DataFrame. '
-                    f'The following forms are missing:\n{missing_forms}.'
-                )
+        missing_forms = [
+            form for form in form_select_list
+            if not os.path.exists(os.path.join(in_dir, dir_dict.get(form)))
+        ]
+        if missing_forms:
+            raise FileNotFoundError(
+                f'All Survey123 forms are required to generate the ConPyro DataFrame. '
+                f'The following forms are missing:\n{missing_forms}.'
+            )
 
         stand_summary_params.update(
             {k: v for k, v in conpyro_params['stand_attributes'].items()}
