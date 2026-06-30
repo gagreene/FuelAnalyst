@@ -554,16 +554,19 @@ def fuel_analyst(
         in_path = os.path.join(in_dir, dir_dict.get(form))
         out_path = os.path.join(out_dir, dir_dict.get(form))
 
-        # Check if the input path exists
-        if not os.path.exists(in_path):
-            print(f'Warning: Input folder for {form} does not exist: {in_path}')
-            continue
-
         # Filter the plot_df for the current form
         mask = plot_df['form_select'].str.contains(form, na=False)
 
         # Get the unique IDs for the current form
         id_list = plot_df.loc[mask, 'unique_id'].tolist()
+
+        # Check if the input path exists
+        if not os.path.exists(in_path):
+            if mask.any():
+                print(f'Warning: Input folder for {form_dict[form]} is missing but '
+                      f'{mask.sum()} plot(s) selected this form. '
+                      f'These plots will have no {form_dict[form]} data: {id_list}')
+            continue
 
         # Only process the form if there are IDs to process
         if mask.any():
