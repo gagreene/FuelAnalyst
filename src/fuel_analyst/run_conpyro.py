@@ -655,6 +655,27 @@ def run_conpyro(
         for col in drop_empty_rows_in_cols:
             df = df[df[col].notna()]
 
+        # Validate that required columns are present before running ConPyro.
+        # Core weather columns must be merged in advance via extract_nrcan_wx -> merge_wx_data.
+        # temp and rh are only required when cfo_model == 10 (CFIS model).
+        # Additional columns are required for any input_params value set to 'use_csv'.
+        required_cols = ['ws', 'wd', 'ffmc', 'dmc', 'bui']
+        use_csv_params = ['wx_date', 'season', 'time', 'fmc', 'cfo_model', 'sros_model', 'cros_model']
+        for param in use_csv_params:
+            if input_params.get(param) == 'use_csv':
+                required_cols.append(param)
+        if input_params.get('cfo_model') == 10:
+            required_cols.extend(['temp', 'rh'])
+        missing_cols = helper.get_missing_df_columns(df, required_cols)
+        if missing_cols:
+            raise ValueError(
+                f'Columns required by ConPyro are missing from the input CSV: {missing_cols}. '
+                f'Weather columns (ws, wd, ffmc, dmc, bui) require running '
+                f'extract_nrcan_wx -> merge_wx_data first. '
+                f'temp and rh are additionally required when cfo_model == 10 (CFIS). '
+                f'Columns corresponding to input_params set to "use_csv" must also be present.'
+            )
+
         # ### MODEL FIRE BEHAVIOR WITH CONPYRO ###
         print('\n>>>> Running ConPyro...')
         df = _model_fire_behavior(
