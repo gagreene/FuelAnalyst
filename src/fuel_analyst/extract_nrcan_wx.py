@@ -507,7 +507,13 @@ def extract_weather_data(
 # Test routine for extracting weather data and saving results
 if __name__ == '__main__':
     # Define input and output directories
-    _wx_data_dir = r'I:/_Weather_Data/NRCAN_FWIS_Database'  # Parent directory containing NRCAN gridded weather data
+    ##  test for docker 
+    is_docker = os.path.exists('/.dockerenv')
+    if is_docker:
+        _wx_data_dir = os.getenv('NRCAN_DATA_DIR', '/app/nrcan_data')
+    else:
+        _wx_data_dir = "D:/_NRCAN_Gridded_FWI_Data"
+
     examples_dir = helper.get_examples_dir(os.path.dirname(__file__))
     _out_dir = os.path.join(examples_dir, 'results', 'wx_extract')
     _out_file_name = f'wx_data'
