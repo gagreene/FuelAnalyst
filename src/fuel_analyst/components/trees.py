@@ -50,6 +50,10 @@ tree_component_index_dict = {
 _DEAD_DECAY_THRESHOLD_CONIFER = 6
 _DEAD_DECAY_THRESHOLD_BROADLEAF = 5
 
+# Sentinel value entered in the field to indicate bark char reached full tree height.
+# Replaced with actual tree height before flame length is calculated.
+_CROWN_FIRE_CHAR_SENTINEL = 444
+
 tree_conifer_decay_class_dict = {
     1: [1, 1, 1, 1],
     2: [1, 1, 1, 1],
@@ -979,6 +983,12 @@ def _calc_tree_fire_attributes(tree_df: pd.DataFrame, surface_fire_intensity_mod
     """
     print('\tCalculating fire metrics (Fireline Intensity, Flame Length)')
 
+    # ### RESOLVE SENTINEL BARK CHAR HEIGHT ###
+    # A field entry of _CROWN_FIRE_CHAR_SENTINEL indicates bark char reached full tree height
+    # (crown fire). Replace sentinel with actual tree height before calculating flame length.
+    full_ht_mask = tree_df['tree_bark_char_high'] == _CROWN_FIRE_CHAR_SENTINEL
+    tree_df.loc[full_ht_mask, 'tree_bark_char_high'] = tree_df.loc[full_ht_mask, 'tree_ht']
+
     # ### ESTIMATE FLAME LENGTH ###
     # Invert the FOFEM char height equation to solve for flame length
     tree_df['tree_flame_length'] = tree_df['tree_bark_char_high'] * 1.8
@@ -1000,9 +1010,7 @@ def _calc_tree_fire_attributes(tree_df: pd.DataFrame, surface_fire_intensity_mod
     crown_model = (tree_df['tree_flame_length'] / 0.017500) ** (3 / 2)
 
     # ### ESTIMATE FIRELINE INTENSITY ###
-    # Set bark char heights of 444 to the tree height
-    full_ht_mask = tree_df['tree_bark_char_high'] == 444
-    # Estimate fireline intensity based on the full_ht_mask
+    # Use crown fire model where bark char reached full tree height, surface model otherwise
     tree_df['tree_fire_intensity'] = np.where(full_ht_mask, crown_model, surface_model)
 
     return tree_df
