@@ -989,10 +989,7 @@ def _calc_tree_fire_attributes(tree_df: pd.DataFrame, surface_fire_intensity_mod
     tree_df['tree_flame_length'] = tree_df['tree_bark_char_high'] * 1.8
 
     # ### CALCULATE VARIOUS FIRELINE INTENSITY OPTIONS ###
-    if surface_fire_intensity_model == 'Byram':
-        # Use the Byram (1959) flame length model to estimate fireline intensity (kW/m)
-        surface_model = (tree_df['tree_flame_length'] / 0.0775) ** (1 / 0.46)
-    elif surface_fire_intensity_model == 'Thomas':
+    if surface_fire_intensity_model == 'Thomas':
         # Use the Thomas (1963) flame length model to estimate fireline intensity (kW/m)
         surface_model = (tree_df['tree_flame_length'] / 0.026700) ** (3 / 2)
     else:
