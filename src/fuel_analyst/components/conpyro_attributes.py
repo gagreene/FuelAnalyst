@@ -9,12 +9,7 @@ __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 import os
 import pandas as pd
 
-try:
-    # Relative import for module usage
-    from . import helper
-except ImportError:
-    # Absolute import for script usage
-    import helper
+from . import helper
 
 
 def _calc_veg_fuel_loads(df: pd.DataFrame, veg_fuel_dict: dict) -> pd.DataFrame:

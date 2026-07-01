@@ -11,14 +11,9 @@ from numpy import array, column_stack, full, nan
 import pandas as pd
 from typing import Optional
 
-import sys
-pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..')
-if pkg_dir not in sys.path:
-    sys.path.insert(0, pkg_dir)
-
-from src.fuel_analyst.components import helper
-from dependencies.conpyro.src.conpyro import conpyro
-from dependencies.flame_components import flame_components as fc
+from .components import helper
+from conpyro import conpyro
+from ._vendor import flame_components as fc
 import tqdm
 import concurrent.futures
 try:
@@ -499,7 +494,7 @@ def _model_fofem_emissions(
 
     model_select = str(fofem_emissions_params.get('model_select', 'pyfofem')).strip().lower()
     if model_select == 'pyfofem':
-        from src.fuel_analyst.components import fofem_emissions as fe
+        from .components import fofem_emissions as fe
 
         process_emissions_kwargs = {
             'plot_wx_fire_csv_path': fire_csv_path,
@@ -512,7 +507,7 @@ def _model_fofem_emissions(
             'return_df': True,
         }
     elif model_select == 'fof_gui':
-        from src.fuel_analyst.components import fofem_gui_emissions as fe
+        from .components import fofem_gui_emissions as fe
 
         process_emissions_kwargs = {
             'plot_wx_fire_csv_path': fire_csv_path,
@@ -567,7 +562,7 @@ def _model_fofem_mortality(
     :param conpyro_params: Dictionary of ConPyro model parameters.
     :return: DataFrame with FOFEM mortality results merged.
     """
-    from src.fuel_analyst.components import fofem_mortality as fm
+    from .components import fofem_mortality as fm
 
     # Create FOFEM mortality output directory and remove any existing files if it already exists
     mortality_dir = os.path.join(out_dir, 'fofem_mortality')

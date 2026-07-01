@@ -11,13 +11,8 @@ import numpy as np
 import pandas as pd
 from dateutil import parser
 
-import sys
-pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..')
-if pkg_dir not in sys.path:
-    sys.path.insert(0, pkg_dir)
-
-from src.fuel_analyst.components import helper
-from dependencies.BC_CFFBPS_FuelTyping_Tool import bcwft2018 as bcwft
+from .components import helper
+from ._vendor import bcwft2018 as bcwft
 
 def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFrame:
     print('Calculating CFFBPS Fuel Types using BCWFT2018 fuel typing algorithm')

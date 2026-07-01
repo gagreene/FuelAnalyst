@@ -10,12 +10,7 @@ import os
 import pandas as pd
 import numpy as np
 
-try:
-    # Relative import for module usage
-    from . import helper
-except ImportError:
-    # Absolute import for script usage
-    import helper
+from . import helper
 
 
 def _process_transect_data(transect_df: pd.DataFrame) -> pd.DataFrame:

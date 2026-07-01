@@ -11,12 +11,7 @@ import pandas as pd
 import numpy as np
 import itertools
 
-try:
-    # Relative import for module usage
-    from . import helper
-except ImportError:
-    # Absolute import for script usage
-    import helper
+from . import helper
 
 
 # GENERAL LIST OF CONIFER SPECIES IN BC

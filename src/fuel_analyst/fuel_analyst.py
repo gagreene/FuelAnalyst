@@ -10,19 +10,14 @@ import os
 import pandas as pd
 from typing import Optional
 
-import sys
-pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..')
-if pkg_dir not in sys.path:
-    sys.path.insert(0, pkg_dir)
-    
-from src.fuel_analyst.components import helper
-from src.fuel_analyst.components import plot_attributes as pa
-from src.fuel_analyst.components import plants_regen as pr
-from src.fuel_analyst.components import trees
-from src.fuel_analyst.components import canopy_cover as cc
-from src.fuel_analyst.components import woody_debris as wd
-from src.fuel_analyst.components import conpyro_attributes
-from src.fuel_analyst.components import fofem_attributes
+from .components import helper
+from .components import plot_attributes as pa
+from .components import plants_regen as pr
+from .components import trees
+from .components import canopy_cover as cc
+from .components import woody_debris as wd
+from .components import conpyro_attributes
+from .components import fofem_attributes
 
 default_stand_summary_dict = {
     'dens': {
