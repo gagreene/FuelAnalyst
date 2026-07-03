@@ -49,7 +49,6 @@ def delete_files(src_dir: str) -> None:
             shutil.rmtree(item_path)
 
 
-
 def export_csv(df: pd.DataFrame, csv_path: str) -> None:
     """
     Export a DataFrame to a CSV file, overwriting the file if it already exists.
@@ -168,6 +167,7 @@ def get_unique_id(df: pd.DataFrame) -> pd.DataFrame:
     df = df.drop(columns=['_date_parsed'])
 
     return df
+
 
 def sort_list(lst: list) -> list:
     """
