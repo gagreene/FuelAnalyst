@@ -180,10 +180,11 @@ if __name__ == '__main__':
         _fbp_out_path = os.path.join('OUTPUT_FBP', '/app/output/fuel_analyst/fbp_prep_df_BEC.csv')  
         _gpkg_out_path = os.path.join('/app/output/plots.gpkg') 
     else:
-        _BEC_shp_dir = r'I:/_Weather_Data/NRCAN_FWIS_Database/VEG_COMP_LYR_R1_POLY_2025.gdb'
-        test_dir = os.path.join(os.path.dirname(__file__), 'tests', 'results', 'fuel_analyst')
+        _BEC_shp_dir = r"C:\Users\ssmithtr\Desktop\CleanTest\BEC_data\VEG_COMP_LYR_R1_POLY_2025.gdb"
+        test_dir = os.path.join(os.path.dirname(__file__), 'tests', 'output', 'fuel_analyst')
         _plot_pts_path = os.path.join(test_dir, 'conpyro_df.csv')
         _fbp_prep_path = os.path.join(test_dir, 'fbp_prep_df.csv')
+        _gpkg_out_path = os.path.join(test_dir, 'plots.gpkg')
         _fbp_out_path = os.path.join(test_dir, 'fbp_prep_df_BEC.csv')
 
     _BEC_layer = 'VEG_COMP_LYR_R1_POLY'

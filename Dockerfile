@@ -14,5 +14,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project source and dependency files to the container
 COPY src /app/src
 COPY dependencies /app/dependencies
-ENV PYTHONPATH=/app:/app/src
+ENV PYTHONPATH=/app/src
 CMD ["/bin/bash"]

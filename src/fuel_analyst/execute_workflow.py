@@ -2,20 +2,19 @@
 
 import os
 
-from fuel_analyst import fuel_analyst
-from extract_BECType import _load_plots, _extract_BECType, infill_bec_data
-from fbp_fuel_type import process_fbp_fuel_type
-from extract_nrcan_wx import extract_weather_data
-from merge_wx_data import merge_weather_data
-from run_conpyro import run_conpyro
+from .fuel_analyst import fuel_analyst
+#from extract_BECType import _load_plots, _extract_BECType, infill_bec_data
+from .fbp_fuel_type import process_fbp_fuel_type
+from .extract_nrcan_wx import extract_weather_data
+from .merge_wx_data import merge_weather_data
+
 
 from src.fuel_analyst.components import helper, trees, conpyro_attributes, fofem_attributes
 from src.fuel_analyst.components import plot_attributes as pa
 from src.fuel_analyst.components import plants_regen as pr
 from src.fuel_analyst.components import canopy_cover as cc
 from src.fuel_analyst.components import woody_debris as wd
-
-
+from .extract_BECType import _load_plots, _extract_BECType, infill_bec_data
 
 # ── Environment detection ────────────────────────────────────────────────────
 is_docker = os.path.exists('/.dockerenv')
@@ -215,96 +214,96 @@ merge_weather_data(
 print('Weather merge complete. Proceeding to ConPyro modelling.')
 
 
-# ── 6. ConPyro Modelling ─────────────────────────────────────────────────────
+# # ── 6. ConPyro Modelling ─────────────────────────────────────────────────────
 
-## set a default fire modeling 
-default_fire_modelling_dict = {
-    'num_workers': max(1, os.cpu_count()-1),
-    'conpyro': {
-        'run_model': True,
-        'plot_id_col_name': 'unique_id',
-        'input_params': {
-            'cfo_model': 5,    # Options: 1, 2, 3, 4, 5, 10, or string "use_csv" (assumes cfo_model column in csv)
-            'sros_model': 13,  # Options: 1, 2, 3, 4, 12, 13, 20, or string "use_csv" (assumes sros_model column in csv)
-            'cros_model': 1,   # Options: 1, 2, or string "use_csv" (assumes cros_model column in csv)
-            'process_ladder': False,     # Toggle ladder fuel processing on/off
-            'smooth_ros': True,          # Toggle ROS smoothing function on/off
-            'model_terrain_effects_on_wind': True,  # Toggle terrain (slope/aspect) effects on wind speed and direction
-            'model_terrain_effects_on_ffmc': True,  # Toggle terrain (slope/aspect) effects on FFMC
-            'suppress_messages': True,              # Toggle ConPyro processing messages on/off
-            'wx_date': 'use_csv',   # Options: Integer in format YYYYMMDD, or string "use_csv" (default)
-                                    #    wx_date used for fine dead fuel and ladder foliar MC calculations
-            'fmc': None,            # Options: float, integer, None (default)
-                                    #     fmc overrides wx_date for foliar MC calculations
-            'season': None,         # Options: None (default), "Sp", "Sp-Su", "T", "Su", "F", "use_csv";
-                                    #     season overrides wx_date for fine dead fuel MC calculations
-            'time': None,           # Options: Integer in format HHMM, None (default), or string "use_csv"
-                                    #     time is only needed for CFIS (cfo_model == 10) to calculate
-                                    #     Rothermel dead fuel moisture content at a specific time of day
-        },
-        'output_params': {
-            'out_request': [
-                'mc_sa', 'mc_dmc', # Needed for FOFEM emissions modelling
-                'fsg', 'cac', 'cfo_prob',
-                'sros', 'cros', 'hros', 'bros',
-                'sfc', 'cfc', 'tfc',
-                'sfi', 'cfi', 'hfi',
-                'cfb', 'fire_type'
-            ],
-            # Leave flame_comp_out_list fixed for the time being - do not let user adjust
-            'flame_comp_out_list': [
-                'instand_ws', 'flame_length_m', 'flame_tilt', 'flame_height', 'flame_res_time', 'flame_depth'
-            ],
-        },
-    },
-    'fofem_mortality': {
-        'run_model': True,                      # Switch; Default: True
-        'plot_id_col_name': 'unique_id',        # User defined; default: 'unique_id'
-        'fofem_tree_id_col_name': 'unique_id',  # User defined; default: 'unique_id'
-    },
-    'fofem_emissions': {
-        'run_model': True,                  # Switch; Default: True
-        'model_select': 'pyfofem',          # Options: 'pyfofem', 'fof_gui'; Default: 'pyfofem'
-                                            #     pyfofem uses the pyfofem Python package to model emissions
-                                            #     fof_gui uses the USFS FOFEM GUI executable to batch model emissions
-                                            #        using "legacy" (old) emissions calculation settings
-        'plot_id_col_name': 'unique_id',    # User defined; default: 'unique_id'
-        'emissions_mode': 'expanded',       # Emissions modelling modes for pyfofem
-                                            #     Options: 'legacy', 'default', 'expanded'
-        'model_soil_heating': False,        # If True, pass SoilFamily data to pyfofem soil-heating model
-        'emissions_units': 'Imperial',      # Options: 'Imperial' (kgha), 'SI' (kg/ha)
-    },
-}
+# ## set a default fire modeling 
+# default_fire_modelling_dict = {
+#     'num_workers': max(1, os.cpu_count()-1),
+#     'conpyro': {
+#         'run_model': True,
+#         'plot_id_col_name': 'unique_id',
+#         'input_params': {
+#             'cfo_model': 5,    # Options: 1, 2, 3, 4, 5, 10, or string "use_csv" (assumes cfo_model column in csv)
+#             'sros_model': 13,  # Options: 1, 2, 3, 4, 12, 13, 20, or string "use_csv" (assumes sros_model column in csv)
+#             'cros_model': 1,   # Options: 1, 2, or string "use_csv" (assumes cros_model column in csv)
+#             'process_ladder': False,     # Toggle ladder fuel processing on/off
+#             'smooth_ros': True,          # Toggle ROS smoothing function on/off
+#             'model_terrain_effects_on_wind': True,  # Toggle terrain (slope/aspect) effects on wind speed and direction
+#             'model_terrain_effects_on_ffmc': True,  # Toggle terrain (slope/aspect) effects on FFMC
+#             'suppress_messages': True,              # Toggle ConPyro processing messages on/off
+#             'wx_date': 'use_csv',   # Options: Integer in format YYYYMMDD, or string "use_csv" (default)
+#                                     #    wx_date used for fine dead fuel and ladder foliar MC calculations
+#             'fmc': None,            # Options: float, integer, None (default)
+#                                     #     fmc overrides wx_date for foliar MC calculations
+#             'season': None,         # Options: None (default), "Sp", "Sp-Su", "T", "Su", "F", "use_csv";
+#                                     #     season overrides wx_date for fine dead fuel MC calculations
+#             'time': None,           # Options: Integer in format HHMM, None (default), or string "use_csv"
+#                                     #     time is only needed for CFIS (cfo_model == 10) to calculate
+#                                     #     Rothermel dead fuel moisture content at a specific time of day
+#         },
+#         'output_params': {
+#             'out_request': [
+#                 'mc_sa', 'mc_dmc', # Needed for FOFEM emissions modelling
+#                 'fsg', 'cac', 'cfo_prob',
+#                 'sros', 'cros', 'hros', 'bros',
+#                 'sfc', 'cfc', 'tfc',
+#                 'sfi', 'cfi', 'hfi',
+#                 'cfb', 'fire_type'
+#             ],
+#             # Leave flame_comp_out_list fixed for the time being - do not let user adjust
+#             'flame_comp_out_list': [
+#                 'instand_ws', 'flame_length_m', 'flame_tilt', 'flame_height', 'flame_res_time', 'flame_depth'
+#             ],
+#         },
+#     },
+#     'fofem_mortality': {
+#         'run_model': True,                      # Switch; Default: True
+#         'plot_id_col_name': 'unique_id',        # User defined; default: 'unique_id'
+#         'fofem_tree_id_col_name': 'unique_id',  # User defined; default: 'unique_id'
+#     },
+#     'fofem_emissions': {
+#         'run_model': True,                  # Switch; Default: True
+#         'model_select': 'pyfofem',          # Options: 'pyfofem', 'fof_gui'; Default: 'pyfofem'
+#                                             #     pyfofem uses the pyfofem Python package to model emissions
+#                                             #     fof_gui uses the USFS FOFEM GUI executable to batch model emissions
+#                                             #        using "legacy" (old) emissions calculation settings
+#         'plot_id_col_name': 'unique_id',    # User defined; default: 'unique_id'
+#         'emissions_mode': 'expanded',       # Emissions modelling modes for pyfofem
+#                                             #     Options: 'legacy', 'default', 'expanded'
+#         'model_soil_heating': False,        # If True, pass SoilFamily data to pyfofem soil-heating model
+#         'emissions_units': 'Imperial',      # Options: 'Imperial' (kgha), 'SI' (kg/ha)
+#     },
+# }
 
-if is_docker:
-    _fuel_analyst_out    = os.getenv('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst')
-    _wx_out_dir          = os.getenv('OUTPUT_WX_EXTRACT', '/app/output/wx_extract')
-    _out_dir             = os.getenv('OUTPUT_CONPYRO', '/app/output/conpyro')
-    _in_conpyro_csv_path = os.path.join(_wx_out_dir, 'conpyro_df_wx.csv')
-    _tree_csv_path       = os.path.join(_fuel_analyst_out, 'master_tree_df.csv')
-    _fofem_consume_csv_path = os.path.join(_fuel_analyst_out, 'fofem_consume_df.csv')
-else:
-    # Define input and output folders
-    examples_dir = helper.get_examples_dir(os.path.dirname(__file__))
-    _out_dir = os.path.join(examples_dir, 'results', 'conpyro')
-    # The ConPyro input dataframe must have weather data attached for ConPyro/FOFEM modelling
-    # Required weather columns for ConPyro modelling: 'ws', 'wd', 'ffmc', 'dmc', 'bui', 'temp', 'rh'
-    # Required weather columns for FOFEM mortality modelling: 'ws', 'temp'
-    _in_dir = os.path.join(examples_dir, 'results', 'wx_extract')
-    _in_conpyro_csv_path = os.path.join(_in_dir, 'conpyro_df_wx.csv')
-    _tree_csv_path = os.path.join(examples_dir, 'results', 'fuel_analyst', 'master_tree_df.csv')
-    _fofem_consume_csv_path = os.path.join(examples_dir, 'results', 'fuel_analyst', 'fofem_consume_df.csv')
+# if is_docker:
+#     _fuel_analyst_out    = os.getenv('OUTPUT_FuelAnalyst', '/app/output/fuel_analyst')
+#     _wx_out_dir          = os.getenv('OUTPUT_WX_EXTRACT', '/app/output/wx_extract')
+#     _out_dir             = os.getenv('OUTPUT_CONPYRO', '/app/output/conpyro')
+#     _in_conpyro_csv_path = os.path.join(_wx_out_dir, 'conpyro_df_wx.csv')
+#     _tree_csv_path       = os.path.join(_fuel_analyst_out, 'master_tree_df.csv')
+#     _fofem_consume_csv_path = os.path.join(_fuel_analyst_out, 'fofem_consume_df.csv')
+# else:
+#     # Define input and output folders
+#     examples_dir = helper.get_examples_dir(os.path.dirname(__file__))
+#     _out_dir = os.path.join(examples_dir, 'results', 'conpyro')
+#     # The ConPyro input dataframe must have weather data attached for ConPyro/FOFEM modelling
+#     # Required weather columns for ConPyro modelling: 'ws', 'wd', 'ffmc', 'dmc', 'bui', 'temp', 'rh'
+#     # Required weather columns for FOFEM mortality modelling: 'ws', 'temp'
+#     _in_dir = os.path.join(examples_dir, 'results', 'wx_extract')
+#     _in_conpyro_csv_path = os.path.join(_in_dir, 'conpyro_df_wx.csv')
+#     _tree_csv_path = os.path.join(examples_dir, 'results', 'fuel_analyst', 'master_tree_df.csv')
+#     _fofem_consume_csv_path = os.path.join(examples_dir, 'results', 'fuel_analyst', 'fofem_consume_df.csv')
 
-_fire_modelling_dict = default_fire_modelling_dict
+# _fire_modelling_dict = default_fire_modelling_dict
 
-    # Run ConPyro modelling
-run_conpyro(
-    out_dir=_out_dir,
-    in_conpyro_csv_path=_in_conpyro_csv_path,
-    in_tree_csv_path=_tree_csv_path,
-    in_fofem_consume_csv_path=_fofem_consume_csv_path,
-    fire_modelling_params=_fire_modelling_dict,
-)
+#     # Run ConPyro modelling
+# run_conpyro(
+#     out_dir=_out_dir,
+#     in_conpyro_csv_path=_in_conpyro_csv_path,
+#     in_tree_csv_path=_tree_csv_path,
+#     in_fofem_consume_csv_path=_fofem_consume_csv_path,
+#     fire_modelling_params=_fire_modelling_dict,
+# )
 
 
-print('ConPyro modelling complete.')
+# print('ConPyro modelling complete.')
