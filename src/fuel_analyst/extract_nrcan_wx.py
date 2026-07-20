@@ -16,12 +16,7 @@ from pyproj import CRS
 from datetime import datetime
 from typing import Optional
 from functools import reduce
-import sys
-pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..')
-if pkg_dir not in sys.path:
-    sys.path.insert(0, pkg_dir)
-
-from src.fuel_analyst.components import helper
+from .components import helper
 
 
 # Define constants for ecodivision shapefile and BCWS fire season dates by ecodivision

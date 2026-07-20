@@ -10,12 +10,7 @@ import os
 import pandas as pd
 import numpy as np
 
-try:
-    # Relative import for module usage
-    from . import helper
-except ImportError:
-    # Absolute import for script usage
-    import helper
+from . import helper
 
 
 def _calc_plants_fccs_fofem_attributes(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:

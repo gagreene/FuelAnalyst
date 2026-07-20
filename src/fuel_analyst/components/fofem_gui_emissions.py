@@ -15,14 +15,9 @@ from csv import reader as CSV
 import concurrent.futures
 from typing import Union
 
-import sys
-pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..')
-if pkg_dir not in sys.path:
-    sys.path.insert(0, pkg_dir)
-
-from fuel_analyst.components import helper
-from fuel_analyst.components import fwis_moisture_content as mc
-from dependencies.pyfofem.src.pyfofem import pyfofem as fofem, TOTAL_DURATION_CONSUMED_VARS, EQUATION_VARS, \
+from . import helper
+from . import fwis_moisture_content as mc
+from pyfofem import pyfofem as fofem, TOTAL_DURATION_CONSUMED_VARS, EQUATION_VARS, \
     SOIL_HEAT_VARS, DEFAULT_CONSUMPTION_VARS
 import tqdm
 try:

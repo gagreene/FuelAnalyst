@@ -11,12 +11,7 @@ import numpy as np
 import pandas as pd
 from typing import Union
 
-import sys
-pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..')
-if pkg_dir not in sys.path:
-    sys.path.insert(0, pkg_dir)
-
-from src.fuel_analyst.components import helper
+from .components import helper
 
 
 def _add_season_column(

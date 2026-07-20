@@ -10,12 +10,7 @@ import os
 import pandas as pd
 import numpy as np
 
-try:
-    # Relative import for module usage
-    from . import helper
-except ImportError:
-    # Absolute import for script usage
-    import helper
+from . import helper
 
 
 def process_plot_attributes(in_folder: str, out_folder: str) -> tuple[pd.DataFrame, list]:

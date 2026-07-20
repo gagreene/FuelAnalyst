@@ -11,14 +11,9 @@ from numpy import array, column_stack, full, nan
 import pandas as pd
 from typing import Optional
 
-import sys
-pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..')
-if pkg_dir not in sys.path:
-    sys.path.insert(0, pkg_dir)
-
-from src.fuel_analyst.components import helper
-from dependencies.conpyro.src.conpyro import conpyro
-from dependencies.flame_components import flame_components as fc
+from .components import helper
+from conpyro import conpyro
+import flame_components as fc
 import tqdm
 import concurrent.futures
 try:
@@ -106,7 +101,7 @@ def _calc_instand_ws(df: pd.DataFrame) -> pd.DataFrame:
     # Use Albini and Baughman (1979) model
     valid_mask = df[required_cols].notna().all(axis=1)
     df.loc[valid_mask, 'instand_ws_model'] = 'Albini and Baughman (1979)'
-    df.loc[valid_mask, 'instand_ws_mps'] = fc.getMidFlameWS(
+    df.loc[valid_mask, 'instand_ws_mps'] = fc.get_mid_flame_ws(
         wind_speed = df.loc[valid_mask, 'ws'].to_numpy(),
         canopy_cover = df.loc[valid_mask, 'canopy_cover'].to_numpy(),
         canopy_ht = df.loc[valid_mask, 'ht_ovrstry_live'].to_numpy(),
@@ -137,7 +132,7 @@ def _calc_flame_length_m(df: pd.DataFrame) -> pd.DataFrame:
     # Use Butler_HEAD model for crown fires (add value to stand height)
     crown_fire = (df['fire_type'] == 3) & (df['hfi'] >= 0)
     df.loc[crown_fire, 'flame_length_model'] = 'Butler et al. (2004)'
-    df.loc[crown_fire, 'flame_length_m'] = fc.getFlameLength(
+    df.loc[crown_fire, 'flame_length_m'] = fc.get_flame_length(
         model='Butler_HEAD',
         fire_intensity=df.loc[crown_fire, 'hfi'].to_numpy()
     ) + df.loc[crown_fire, 'ht_ovrstry_live'].to_numpy()
@@ -145,7 +140,7 @@ def _calc_flame_length_m(df: pd.DataFrame) -> pd.DataFrame:
     # Use Byram_HEAD model for other fires
     other_fire = (df['fire_type'] != 3) & (df['hfi'] >= 0)
     df.loc[other_fire, 'flame_length_model'] = 'Byram (1959)'
-    df.loc[other_fire, 'flame_length_m'] = fc.getFlameLength(
+    df.loc[other_fire, 'flame_length_m'] = fc.get_flame_length(
         model='Byram_HEAD',
         fire_intensity=df.loc[other_fire, 'hfi'].to_numpy()
     )
@@ -174,7 +169,7 @@ def _calc_flame_height(df: pd.DataFrame,
         # Use Finney model for crown fires only
         crown_fire = (df['fire_type'] == 3) & (df['hfi'] >= 0)
         df.loc[crown_fire, 'flame_ht_model'] = 'Finney and Martin (1992)'
-        df.loc[crown_fire, 'flame_ht_m'] = fc.getFlameHeight(
+        df.loc[crown_fire, 'flame_ht_m'] = fc.get_flame_height(
             model='Finney',
             flame_length=df.loc[crown_fire, 'flame_length_m'].to_numpy(),
             flame_tilt=df.loc[crown_fire, 'flame_tilt_deg'].to_numpy(),
@@ -194,7 +189,7 @@ def _calc_flame_height(df: pd.DataFrame,
         # Use Nelson model
         nelson_model = df['instand_ws_mps'].notna() & df['hfi'].notna() & df['fire_type'].notna()
         df.loc[nelson_model, 'flame_ht_model'] = 'Nelson and Adkins (1986)'
-        df.loc[nelson_model, 'flame_ht_m'] = fc.getFlameHeight(
+        df.loc[nelson_model, 'flame_ht_m'] = fc.get_flame_height(
             model='Nelson',
             flame_length=df.loc[nelson_model, 'flame_length_m'].to_numpy(),
             fire_type=df.loc[nelson_model, 'fire_type'].to_numpy(),
@@ -224,7 +219,7 @@ def _calc_flame_tilt(df: pd.DataFrame) -> pd.Series:
     # Use Butler model for crown fires
     butler_model = (df['fire_type'] == 3) & (df['hfi'] >= 0)
     df.loc[butler_model, 'flame_tilt_model'] = 'Butler et al. (2004)'
-    df.loc[butler_model, 'flame_tilt_deg'] = fc.getFlameTilt(
+    df.loc[butler_model, 'flame_tilt_deg'] = fc.get_flame_tilt(
         model='Butler',
         wind_speed=df.loc[butler_model, 'ws'].to_numpy(),
         wind_speed_units='kph',
@@ -234,7 +229,7 @@ def _calc_flame_tilt(df: pd.DataFrame) -> pd.Series:
     # Use Standard model if slope is less than 10% and not a crown fire
     standard_model = (df['fire_type'] != 3) & (df['hfi'] >= 0) & (df['slope'] <= 10)
     df.loc[standard_model, 'flame_tilt_model'] = 'Standard Geometry'
-    df.loc[standard_model, 'flame_tilt_deg'] = fc.getFlameTilt(
+    df.loc[standard_model, 'flame_tilt_deg'] = fc.get_flame_tilt(
         model='Standard',
         flame_length=df.loc[standard_model, 'flame_length_m'].to_numpy(),
         flame_height=df.loc[standard_model, 'flame_ht_m'].to_numpy()
@@ -243,7 +238,7 @@ def _calc_flame_tilt(df: pd.DataFrame) -> pd.Series:
     # Use Finney model if slope is greater than 10% and not a crown fire
     finney_model = (df['fire_type'] != 3) & (df['hfi'] >= 0) & (df['slope'] > 10)
     df.loc[finney_model, 'flame_tilt_model'] = 'Finney and Martin (1992)'
-    df.loc[finney_model, 'flame_tilt_deg'] = fc.getFlameTilt(
+    df.loc[finney_model, 'flame_tilt_deg'] = fc.get_flame_tilt(
         model='Finney',
         flame_length=df.loc[finney_model, 'flame_length_m'].to_numpy(),
         flame_height=df.loc[finney_model, 'flame_ht_m'].to_numpy(),
@@ -274,7 +269,7 @@ def _calc_flame_res_time(df: pd.DataFrame) -> pd.DataFrame:
     # Use Nelson and Adkins (1988) model
     valid_mask = df[required_cols].notna().all(axis=1)
     df.loc[valid_mask, 'flame_res_time_model'] = 'Nelson and Adkins (1988)'
-    df.loc[valid_mask, 'flame_res_time_min'] = fc.getFlameResidenceTime(
+    df.loc[valid_mask, 'flame_res_time_min'] = fc.get_flame_residence_time(
         ros=df.loc[valid_mask, 'hros'].to_numpy(),
         fuel_consumption=df.loc[valid_mask, 'tfc'].to_numpy(),
         midflame_ws=df.loc[valid_mask, 'instand_ws_mps'].to_numpy(),
@@ -304,7 +299,7 @@ def _calc_flame_depth(df: pd.DataFrame) -> pd.DataFrame:
     # Use Fons et al. (1963) model
     valid_mask = df[required_cols].notna().all(axis=1)
     df.loc[valid_mask, 'flame_depth_model'] = 'Fons et al. (1963)'
-    df.loc[valid_mask, 'flame_depth_m'] = fc.getFlameDepth(
+    df.loc[valid_mask, 'flame_depth_m'] = fc.get_flame_depth(
         ros=df.loc[valid_mask, 'hros'].to_numpy(),
         res_time=df.loc[valid_mask, 'flame_res_time_min'].to_numpy(),
     )
@@ -499,7 +494,7 @@ def _model_fofem_emissions(
 
     model_select = str(fofem_emissions_params.get('model_select', 'pyfofem')).strip().lower()
     if model_select == 'pyfofem':
-        from src.fuel_analyst.components import fofem_emissions as fe
+        from .components import fofem_emissions as fe
 
         process_emissions_kwargs = {
             'plot_wx_fire_csv_path': fire_csv_path,
@@ -512,7 +507,7 @@ def _model_fofem_emissions(
             'return_df': True,
         }
     elif model_select == 'fof_gui':
-        from src.fuel_analyst.components import fofem_gui_emissions as fe
+        from .components import fofem_gui_emissions as fe
 
         process_emissions_kwargs = {
             'plot_wx_fire_csv_path': fire_csv_path,
@@ -567,7 +562,7 @@ def _model_fofem_mortality(
     :param conpyro_params: Dictionary of ConPyro model parameters.
     :return: DataFrame with FOFEM mortality results merged.
     """
-    from src.fuel_analyst.components import fofem_mortality as fm
+    from .components import fofem_mortality as fm
 
     # Create FOFEM mortality output directory and remove any existing files if it already exists
     mortality_dir = os.path.join(out_dir, 'fofem_mortality')
@@ -654,6 +649,27 @@ def run_conpyro(
         drop_empty_rows_in_cols = ['stand_density', 'stand_type']
         for col in drop_empty_rows_in_cols:
             df = df[df[col].notna()]
+
+        # Validate that required columns are present before running ConPyro.
+        # Core weather columns must be merged in advance via extract_nrcan_wx -> merge_wx_data.
+        # temp and rh are only required when cfo_model == 10 (CFIS model).
+        # Additional columns are required for any input_params value set to 'use_csv'.
+        required_cols = ['ws', 'wd', 'ffmc', 'dmc', 'bui']
+        use_csv_params = ['wx_date', 'season', 'time', 'fmc', 'cfo_model', 'sros_model', 'cros_model']
+        for param in use_csv_params:
+            if input_params.get(param) == 'use_csv':
+                required_cols.append(param)
+        if input_params.get('cfo_model') == 10:
+            required_cols.extend(['temp', 'rh'])
+        missing_cols = helper.get_missing_df_columns(df, required_cols)
+        if missing_cols:
+            raise ValueError(
+                f'Columns required by ConPyro are missing from the input CSV: {missing_cols}. '
+                f'Weather columns (ws, wd, ffmc, dmc, bui) require running '
+                f'extract_nrcan_wx -> merge_wx_data first. '
+                f'temp and rh are additionally required when cfo_model == 10 (CFIS). '
+                f'Columns corresponding to input_params set to "use_csv" must also be present.'
+            )
 
         # ### MODEL FIRE BEHAVIOR WITH CONPYRO ###
         print('\n>>>> Running ConPyro...')

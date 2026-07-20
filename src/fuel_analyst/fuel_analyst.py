@@ -10,19 +10,14 @@ import os
 import pandas as pd
 from typing import Optional
 
-import sys
-pkg_dir = os.path.join(os.path.dirname(__file__), '..', '..')
-if pkg_dir not in sys.path:
-    sys.path.insert(0, pkg_dir)
-    
-from src.fuel_analyst.components import helper
-from src.fuel_analyst.components import plot_attributes as pa
-from src.fuel_analyst.components import plants_regen as pr
-from src.fuel_analyst.components import trees
-from src.fuel_analyst.components import canopy_cover as cc
-from src.fuel_analyst.components import woody_debris as wd
-from src.fuel_analyst.components import conpyro_attributes
-from src.fuel_analyst.components import fofem_attributes
+from .components import helper
+from .components import plot_attributes as pa
+from .components import plants_regen as pr
+from .components import trees
+from .components import canopy_cover as cc
+from .components import woody_debris as wd
+from .components import conpyro_attributes
+from .components import fofem_attributes
 
 default_stand_summary_dict = {
     'dens': {
@@ -501,10 +496,11 @@ def fuel_analyst(
     }
 
     if stand_summary_params is None:
-        stand_summary_params = default_stand_summary_dict
+        stand_summary_params = default_stand_summary_dict.copy()
 
     if woody_debris_params is None:
-        woody_debris_params = default_woody_debris_dict
+        woody_debris_params = default_woody_debris_dict.copy()
+        woody_debris_params['woody_debris_classes'] = default_woody_debris_dict['woody_debris_classes'].copy()
 
     if conpyro_params is None:
         conpyro_params = default_conpyro_dict
@@ -514,14 +510,15 @@ def fuel_analyst(
 
     if gen_conpyro_df:
         # Verify all forms are present for ConPyro generation
-        for form in form_select_list:
-            in_path = os.path.join(in_dir, dir_dict.get(form))
-            missing_forms = [form for form in form_select_list if not os.path.exists(in_path)]
-            if missing_forms:
-                raise FileNotFoundError(
-                    f'All Survey123 forms are required to generate the ConPyro DataFrame. '
-                    f'The following forms are missing:\n{missing_forms}.'
-                )
+        missing_forms = [
+            form for form in form_select_list
+            if not os.path.exists(os.path.join(in_dir, dir_dict.get(form)))
+        ]
+        if missing_forms:
+            raise FileNotFoundError(
+                f'All Survey123 forms are required to generate the ConPyro DataFrame. '
+                f'The following forms are missing:\n{missing_forms}.'
+            )
 
         stand_summary_params.update(
             {k: v for k, v in conpyro_params['stand_attributes'].items()}
@@ -554,16 +551,19 @@ def fuel_analyst(
         in_path = os.path.join(in_dir, dir_dict.get(form))
         out_path = os.path.join(out_dir, dir_dict.get(form))
 
-        # Check if the input path exists
-        if not os.path.exists(in_path):
-            print(f'Warning: Input folder for {form} does not exist: {in_path}')
-            continue
-
         # Filter the plot_df for the current form
         mask = plot_df['form_select'].str.contains(form, na=False)
 
         # Get the unique IDs for the current form
         id_list = plot_df.loc[mask, 'unique_id'].tolist()
+
+        # Check if the input path exists
+        if not os.path.exists(in_path):
+            if mask.any():
+                print(f'Warning: Input folder for {form_dict[form]} is missing but '
+                      f'{mask.sum()} plot(s) selected this form. '
+                      f'These plots will have no {form_dict[form]} data: {id_list}')
+            continue
 
         # Only process the form if there are IDs to process
         if mask.any():

@@ -1,3 +1,6 @@
+# Claude Code workflow files (personal, not for repo)
+.claude/
+
 # Python
 __pycache__/
 *.py[cod]

@@ -11,12 +11,7 @@ import pandas as pd
 import numpy as np
 import itertools
 
-try:
-    # Relative import for module usage
-    from . import helper
-except ImportError:
-    # Absolute import for script usage
-    import helper
+from . import helper
 
 
 # GENERAL LIST OF CONIFER SPECIES IN BC
@@ -43,6 +38,16 @@ tree_component_index_dict = {
     'branches': 2,
     'foliage': 3
 }
+
+# Decay class thresholds for "dead/more decayed" classification
+# Conifer: classes 1-9; class >=6 treated as dead (use modeled height, degraded biomass)
+# Broadleaf: classes 1-6; class >=5 treated as dead
+_DEAD_DECAY_THRESHOLD_CONIFER = 6
+_DEAD_DECAY_THRESHOLD_BROADLEAF = 5
+
+# Sentinel value entered in the field to indicate bark char reached full tree height.
+# Replaced with actual tree height before flame length is calculated.
+_CROWN_FIRE_CHAR_SENTINEL = 444
 
 tree_conifer_decay_class_dict = {
     1: [1, 1, 1, 1],
@@ -749,14 +754,16 @@ def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> p
             mask_live = (
                 (tree_df.tree_species == spp) &
                 (tree_df.tree_dcy_class > 0) &
-                ((tree_df.tree_dcy_class_cnfr < 6) | (tree_df.tree_dcy_class_brdlf < 5)) &
+                ((tree_df.tree_dcy_class_cnfr < _DEAD_DECAY_THRESHOLD_CONIFER) |
+                 (tree_df.tree_dcy_class_brdlf < _DEAD_DECAY_THRESHOLD_BROADLEAF)) &
                 (tree_df.tree_dbh > 0) &
                 (tree_df.tree_ht > 0)
             )
             mask_dead = (
                 (tree_df.tree_species == spp) &
                 (tree_df.tree_dcy_class > 0) &
-                ((tree_df.tree_dcy_class_cnfr >= 6) | (tree_df.tree_dcy_class_brdlf >= 5)) &
+                ((tree_df.tree_dcy_class_cnfr >= _DEAD_DECAY_THRESHOLD_CONIFER) |
+                 (tree_df.tree_dcy_class_brdlf >= _DEAD_DECAY_THRESHOLD_BROADLEAF)) &
                 (tree_df.tree_dbh > 0) &
                 (tree_df.tree_ht > 0)
             )
@@ -971,15 +978,18 @@ def _calc_tree_fire_attributes(tree_df: pd.DataFrame, surface_fire_intensity_mod
     """
     print('\tCalculating fire metrics (Fireline Intensity, Flame Length)')
 
+    # ### RESOLVE SENTINEL BARK CHAR HEIGHT ###
+    # A field entry of _CROWN_FIRE_CHAR_SENTINEL indicates bark char reached full tree height
+    # (crown fire). Replace sentinel with actual tree height before calculating flame length.
+    full_ht_mask = tree_df['tree_bark_char_high'] == _CROWN_FIRE_CHAR_SENTINEL
+    tree_df.loc[full_ht_mask, 'tree_bark_char_high'] = tree_df.loc[full_ht_mask, 'tree_ht']
+
     # ### ESTIMATE FLAME LENGTH ###
     # Invert the FOFEM char height equation to solve for flame length
     tree_df['tree_flame_length'] = tree_df['tree_bark_char_high'] * 1.8
 
     # ### CALCULATE VARIOUS FIRELINE INTENSITY OPTIONS ###
-    if surface_fire_intensity_model == 'Byram':
-        # Use the Byram (1959) flame length model to estimate fireline intensity (kW/m)
-        surface_model = (tree_df['tree_flame_length'] / 0.0775) ** (1 / 0.46)
-    elif surface_fire_intensity_model == 'Thomas':
+    if surface_fire_intensity_model == 'Thomas':
         # Use the Thomas (1963) flame length model to estimate fireline intensity (kW/m)
         surface_model = (tree_df['tree_flame_length'] / 0.026700) ** (3 / 2)
     else:
@@ -992,9 +1002,7 @@ def _calc_tree_fire_attributes(tree_df: pd.DataFrame, surface_fire_intensity_mod
     crown_model = (tree_df['tree_flame_length'] / 0.017500) ** (3 / 2)
 
     # ### ESTIMATE FIRELINE INTENSITY ###
-    # Set bark char heights of 444 to the tree height
-    full_ht_mask = tree_df['tree_bark_char_high'] == 444
-    # Estimate fireline intensity based on the full_ht_mask
+    # Use crown fire model where bark char reached full tree height, surface model otherwise
     tree_df['tree_fire_intensity'] = np.where(full_ht_mask, crown_model, surface_model)
 
     return tree_df
@@ -1155,12 +1163,12 @@ def _calc_tree_missing_heights(tree_df: pd.DataFrame, tree_params_df: pd.DataFra
     # Set of valid species codes present in the data
     spp_set = set(tree_df['tree_species'].dropna())
 
-    # Mask for trees missing heights (decay class conifer < 6 or broadleaf < 5, and valid DBH)
+    # Mask for trees missing heights (less-decayed, and valid DBH)
     mask_missing = (
         (tree_df['tree_dens_ha'] > 0) &
         (
-            (tree_df['tree_dcy_class_cnfr'] < 6) |
-            (tree_df['tree_dcy_class_brdlf'] < 5)
+            (tree_df['tree_dcy_class_cnfr'] < _DEAD_DECAY_THRESHOLD_CONIFER) |
+            (tree_df['tree_dcy_class_brdlf'] < _DEAD_DECAY_THRESHOLD_BROADLEAF)
         ) &
         tree_df['tree_ht'].isnull() &
         tree_df['tree_dbh'].notnull()
@@ -1171,11 +1179,11 @@ def _calc_tree_missing_heights(tree_df: pd.DataFrame, tree_params_df: pd.DataFra
     # Assign modeled heights to dead trees with missing height values
     tree_df.loc[mask_missing, 'tree_ht'] = tree_df.loc[mask_missing, 'tree_ht_modeled']
 
-    # Mask for dead trees (decay class conifer >= 6 or broadleaf >= 5, and valid DBH)
+    # Mask for dead/more-decayed trees (use modeled height, and valid DBH)
     mask_dead = (
         (
-            (tree_df['tree_dcy_class_cnfr'] >= 6) |
-            (tree_df['tree_dcy_class_brdlf'] >= 5)
+            (tree_df['tree_dcy_class_cnfr'] >= _DEAD_DECAY_THRESHOLD_CONIFER) |
+            (tree_df['tree_dcy_class_brdlf'] >= _DEAD_DECAY_THRESHOLD_BROADLEAF)
         ) &
         tree_df['tree_dbh'].notnull()
     )
