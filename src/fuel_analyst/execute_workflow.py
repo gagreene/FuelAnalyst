@@ -67,7 +67,7 @@ if is_docker:
 else:
     test_dir       = os.path.join(os.path.dirname(__file__), 'tests', 'results', 'fuel_analyst')
     ## local VRI location 
-    _BEC_shp_dir   = "C:/Users/ssmithtr/Desktop/CleanTest/BEC_data\VEG_COMP_LYR_R1_POLY_2025.gdb"
+    _BEC_shp_dir   = "C:/Users/ssmithtr/Desktop/CleanTest/BEC_data/VEG_COMP_LYR_R1_POLY_2025.gdb"
     if os.path.isdir(_BEC_shp_dir):
         print('Error: Local version of BC VRI not detected - please adjust')
     _plot_pts_path = os.path.join(test_dir, 'conpyro_df.csv')
