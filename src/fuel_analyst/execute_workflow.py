@@ -9,11 +9,11 @@ from .extract_nrcan_wx import extract_weather_data
 from .merge_wx_data import merge_weather_data
 
 
-from src.fuel_analyst.components import helper, trees, conpyro_attributes, fofem_attributes
-from src.fuel_analyst.components import plot_attributes as pa
-from src.fuel_analyst.components import plants_regen as pr
-from src.fuel_analyst.components import canopy_cover as cc
-from src.fuel_analyst.components import woody_debris as wd
+from fuel_analyst.components import helper, trees, conpyro_attributes, fofem_attributes
+from fuel_analyst.components import plot_attributes as pa
+from fuel_analyst.components import plants_regen as pr
+from fuel_analyst.components import canopy_cover as cc
+from fuel_analyst.components import woody_debris as wd
 from .extract_BECType import _load_plots, _extract_BECType, infill_bec_data
 
 # ── Environment detection ────────────────────────────────────────────────────
