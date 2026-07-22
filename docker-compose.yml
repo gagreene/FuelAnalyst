@@ -32,6 +32,7 @@ services:
       ##  BEC DATA 
       BEC_DATA_DIR: /app/BEC_data
       ## output folders (in order of running)
+      OUTPUT_DIR: /app/output
       OUTPUT_CHECK_DIR: /app/output/data_check
       OUTPUT_FuelAnalyst: /app/output/fuel_analyst
       OUTPUT_FBP: /app/output/fbp_fuel_typing
