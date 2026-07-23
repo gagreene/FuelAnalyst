@@ -273,7 +273,7 @@ def export_set(in_dir: str, out_dir: str, form_select_list: list,
         out_dirs[form] = path
     
     return out_dirs
-def plot_data_check(in_dir: str, dir_dict: dict, out_dir: str) -> pd.DataFrame:
+def plot_data_check(in_dir: str, dir_dict: dict, check_dir = str) -> pd.DataFrame:
     """Read the survey file(s) in each Survey123 form directory, generate a unique_id
     for each form's records, and compare which unique_ids are present across forms.
 
@@ -317,9 +317,6 @@ def plot_data_check(in_dir: str, dir_dict: dict, out_dir: str) -> pd.DataFrame:
     )
     mismatches = membership[membership['missing_from_forms'] != '']
     # All error/flagged files go in one shared data_check folder under out_dir
-    check_dir = os.path.join(out_dir, 'data_check')
-    os.makedirs(check_dir, exist_ok=True)
-
     if not mismatches.empty:
         mismatch_path = os.path.join(check_dir, 'unique_id_mismatches.csv')
         helper.export_csv(mismatches, mismatch_path)
@@ -330,22 +327,19 @@ def plot_data_check(in_dir: str, dir_dict: dict, out_dir: str) -> pd.DataFrame:
 
     return membership
 # ────────────────────────────────────────────────────────────
-def plot_attributes_read(in_dir: str, out_dirs: dict, spatial: bool = False) -> pd.DataFrame:
+def plot_attributes_read(in_dir: str, out_dirs: dict, check_dir,
+                         spatial: bool = False) -> pd.DataFrame:
     # Resolve this form's output folder from the export_set dict
     if 'plot' not in out_dirs:
         raise KeyError(
             "No 'plot' entry in out_dirs. Include 'plot' in the form_select_list "
             "passed to export_set so its output folder gets created."
         )
-    out_dir = out_dirs['plot']
-
+    outputs = out_dirs['plot']
     plot_dir = os.path.join(in_dir, dir_dict.get('plot'))
-    print(plot_dir)
-
     # List all survey CSVs in the plot directory
     plot_files = sorted(f for f in os.listdir(plot_dir)
                         if f.startswith('survey_0') and f.endswith('.csv'))
-    print(plot_files)
 
     survey_file = os.path.join(plot_dir, plot_files[0]) if plot_files else None
     if not survey_file:
@@ -356,10 +350,7 @@ def plot_attributes_read(in_dir: str, out_dirs: dict, spatial: bool = False) -> 
     # Load plots as geodataframe and check for missing lat/long values
     plot_gdf = _load_plots(survey_file, lat='y', lon='x')
     plot_gdf = get_unique_id_strip(plot_gdf)
-# All error/flagged files go in one shared data_check folder under out_dir
-    check_dir = os.path.join(out_dir, 'data_check')
-    os.makedirs(check_dir, exist_ok=True)
-
+    # All error/flagged files go in one shared data_check folder under out_dir
     # Attribute range check: elevation, slope, aspect
     plot_gdf['flagged_attributes'] = (
         plot_gdf['plot_elevation'].lt(0) | plot_gdf['plot_elevation'].gt(3500) |
@@ -399,10 +390,11 @@ def plot_attributes_read(in_dir: str, out_dirs: dict, spatial: bool = False) -> 
     add_columns = [col for col in plot_gdf.columns.tolist() if col not in remove_columns]
    
     # Save datasets
-    os.makedirs(out_dir, exist_ok=True)
-    helper.export_csv(plot_gdf, os.path.join(out_dir, 'survey_0.csv'))
+    os.makedirs(outputs, exist_ok=True)
+    outputs_f = os.path.join(outputs, 'survey_0.csv')
+    plot_gdf.to_csv(outputs_f, index=False)
     if spatial:
-        plot_gdf.to_file(os.path.join(out_dir, 'survey_0.gpkg'), driver='GPKG')
+        plot_gdf.to_file(os.path.join(outputs, 'survey_0.gpkg'), driver='GPKG')
 
     return plot_gdf, add_columns
 ## using the plot_dt and unique ID column, create the next layer of data, the fpb_prep_csv 
@@ -435,83 +427,53 @@ def extract_BEC(plot_gdf: 'gpd.GeoDataFrame',
             output_path=gpkg_out_path
             )
     return bec_info_df
-
-def subplot_data(in_dir: str, dir_dict: dict,
-                 dir_get: str = None,
+def subplot_data(in_dir: str, form: str, check_dir: str,
                  file_prefix: str = 'survey_0',
-                 merge_plot: bool = False,
-                 plot_df: pd.DataFrame = None,
-                 out_dirs: dict = None) -> pd.DataFrame:
-    """Read one subplot file from a Survey123 form directory and optionally merge with plot data.
+                 plot_df: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Read one subplot CSV from a Survey123 form directory, optionally merged onto plot data.
 
     Args:
-        in_dir (str): Input directory containing the Survey123 form directories.
-        dir_dict (dict): Maps form names to their directory names.
-        dir_get (str): Which form directory to read (e.g. 'trees', 'plants', 'cover', 'woody').
-        file_prefix (str): Filename prefix to select within that directory (e.g.
-            'survey_0', 'tree_plot', 'sapling'). The first matching '*.csv' is read.
-        merge_plot (bool): Whether to merge plot data onto the subplot data. Defaults to False.
-        plot_df (pd.DataFrame): Parent plot data to merge onto subplot data.
-        out_dirs (dict): The {form: path} lookup from export_set. Flagged/error files
-            go in a 'data_check' subfolder of this form's output dir.
-
-    Returns:
-        pd.DataFrame: The subplot data, merged with plot data when merge_plot is True.
+        in_dir: Directory containing the Survey123 form directories.
+        form: Which form to read — a key of the module-level dir_dict
+            (e.g. 'trees', 'plants', 'cover', 'woody').
+        check_dir: Where flagged/mismatch CSVs are written.
+        file_prefix: Filename prefix within that directory. First match wins.
+        plot_df: Parent plot data. When given, subplot rows are merged onto it;
+            when None, the subplot table is returned as read.
     """
-    if dir_get is None:
-        raise ValueError('dir_get parameter is required')
-    if out_dirs is None or dir_get not in out_dirs:
-        raise KeyError(
-            f"No '{dir_get}' entry in out_dirs. Include '{dir_get}' in the "
-            "form_select_list passed to export_set so its output folder gets created."
-        )
+    if form not in dir_dict:
+        raise KeyError(f"Unknown form {form!r}. Expected one of: {sorted(dir_dict)}")
 
-    check_dir = os.path.join(out_dirs[dir_get], 'data_check')
-    os.makedirs(check_dir, exist_ok=True)
+    print(f"Reading '{file_prefix}' data from '{form}'")
+    plot_dir = os.path.join(in_dir, dir_dict[form])
 
-    print(f"Reading '{file_prefix}' data from '{dir_get}'")
-    plot_dir = os.path.join(in_dir, dir_dict.get(dir_get))
-
-    # Select the first CSV matching the requested prefix
     plot_files = sorted(f for f in os.listdir(plot_dir)
                         if f.startswith(file_prefix) and f.endswith('.csv'))
-    survey_file = os.path.join(plot_dir, plot_files[0]) if plot_files else None
-    if not survey_file:
+    if not plot_files:
         raise FileNotFoundError(f"No '{file_prefix}*.csv' file found in: {plot_dir}")
 
-    # Generate the unique_id column and calculate attributes
-    tree_df = helper.get_df(survey_file)
-    tree_df = get_unique_id_strip(tree_df)
-    tree_df = _calc_plot_multipliers(tree_df)
-
-    if not merge_plot:
-        return tree_df
+    tree_df = _calc_plot_multipliers(get_unique_id_strip(helper.get_df(
+        os.path.join(plot_dir, plot_files[0]))))
 
     if plot_df is None:
-        raise ValueError('Need parent plot data to merge on')
+        return tree_df
 
-    sfx = f'_{dir_get}'   # suffix matches the form being read (e.g. '_trees', '_plants')
-    out_df = pd.merge(plot_df, tree_df, on='unique_id', how='left', suffixes=('_plot', sfx))
-    sfx = f'_{dir_get}'
+    sfx = f'_{form}'
     out_df = pd.merge(plot_df, tree_df, on='unique_id', how='left', suffixes=('_plot', sfx))
 
-    # Coordinate mismatch check — only when both frames carried x/y (columns collided)
     x_sub, y_sub = f'x{sfx}', f'y{sfx}'
-    coord_cols = {x_sub, y_sub, 'x_plot', 'y_plot'}
-    if coord_cols.issubset(out_df.columns):
-        coord_mismatch = (out_df[x_sub] != out_df['x_plot']) | (out_df[y_sub] != out_df['y_plot'])
-        if coord_mismatch.any():
-            mismatches = out_df[coord_mismatch]
-            print(f"Warning: {len(mismatches)} rows have mismatched X or Y coordinates")
-            mismatches[['unique_id', x_sub, 'x_plot', y_sub, 'y_plot']].to_csv(
+    if {x_sub, y_sub, 'x_plot', 'y_plot'}.issubset(out_df.columns):
+        mismatch = (out_df[x_sub] != out_df['x_plot']) | (out_df[y_sub] != out_df['y_plot'])
+        if mismatch.any():
+            print(f'Warning: {mismatch.sum()} rows have mismatched X or Y coordinates')
+            out_df.loc[mismatch, ['unique_id', x_sub, 'x_plot', y_sub, 'y_plot']].to_csv(
                 os.path.join(check_dir, 'coordinate_mismatches.csv'), index=False)
         out_df = out_df.drop(columns=[x_sub, y_sub])
 
-    # Normalize plot coords to X/Y if present
     rename = {c: c.upper().replace('_PLOT', '') for c in ('x_plot', 'y_plot') if c in out_df.columns}
     return out_df.rename(columns=rename)
 def tree_data_read(in_dir: str, out_dirs: dict, 
-                   dir_dict: dict):
+                   dir_dict: dict, check_dir = str):
     """Read, validate, merge, and export individual-tree and sapling data.
 
     Reads the first 'tree_plot*.csv' and 'sapling*.csv' from the Trees form
@@ -539,8 +501,6 @@ def tree_data_read(in_dir: str, out_dirs: dict,
     # Create export folder locations 
     plot_dir = os.path.join(in_dir, dir_dict.get('trees'))
     out_dir = out_dirs['trees']                       # assign first
-    check_dir = os.path.join(out_dir, 'data_check')   # then use it
-    os.makedirs(check_dir, exist_ok=True)
     ## read necessary tree data 
     tree_params_df = helper.get_df(
         os.path.join(os.path.dirname(__file__), 'supporting_data', 'tree_parameters.csv')
@@ -554,8 +514,7 @@ def tree_data_read(in_dir: str, out_dirs: dict,
         raise FileNotFoundError(f'No individual tree data found in {plot_dir}')
     ind_tree_df = helper.get_df(survey_file)
     # Validate for reporting only — keep the full dataset
-    tree_data_check(ind_tree_df, os.path.join(check_dir, 'trees'))
-
+    tree_data_check(ind_tree_df, check_dir = check_dir, label = 'tree')
     # --- sapling data ---
     sapling_files = sorted(f for f in os.listdir(plot_dir)
                            if f.startswith('sapling') and f.endswith('.csv'))
@@ -568,27 +527,25 @@ def tree_data_read(in_dir: str, out_dirs: dict,
     sapling_df = trees._calc_sapling_dbh(sapling_df)
     sapling_df = trees._calc_sapling_ht(sapling_df, tree_params_df)
     ## check for errors
-    tree_data_check(sapling_df, os.path.join(check_dir, 'saplings'))
-
+    tree_data_check(sapling_df, check_dir=check_dir, label = 'sapling')
     # --- merge saplings into trees (needed for stand calculations), then round ---
     trees_df = trees._merge_saplings_to_trees(ind_tree_df, sapling_df)
     trees_df = trees._round_tree_data(trees_df)
-
     # --- export ---
     os.makedirs(out_dir, exist_ok=True)
-    helper.export_csv(sapling_df,  os.path.join(out_dir, 'sapling_1.csv'))
-    helper.export_csv(ind_tree_df, os.path.join(out_dir, 'tree_plot_2.csv'))
-
+    sapling_df.to_csv(os.path.join(out_dir, 'sapling_1.csv'))
+    ind_tree_df.to_csv(os.path.join(out_dir, 'tree_plot_2.csv'))
     return trees_df
-def tree_data_check(in_df: pd.DataFrame, out_dir: str = '.') -> pd.DataFrame:
+def tree_data_check(in_df: pd.DataFrame, check_dir: str, label: str = 'tree') -> pd.DataFrame:
     """Flag tree/sapling records with out-of-range values or crown base height >= height.
 
     Columns are matched by measurement suffix (_dbh, _ht, _cbh), so any prefix
     works (tree_dbh, sapling_live_dbh, sapling_dead_cbh, ...). The cbh >= ht
     check pairs columns sharing a prefix (sapling_live_cbh vs sapling_live_ht).
 
-    Returns flagged records (one row per tree, 'flags' lists every failed check),
-    or an empty frame if all pass.
+    Writes only the flagged records to check_dir/flagged_{label}_data.csv; nothing
+    is written when every record passes. Returns the flagged records ('flags'
+    lists every failed check), or an empty frame if all pass.
     """
     if in_df is None or in_df.empty:
         return in_df
@@ -620,20 +577,21 @@ def tree_data_check(in_df: pd.DataFrame, out_dir: str = '.') -> pd.DataFrame:
         ht, cbh = ht_cols[pfx], cbh_cols[pfx]
         masks[f'{cbh}>={ht}'] = num[cbh].ge(num[ht])   # swap .ge -> .lt for literal ht>cbh
 
-    flags = pd.DataFrame(masks)
+    flags = pd.DataFrame(masks, index=in_df.index)
     invalid = flags.any(axis=1)
+
     if not invalid.any():
-        print('All tree records passed the value checks.')
+        print(f'All {label} records passed the value checks.')
         return in_df.iloc[:0].copy()
 
     out = in_df.loc[invalid].copy()
     out['flags'] = flags.loc[invalid].apply(lambda r: ','.join(flags.columns[r]), axis=1)
 
-    out_dir = os.path.abspath(out_dir)
-    os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, 'flagged_tree_data.csv')
-    helper.export_csv(out, path)
-    print(f'Warning: {len(out)} tree records flagged. Saved to: {path}')
+    os.makedirs(check_dir, exist_ok=True)
+    path = os.path.join(check_dir, f'flagged_{label}_data.csv')
+    out.to_csv(path, index=False)
+    print(f'Warning: {invalid.sum()} of {len(in_df)} {label} records flagged. Saved to: {path}')
+
     return out
 def tree_calculations(in_df,
                       ind_tree_df,
@@ -646,7 +604,7 @@ def tree_calculations(in_df,
     ).set_index('Species')
 
     df = trees._round_plot_data(in_df)
-    df = trees._calc_plot_multipliers(df)                       # df, not in_df
+    df = trees._calc_plot_multipliers(df)           
 
     df, add_columns = trees._calc_stand_composition(df, ind_tree_df, gen_conpyro_df=True)
     keep_columns.extend(add_columns)
@@ -654,7 +612,9 @@ def tree_calculations(in_df,
     keep_columns.extend(add_columns)
 
     os.makedirs(out_dir, exist_ok=True)
-    helper.export_csv(df, os.path.join(out_dir, 'survey_0.csv'))  # out_dir, not out_dirs
+    path = os.path.join(out_dir, 'survey_0.csv')
+    df.to_csv(path)
+    print(f"Stand level attributes calculated and saved to {path}")
     return df, helper.sort_list(keep_columns)
  
 # Test routine for calculating FBP fuel types
@@ -662,35 +622,31 @@ if __name__ == '__main__':
     # Base paths from env
     _in_dir  = os.getenv('DATA_BASE_DIR', '/app/input_data')
     _out_dir = os.getenv('OUTPUT_DIR', '/app/output')   # form folders + data_check live under here
+    _check_dir = _out_dir + '/data_check'
+    os.makedirs(_check_dir, exist_ok=True)
     _BEC_shp_dir = os.path.join(os.getenv('BEC_DATA_DIR', '/app/BEC_data'),
                                 'VEG_COMP_LYR_R1_POLY_2025.gdb')
     os.makedirs(_out_dir, exist_ok=True)
-    print(_BEC_shp_dir)
-
     form_select_list = ['plot', 'plants', 'trees', 'cover', 'woody']
-
     # 1. Validate input form dirs and create one output folder per form -> {form: path}
     out_dirs = export_set(_in_dir, _out_dir, form_select_list, dir_dict)
     print(out_dirs)
     # 2. Cross-form unique_id membership check
     print('Checking which plots/unique_ids are present across all forms...')
-    plot_data_check(_in_dir, dir_dict, _out_dir)
-
+    plot_data_check(_in_dir, dir_dict, _check_dir)
     # 3. Plot attributes
     print('Reading plot level data and checking for outliers / missing values...')
-    plots, cols = plot_attributes_read(_in_dir, out_dirs, spatial=False)
+    plots, cols = plot_attributes_read(_in_dir, out_dirs,_check_dir, spatial=False)
 
     # 4. Extract BEC type (writes plots.gpkg when write_sf=True)
     bec_info_df = extract_BEC(plots, vri_polygon=_BEC_shp_dir, write_sf=True)
-
     # 5. Subplot (tree) data merged onto the BEC-joined plot data
     print('Reading tree level data and checking for outliers / missing values...')
-    tree_df = subplot_data(in_dir=_in_dir, dir_dict=dir_dict, dir_get='trees',
-                       file_prefix='survey_0', merge_plot=True, plot_df=bec_info_df,
-                       out_dirs=out_dirs)
+
+    tree_df = subplot_data(_in_dir, 'trees', _check_dir, plot_df=bec_info_df)
     # 6. Individual-tree data -> Read 
     print('Reading individual tree data and calculating stand-level attributes...')
-    ind_trees = tree_data_read(in_dir=_in_dir, out_dirs=out_dirs, dir_dict=dir_dict)
+    ind_trees = tree_data_read(in_dir=_in_dir, out_dirs=out_dirs, dir_dict=dir_dict, check_dir=_check_dir)
     # y. Individual-tree data -> Stand Level Attributes 
     out_trees = tree_calculations(in_df = tree_df, ind_tree_df = ind_trees, 
                                   out_dirs = out_dirs, 
