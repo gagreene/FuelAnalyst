@@ -16,6 +16,7 @@ from fuel_analyst.components import plot_attributes as pa
 from fuel_analyst.extract_BECType import _load_plots, _extract_BECType  
 from fuel_analyst.components import helper
 from fuel_analyst.components import trees
+from fuel_analyst.fuel_analyst import default_conpyro_dict, default_stand_summary_dict
 # ── Environment detection ────────────────────────────────────────────────────
 is_docker = os.path.exists('/.dockerenv')
 # set folder structures 
@@ -26,159 +27,6 @@ dir_dict = {
     'cover': '4_Canopy_Cover',
     'woody': '5_Woody_Debris'
 }
-## set default dictionary
-
-default_stand_summary_dict = {
-    'dens': {
-        'att_source': 'dens',  # This could be user specified/adjusted
-        'override_field_name': False, # This is fixed as False for stand summaries
-        'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
-        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
-        'metrics': ['sum'],  # These options are fixed
-        'units': 'tpha',  # This option is fixed
-        'classes': {
-            'dbh': [0, 5, 7.5, 12.5, float('inf')]
-        },
-    },
-    'ba': {
-        'att_source': 'ba',  # This could be user specified/adjusted
-        'override_field_name': False, # This is fixed as False for stand summaries
-        'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
-        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
-        'metrics': ['sum'],  # These options are fixed
-        'units': 'm2pha',  # This option is fixed
-        'classes': {
-            'dbh': [0, 5, 7.5, 12.5, float('inf')]
-        },
-    },
-    'ht': {
-        'att_source': 'ht',  # This could be user specified/adjusted
-        'override_field_name': False, # This is fixed as False for stand summaries
-        'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
-        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
-        'metrics': ['max', 'mean'],  # These are the only options
-        'units': 'm',  # This option is fixed
-        'classes': {
-            'dbh': [0, 5, float('inf')]
-        },
-    },
-    'cbh': {
-        'att_source': 'cbh',  # This could be user specified/adjusted
-        'override_field_name': False, # This is fixed as False for stand summaries
-        'summary': ['total', 'live', 'conifer', 'broadleaf'],  # These are the only options
-        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
-        'metrics': ['min', 'max', 'mean'],  # These are the only options
-        'units': 'm',  # This option is fixed
-        'classes': {
-            'dbh': [0, 5, float('inf')]
-        },
-    },
-    'dcbh': {
-        'att_source': 'dcbh',  # This could be user specified/adjusted
-        'override_field_name': False, # This is fixed as False for stand summaries
-        'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
-        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
-        'metrics': ['min', 'max', 'mean'],  # These are the only options
-        'units': 'm',  # This option is fixed
-        'classes': {
-            'dbh': [0, 5, float('inf')]
-        },
-    },
-    'fsg': {
-        'att_source': 'fsg',  # This could be user specified/adjusted
-        'override_field_name': False, # This is fixed as False for stand summaries
-        'summary': ['total', 'live', 'dead', 'conifer', 'broadleaf'],  # This is the default
-        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
-        'metrics': ['min', 'max', 'mean'],  # These are the only options
-        'units': 'm',  # This option is fixed
-        'classes': {
-            'dbh': [0, 5, float('inf')]
-        },
-    },
-    'cfl': {
-        'att_source': 'cfl',  # This could be user specified/adjusted
-        'override_field_name': False, # This is fixed as False for stand summaries
-        'summary': ['live', 'conifer'],  # This is the default
-        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
-        'metrics': ['min', 'max', 'mean', 'sum'],  # These are the only options
-        'units': 'kgpm2',  # This option is fixed
-        'classes': {
-            'dbh': [0, 5, float('inf')]
-        },
-    },
-    'cbd': {
-        'att_source': 'cbd',  # This could be user specified/adjusted
-        'override_field_name': False, # This is fixed as False for stand summaries
-        'summary': ['live', 'conifer'],  # This is the default
-        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
-        'metrics': [],  # This is fixed as empty (no user options)
-        'units': 'kgpm3',  # This option is fixed
-        'classes': {
-            'dbh': [0, 5, float('inf')]
-        },
-    },
-    'foliage': {
-        'att_source': 'foliage',  # This could be user specified/adjusted
-        'override_field_name': False, # This is fixed as False for stand summaries
-        'summary': ['live', 'conifer', 'broadleaf'],  # These are all live trees
-        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
-        'metrics': ['sum'],  # This is the only option
-        'units': 'kgpm2',  # This option is fixed
-        'classes': {
-            'dbh': [0, float('inf')]
-        },
-    },
-    'branches': {
-        'att_source': 'branches',  # This could be user specified/adjusted
-        'override_field_name': False, # This is fixed as False for stand summaries
-        'summary': ['live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
-        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
-        'metrics': ['sum'],  # This is the only option
-        'units': 'kgpm2',  # This option is fixed
-        'classes': {
-            'dbh': [0, float('inf')]
-        },
-    },
-    'wood': {
-        'att_source': 'wood',  # This could be user specified/adjusted
-        'override_field_name': False, # This is fixed as False for stand summaries
-        'summary': ['live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
-        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
-        'metrics': ['sum'],  # This is the only option
-        'units': 'kgpm2',  # This option is fixed
-        'classes': {
-            'dbh': [0, float('inf')]
-        },
-    },
-    'bark': {
-        'att_source': 'bark',  # This could be user specified/adjusted
-        'override_field_name': False, # This is fixed as False for stand summaries
-        'summary': ['live', 'dead', 'conifer', 'broadleaf'],  # These are the only options
-        'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
-        'metrics': ['sum'],  # This is the only option
-        'units': 'kgpm2',  # This option is fixed
-        'classes': {
-            'dbh': [0, float('inf')]
-        },
-    },
-    'flame_length': {
-        'att_source': 'flame_length',  # This could be user specified/adjusted
-        'override_field_name': False, # This is fixed as False for stand summaries
-        'summary': ['total'],  # This is fixed (no user options)
-        'summary_permutation': 'exact',  # This is fixed (no user options)
-        'metrics': ['min', 'max', 'mean'],  # These are the only options
-        'units': 'm',  # This option is fixed
-    },
-    'fire_intensity': {
-        'att_source': 'fire_intensity',  # This could be user specified/adjusted
-        'override_field_name': False, # This is fixed as False for stand summaries
-        'summary': ['total'],  # This is fixed (no user options)
-        'summary_permutation': 'exact',  # This is fixed (no user options)
-        'metrics': ['min', 'max', 'mean'],  # These are the only options
-        'units': 'kWpm2',  # This option is fixed
-    },
-}
-
 # ── 1. Set Sources ──────────────────────────────────────────────────────────
 if not is_docker:
     raise ValueError('This script is intended to run in a Docker environment. Please set up the required environment variables and run within Docker.')
@@ -489,57 +337,91 @@ def subplot_data(in_dir: str, form: str, check_dir: str,
     if not plot_files:
         raise FileNotFoundError(f"No '{file_prefix}*.csv' file found in: {plot_dir}")
 
-    tree_df = _calc_plot_multipliers(get_unique_id_strip(helper.get_df(
+    sub_df = _calc_plot_multipliers(get_unique_id_strip(helper.get_df(
         os.path.join(plot_dir, plot_files[0]))))
 
     if plot_df is None:
-        return tree_df
+        return sub_df
+    if 'unique_id' not in plot_df.columns or 'unique_id' not in sub_df.columns:
+        raise KeyError("Both frames must carry 'unique_id' to align on.")
+    if 'GlobalID' not in sub_df.columns:
+        raise KeyError(f"{file_prefix} plot survey has no 'GlobalID' to take.")
+
+    shared_cols = (set(plot_df.columns) & set(sub_df.columns)) - {'unique_id'}
 
     sfx = f'_{form}'
-    out_df = pd.merge(plot_df, tree_df, on='unique_id', how='left', suffixes=('_plot', sfx))
+    out_df = pd.merge(plot_df, sub_df, on='unique_id', how='left', suffixes=('_plot', sfx))
 
-    x_sub, y_sub = f'x{sfx}', f'y{sfx}'
-    if {x_sub, y_sub, 'x_plot', 'y_plot'}.issubset(out_df.columns):
-        mismatch = (out_df[x_sub] != out_df['x_plot']) | (out_df[y_sub] != out_df['y_plot'])
-        mismatch_path = os.path.join(check_dir, 'coordinate_mismatches.csv')
-        if write_df(out_df.loc[mismatch, ['unique_id', x_sub, 'x_plot', y_sub, 'y_plot']],
-                    mismatch_path, quiet=True):
-            print(f'Warning: {int(mismatch.sum())} rows have mismatched X or Y coordinates '
-                  f'-> {mismatch_path}')
-        out_df = out_df.drop(columns=[x_sub, y_sub])
+    # Columns present in both frames (x, y, GlobalID, ...) land as suffixed
+    # pairs after the merge; resolve each pair onto sub_df's value below.
+    col_pairs = {c: (f'{c}_plot', f'{c}{sfx}') for c in shared_cols}
+    col_pairs = {c: (p, s) for c, (p, s) in col_pairs.items()
+                 if p in out_df.columns and s in out_df.columns}
 
-    rename = {c: c.upper().replace('_PLOT', '') for c in ('x_plot', 'y_plot') if c in out_df.columns}
-    return out_df.rename(columns=rename)
-def tree_data_read(in_dir: str, out_dirs: dict, 
-                   dir_dict: dict, check_dir = str):
-    """Read, validate, merge, and export individual-tree and sapling data.
+    mismatch = pd.Series(False, index=out_df.index)
+    for c, (p, s) in col_pairs.items():
+        mismatch |= out_df[p].ne(out_df[s]) & ~(out_df[p].isna() & out_df[s].isna())
+
+    cols_to_report = ['unique_id'] + [x for pair in col_pairs.values() for x in pair]
+    mismatch_path = os.path.join(check_dir, f'{form}_attribute_mismatches.csv')
+    if write_df(out_df.loc[mismatch, cols_to_report], mismatch_path, quiet=True):
+        print(f'Warning: {int(mismatch.sum())} row(s) have mismatched values in '
+              f'{sorted(col_pairs)} -> {mismatch_path}')
+
+    for c, (p, s) in col_pairs.items():
+        out_df[c] = out_df[s]
+    out_df = out_df.drop(columns=[x for pair in col_pairs.values() for x in pair])
+
+    missing = out_df['GlobalID'].isna()
+    if missing.any():
+        print(f'Warning: {int(missing.sum())} plot(s) have no matching {form}-survey '
+              f'GlobalID (in plot attributes but not in {dir_dict[form]}/{file_prefix}).')
+
+    return out_df
+
+
+def _check_step_output(df: pd.DataFrame, step: str) -> pd.DataFrame:
+    """Print an error if a computation step returned an empty DataFrame, then pass it through."""
+    if df is None or df.empty:
+        print(f'Error: {step} returned an empty DataFrame.')
+    return df
+
+
+def tree_data_read(in_dir: str, out_dirs: dict, dir_dict: dict,
+                   plot_df: pd.DataFrame, check_dir: str,
+                   surface_fire_intensity_model: str = 'Byram') -> pd.DataFrame:
+    """Read, validate, merge, and fully compute individual-tree + sapling data.
 
     Reads the first 'tree_plot*.csv' and 'sapling*.csv' from the Trees form
-    directory, validates each for reporting, merges saplings into the tree table
-    (required for stand-level calculations), rounds the result, exports both raw
-    tables, and returns the merged frame.
+    directory, validates each for reporting, computes sapling attributes, merges
+    saplings into the tree table, then runs the full per-tree attribute chain
+    (dbh/decay classes, type, density, basal area, modeled heights, cbh, fsg,
+    crown depth, biomass, crown fuels, FOFEM, fire behaviour, weighted attrs).
+    Exports the sapling and computed tree tables and returns the computed tree
+    frame, ready for the stand-level calculations in tree_calculations.
 
     Args:
-        in_dir (str): Input directory of Survey123 form directories (Trees resolved
-            via dir_dict['trees']).
-        out_dirs (dict): dictionary of output folders keyed by form.
+        in_dir: Input directory of Survey123 form directories (Trees resolved via
+            dir_dict['trees']).
+        out_dirs: Output folders keyed by form (from export_set).
+        dir_dict: Form -> directory-name map.
+        plot_df: Plot-level frame used to assign per-tree density. MUST carry a
+            bare 'GlobalID' column matching the trees' 'ParentGlobalID', plus
+            either the multiplier columns (plot_lgtree_mult / plot_smtree_mult /
+            plot_sapling_mult) or the radius columns _calc_plot_multipliers needs
+            (lgtree_plot_radius / smtree_plot_radius / sapling_plot_radius).
+        check_dir: Where flagged CSVs are written.
+        surface_fire_intensity_model: 'Byram' (default) or 'Thomas'.
 
     Returns:
-        pd.DataFrame: Merged tree + sapling table, rounded, ready for stand-level
-        calculations.
+        pd.DataFrame: Fully-computed merged tree + sapling table.
 
     Raises:
         FileNotFoundError: If no 'tree_plot*.csv' or 'sapling*.csv' is found.
-
-    Notes:
-        tree_data_check returns only flagged rows, so its return is discarded here —
-        reassigning from it would drop all valid data. The two checks write to
-        separate files because tree_data_check names its output by label.
     """
-    # Create export folder locations 
     plot_dir = os.path.join(in_dir, dir_dict.get('trees'))
-    out_dir = out_dirs['trees']                       # assign first
-    ## read necessary tree data 
+    out_dir = out_dirs['trees']
+
     tree_params_df = helper.get_df(
         os.path.join(os.path.dirname(__file__), 'supporting_data', 'tree_parameters.csv')
     ).set_index('Species')
@@ -547,45 +429,68 @@ def tree_data_read(in_dir: str, out_dirs: dict,
     # --- individual tree data ---
     tree_files = sorted(f for f in os.listdir(plot_dir)
                         if f.startswith('tree_plot') and f.endswith('.csv'))
-    survey_file = os.path.join(plot_dir, tree_files[0]) if tree_files else None
-    if not survey_file:
+    if not tree_files:
         raise FileNotFoundError(f'No individual tree data found in {plot_dir}')
-    ind_tree_df = helper.get_df(survey_file)
-    # Validate for reporting only — keep the full dataset
-    tree_data_check(ind_tree_df, check_dir = check_dir, label = 'tree')
+    ind_tree_df = helper.get_df(os.path.join(plot_dir, tree_files[0]))
+    tree_data_check(ind_tree_df, check_dir=check_dir, label='tree')   # report only
+
     # --- sapling data ---
     sapling_files = sorted(f for f in os.listdir(plot_dir)
                            if f.startswith('sapling') and f.endswith('.csv'))
-    survey_file = os.path.join(plot_dir, sapling_files[0]) if sapling_files else None
-    if not survey_file:
+    if not sapling_files:
         raise FileNotFoundError(f'No sapling tree data found in {plot_dir}')
-    sapling_df_raw = helper.get_df(survey_file)
-    ## check for errors
-    sapling_df = tree_data_check(sapling_df_raw, check_dir=check_dir, label='sapling')
-    sapling_df = trees._calc_sapling_tree_type(sapling_df, 
-                                               tree_params_df = tree_params_df)
+    sapling_df = helper.get_df(os.path.join(plot_dir, sapling_files[0]))
+    tree_data_check(sapling_df, check_dir=check_dir, label='sapling')  # report only
+
+    # Compute sapling attributes on the FULL frame (NOT tree_data_check's return,
+    # which now carries extra 'flag'/'flags' columns — reassigning from it would
+    # push those into downstream writes/calcs unintentionally).
+    sapling_df = trees._calc_sapling_tree_type(sapling_df, tree_params_df)
     sapling_df = trees._calc_sapling_density(sapling_df)
     sapling_df = trees._calc_sapling_dbh(sapling_df)
     sapling_df = trees._calc_sapling_ht(sapling_df, tree_params_df)
-    # --- export raw tables before any derived calculation can fail ---
+
     write_df(sapling_df, os.path.join(out_dir, 'sapling_1.csv'), index=True, label='sapling_1.csv')
-    write_df(ind_tree_df, os.path.join(out_dir, 'tree_plot_2.csv'), index=True, label='tree_plot_2.csv')
 
-    # --- merge saplings into trees (needed for stand calculations), then round ---
-    trees_df = trees._merge_saplings_to_trees(ind_tree_df, sapling_df)
+    # --- merge saplings into trees, then round (order matches process_trees) ---
+    # _merge_saplings_to_trees returns a 2-tuple; unpack both, don't assign to one name.
+    trees_df, sapling_df = trees._merge_saplings_to_trees(ind_tree_df, sapling_df)
     trees_df = trees._round_tree_data(trees_df)
-    return trees_df
-    # # Calculate sapling attributes
 
-    # ## check for errors
-    # tree_data_check(sapling_df, check_dir=check_dir, label = 'sapling')
-    # # --- merge saplings into trees (needed for stand calculations), then round ---
-    # trees_df = trees._merge_saplings_to_trees(ind_tree_df, sapling_df)
-    # trees_df = trees._round_tree_data(trees_df)
-    # # --- export ---
-    # write_df(sapling_df, os.path.join(out_dir, 'sapling_1.csv'), index=True, label='sapling_1.csv')
-    # write_df(ind_tree_df, os.path.join(out_dir, 'tree_plot_2.csv'), index=True, label='tree_plot_2.csv')
-    # return trees_df
+    # --- resolve plot multipliers used by _calc_tree_density ---
+    # _calc_tree_density maps tree.ParentGlobalID -> plot.GlobalID to pick a
+    # per-plot expansion factor, so plot_df must be keyed by a bare GlobalID.
+    plot_mult_df = plot_df.copy()
+    if not {'plot_lgtree_mult', 'plot_smtree_mult',
+            'plot_sapling_mult'}.issubset(plot_mult_df.columns):
+        plot_mult_df = trees._round_plot_data(plot_mult_df)
+        plot_mult_df = trees._calc_plot_multipliers(plot_mult_df)
+
+    # --- per-tree attribute chain (formerly the middle of process_trees) ---
+
+    # Calculate tree attributes
+    trees_df = _check_step_output(trees._calc_tree_dbh_classes(trees_df), '_calc_tree_dbh_classes')
+    trees_df = _check_step_output(trees._calc_tree_decay_classes(trees_df), '_calc_tree_decay_classes')
+    trees_df = _check_step_output(trees._calc_tree_type(trees_df, tree_params_df), '_calc_tree_type')
+    trees_df = _check_step_output(trees._calc_tree_density(plot_mult_df, trees_df), '_calc_tree_density')
+    trees_df = _check_step_output(trees._calc_tree_basal_area(trees_df), '_calc_tree_basal_area')
+    trees_df = _check_step_output(trees._calc_tree_missing_heights(trees_df, tree_params_df), '_calc_tree_missing_heights')
+    trees_df = _check_step_output(trees._calc_tree_cbh(trees_df), '_calc_tree_cbh')
+    trees_df = _check_step_output(trees._calc_tree_fsg(trees_df), '_calc_tree_fsg')
+    trees_df = _check_step_output(trees._calc_tree_crown_depth(trees_df), '_calc_tree_crown_depth')
+    trees_df = _check_step_output(trees._calc_tree_biomass(trees_df, tree_params_df), '_calc_tree_biomass')
+    trees_df = _check_step_output(trees._calc_tree_crown_fuels(trees_df, tree_params_df), '_calc_tree_crown_fuels')
+    # Calculate FOFEM tree attributes
+    trees_df = _check_step_output(trees._calc_tree_fofem_attributes(trees_df, tree_params_df), '_calc_tree_fofem_attributes')
+    # Calculate fire behavior attributes
+    trees_df = _check_step_output(trees._calc_tree_fire_attributes(trees_df, surface_fire_intensity_model), '_calc_tree_fire_attributes')
+    # Calculate weighted attributes
+    trees_df = _check_step_output(trees._calc_tree_weighted_attributes(trees_df), '_calc_tree_weighted_attributes')
+
+    # Final computed tree table (same filename process_trees produced)
+    write_df(trees_df, os.path.join(out_dir, 'tree_plot_2.csv'), index=True, label='tree_plot_2.csv')
+
+    return trees_df
 def tree_data_check(in_df: pd.DataFrame, check_dir: str, label: str = 'tree') -> pd.DataFrame:
     """Flag tree/sapling records with out-of-range values or crown base height >= height.
 
@@ -594,8 +499,9 @@ def tree_data_check(in_df: pd.DataFrame, check_dir: str, label: str = 'tree') ->
     check pairs columns sharing a prefix (sapling_live_cbh vs sapling_live_ht).
 
     Writes only the flagged records to check_dir/flagged_{label}_data.csv; nothing
-    is written when every record passes. Returns the flagged records ('flags'
-    lists every failed check), or an empty frame if all pass.
+    is written when every record passes. Returns the full input frame with two
+    columns appended: 'flag' (1 if the record failed any check, else 0) and
+    'flags' (comma-separated names of the failed checks, empty if none).
     """
     if in_df is None or in_df.empty:
         return in_df
@@ -630,16 +536,14 @@ def tree_data_check(in_df: pd.DataFrame, check_dir: str, label: str = 'tree') ->
     flags = pd.DataFrame(masks, index=in_df.index)
     invalid = flags.any(axis=1)
 
-    if not invalid.any():
-        return in_df.iloc[:0].copy()
+    out = in_df.copy()
+    out['flag'] = invalid.astype(int)
+    out['flags'] = flags.apply(lambda r: ','.join(flags.columns[r]), axis=1)
 
-    out = in_df.loc[invalid].copy()
-    out['flags'] = flags.loc[invalid].apply(lambda r: ','.join(flags.columns[r]), axis=1)
-
-    path = os.path.join(check_dir, f'flagged_{label}_data.csv')
-    if write_df(out, path, quiet=True):
-        print(f'Warning: {invalid.sum()} of {len(in_df)} {label} records flagged -> {path}')
-
+    if invalid.any():
+        path = os.path.join(check_dir, f'flagged_{label}_data.csv')
+        if write_df(out.loc[invalid], path, quiet=True):
+            print(f'Warning: {invalid.sum()} of {len(in_df)} {label} records flagged -> {path}')
     return out
 def tree_calculations(in_df,
                       ind_tree_df,
@@ -662,7 +566,7 @@ def tree_calculations(in_df,
     write_df(df, os.path.join(out_dir, 'survey_0.csv'), index=True, label='stand attributes')
     return df, helper.sort_list(keep_columns)
  
-# Test routine for calculating FBP fuel types
+# Test routine for calculating data cleaning, checking trees and plot data
 if __name__ == '__main__':
     # Base paths from env
     _in_dir  = os.getenv('DATA_BASE_DIR', '/app/input_data')
@@ -683,14 +587,17 @@ if __name__ == '__main__':
     bec_info_df = extract_BEC(plots, out_dir=_out_dir, vri_polygon=_BEC_shp_dir, write_sf=True)
     # 5. Subplot (tree) data merged onto the BEC-joined plot data
     tree_df = subplot_data(_in_dir, 'trees', _check_dir, plot_df=bec_info_df)
-    
-    
+    ## merge tree data 
     
     # 6. Individual-tree data -> Read 
     print(f'step5 tree_df: {getattr(tree_df, "shape", None)}')
     print(f'bec_info_df:   {getattr(bec_info_df, "shape", None)}')
     print(f'trees out_dir: {out_dirs["trees"]} exists={os.path.isdir(out_dirs["trees"])}')
-    ind_trees = tree_data_read(in_dir=_in_dir, out_dirs=out_dirs, dir_dict=dir_dict, check_dir=_check_dir)
+    ind_trees = tree_data_read(
+        in_dir=_in_dir, out_dirs=out_dirs, dir_dict=dir_dict,
+        plot_df=tree_df, check_dir=_check_dir,
+        surface_fire_intensity_model='Byram',
+    )
     # 7. Individual-tree data -> Stand Level Attributes 
     out_trees = tree_calculations(in_df = tree_df, ind_tree_df = ind_trees, 
                                   out_dirs = out_dirs, 

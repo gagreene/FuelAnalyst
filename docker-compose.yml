@@ -2,46 +2,39 @@ services:
   fuel-analyst:
     build: .
     container_name: fuel-analyst-dev
-    ## This is where you mount the data into the function
-    
+
     volumes:
+      # Code (dev bind mount) — the ONLY thing under /app
       - .:/app
+      # Data mounts live OUTSIDE /app so nothing nests inside the code mount
       - type: bind
         source: ${INPUT_DIR}
-        target: /app/input_data
-        ## output folder for the results of the processing 
-      - "C:/Users/ssmithtr/Desktop/CleanTest/Docker_Out:/app/output"
-      ## These are stationary (not changing) data that are used for processing. 
-      ## Weather Datat
-      - "D:/_NRCAN_Gridded_FWI_Data:/app/nrcan_data:ro"
-      ## BEC  ecosystem data 
-      - "C:\\Users\\ssmithtr\\Desktop\\CleanTest\\BEC_data:/app/BEC_data:ro"
-    env_file: 
-        - ./.env  
+        target: /input_data
+      - "C:/Users/ssmithtr/Desktop/CleanTest/Docker_Out:/output"
+      - "D:/_NRCAN_Gridded_FWI_Data:/nrcan_data:ro"
+      - "C:/Users/ssmithtr/Desktop/CleanTest/BEC_data:/BEC_data:ro"
+
+    env_file:
+      - ./.env
     working_dir: /app
-    ## this is where you define the way to call the data 
+
     environment:
-      DATA_BASE_DIR: /app/input_data
+      DATA_BASE_DIR: /input_data
       DATA_SUBDIR: Survey123_Data
-      # These files are defined and edited as part of the packages
-      # Builds on results of prior runs
       OVERVIEW_FILES: /app/test_data/results
-      # Files are a base dataframe to run rom 
       BASE_FILES: /app/test_data
-      NRCAN_DATA_DIR: /app/nrcan_data
-      ##  BEC DATA 
-      BEC_DATA_DIR: /app/BEC_data
-      ## output folders (in order of running)
-      OUTPUT_DIR: /app/output
-      OUTPUT_CHECK_DIR: /app/output/data_check
-      OUTPUT_FuelAnalyst: /app/output/fuel_analyst
-      OUTPUT_FBP: /app/output/fbp_fuel_typing
-      OUTPUT_WX_EXTRACT: /app/output/wx_extract
-      OUTPUT_CONPYRO: /app/output/conpyro
+      NRCAN_DATA_DIR: /nrcan_data
+      BEC_DATA_DIR: /BEC_data
+      OUTPUT_DIR: /output
+      OUTPUT_CHECK_DIR: /output/data_check
+      OUTPUT_FuelAnalyst: /output/fuel_analyst
+      OUTPUT_FBP: /output/fbp_fuel_typing
+      OUTPUT_WX_EXTRACT: /output/wx_extract
+      OUTPUT_CONPYRO: /output/conpyro
       GEN_CONPYRO: "True"
       GEN_FOFEM_TREE: "True"
       GEN_FOFEM_CONSUME: "True"
+
     stdin_open: true
     tty: true
     command: /bin/bash
-
