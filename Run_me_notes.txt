@@ -5,7 +5,12 @@ docker exec -it fuel-analyst-dev ls -la /app/input_data
 ##  Run the first file 
 docker exec fuel-analyst-dev python /app/src/fuel_analyst/fuel_analyst.py      ## this is running 
 
+### Update 7-21-2026 after greg turned fuel analyst into  a package 
+docker exec -w /app/src fuel-analyst-dev python -m fuel_analyst.fuel_analyst
+
 docker exec fuel-analyst-dev python /app/src/fuel_analyst/extract_BECType.py 
+
+docker exec -w /app/src fuel-analyst-dev python -m fuel_analyst.extract_BECType
 
 ## check that there are not any empty things in the code 
 ## Run the next file 
