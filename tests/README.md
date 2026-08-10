@@ -33,6 +33,9 @@ python -m pytest tests/regression -vv
 python -m pytest -m "not slow" -vv
 ```
 
+Integration and regression tests are also registered as pytest markers, so
+they can be selected with `-m integration` or `-m regression`.
+
 Tests should use pytest's `tmp_path` fixture for disposable output. Only stable,
 reviewable fixtures and golden outputs belong in `test_data`; runtime artifacts
 belong in `results`.

@@ -81,5 +81,7 @@ fuel_analyst = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
+    "integration: tests interactions between FuelAnalyst components",
+    "regression: preserves behavior for confirmed defects",
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
