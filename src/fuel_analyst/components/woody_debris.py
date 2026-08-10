@@ -438,21 +438,6 @@ def _calc_spp_comp_specific_gravity(spp_comp_df: pd.DataFrame,
     return spp_comp_df
 
 
-def _calc_tallied_woody_counts(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Sum woody debris tallies from transects 1 and 2.
-
-    :param df: DataFrame containing tallies from both transects.
-    :return: Updated DataFrame with summed tallies.
-    """
-
-    for out_col, t1_meas1_col, t1_meas2_col, t2_meas1_col, t2_meas2_col in woody_tally_map:
-        # Calculate total tallies across both transects
-        df[out_col] = df[t1_meas1_col] + df[t1_meas2_col] + df[t2_meas1_col] + df[t2_meas2_col]
-
-    return df
-
-
 def _calc_tallied_woody_biomass(
         df: pd.DataFrame,
         woody_merged_df: pd.DataFrame,
@@ -628,6 +613,21 @@ def _calc_tallied_woody_biomass(
     return df, keep_columns
 
 
+def _calc_tallied_woody_counts(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Sum woody debris tallies from transects 1 and 2.
+
+    :param df: DataFrame containing tallies from both transects.
+    :return: Updated DataFrame with summed tallies.
+    """
+
+    for out_col, t1_meas1_col, t1_meas2_col, t2_meas1_col, t2_meas2_col in woody_tally_map:
+        # Calculate total tallies across both transects
+        df[out_col] = df[t1_meas1_col] + df[t1_meas2_col] + df[t2_meas1_col] + df[t2_meas2_col]
+
+    return df
+
+
 def _calc_woody_corrected_tsct_lengths(
         df: pd.DataFrame,
         woody_merged_df: pd.DataFrame,
@@ -785,6 +785,32 @@ def _calc_woody_weight(woody_merged_df: pd.DataFrame) -> pd.DataFrame:
     )
 
     return woody_merged_df
+
+
+def _concat_spp_comp_frames(*frames: pd.DataFrame) -> pd.DataFrame:
+    """Concatenate species-composition frames without all-NA dtype inference."""
+    all_columns = pd.Index([])
+    populated_frames = []
+
+    for frame in frames:
+        all_columns = all_columns.union(frame.columns, sort=False)
+        if not frame.empty:
+            # An all-NA column contributes no data, but including it in concat
+            # makes its placeholder dtype affect pandas' result dtype.
+            populated_frames.append(frame.dropna(axis=1, how='all'))
+
+    if not populated_frames:
+        return frames[0].copy().reset_index(drop=True)
+
+    result = pd.concat(populated_frames, ignore_index=True)
+
+    # Keep schema-only columns from empty inputs without involving them in
+    # concat's dtype inference.
+    for column in all_columns.difference(result.columns, sort=False):
+        source_dtype = next(frame[column].dtype for frame in frames if column in frame.columns)
+        result[column] = pd.Series(index=result.index, dtype=source_dtype)
+
+    return result.reindex(columns=all_columns)
 
 
 def _get_merged_woody_df(in_folder: str) -> pd.DataFrame:
@@ -1015,7 +1041,7 @@ def _merge_spp_comp(
             plot_spp_comp['spp_comp_type'] = 'tree_data'
 
             # Concatenate with existing spp_comp_df
-            spp_comp_df = pd.concat([spp_comp_df, plot_spp_comp], ignore_index=True)
+            spp_comp_df = _concat_spp_comp_frames(spp_comp_df, plot_spp_comp)
         else:
             print('\t\tWarning: stand_spp_comp_woody column exists but contains no valid data')
             print('\t\tThis is normal if trees were not processed or plots have no trees')
@@ -1036,7 +1062,7 @@ def _merge_spp_comp(
 
     # ### MERGE RESULTS
     if not transect_spp_comp.empty:
-        spp_comp_df = pd.concat([spp_comp_df, transect_spp_comp], ignore_index=True)
+        spp_comp_df = _concat_spp_comp_frames(spp_comp_df, transect_spp_comp)
     
     return spp_comp_df
 
