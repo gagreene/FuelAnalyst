@@ -109,7 +109,7 @@ def process_fbp_fuel_type(
     # Columns to drop from the FBP preparation DataFrame
     fbp_drop_columns = [
         '_date',
-        'treatment_area', 'treatment_unit', 'treatment_unit_other', 'treatment_type',
+        'treatment_area', 'treatment_unit', 'treatment_type',
         'plot_id', 'SPECIES_CD_1'
     ]
     fbp_rename_columns = {
