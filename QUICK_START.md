@@ -80,7 +80,13 @@ The main files are:
 - `fofem_tree_df.csv` — prepared FOFEM mortality inputs
 - `fofem_consume_df.csv` — prepared FOFEM consumption inputs
 
+- `3_Trees/tree_processing_issues.csv` — tree-radius, DBH, count, and parent-link validation results
+
 If these files exist after the command finishes, the first run succeeded.
+
+Check `tree_processing_issues.csv` after every run. FuelAnalyst continues when
+individual tree-density inputs are invalid, assigns `0` only to affected
+density records, and marks the corresponding plot-level result as partial.
 
 ## 6. Run your own Survey123 data
 
