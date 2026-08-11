@@ -5,10 +5,6 @@ from fuel_analyst.components.helper import get_unique_id
 
 
 @pytest.mark.regression
-@pytest.mark.xfail(
-    strict=True,
-    reason='AM/PM dates are parsed with %H instead of %I, so afternoon ordering is incorrect',
-)
 def test_duplicate_survey_records_keep_latest_datetime_not_latest_date_string():
     """Raw MM/DD date strings previously sorted lexicographically."""
     rows = pd.DataFrame({

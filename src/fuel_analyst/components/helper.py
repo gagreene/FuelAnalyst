@@ -147,14 +147,14 @@ def get_unique_id(df: pd.DataFrame) -> pd.DataFrame:
     mask = parsed.isna()
     if mask.any():
         parsed = parsed.copy()
-        parsed[mask] = pd.to_datetime(df.loc[mask, '_date'], format='%m/%d/%Y %H:%M:%S %p', errors='coerce')
+        parsed[mask] = pd.to_datetime(df.loc[mask, '_date'], format='%m/%d/%Y %I:%M:%S %p', errors='coerce')
 
     still_missing = parsed.isna()
     if still_missing.any():
         bad_samples = df.loc[still_missing, '_date'].head(3).tolist()
         raise ValueError(
             f"'_date' column contains {still_missing.sum()} unparseable value(s). "
-            f"Expected '%m/%d/%Y %H:%M' or '%m/%d/%Y %H:%M:%S %p'. "
+            f"Expected '%m/%d/%Y %H:%M' or '%m/%d/%Y %I:%M:%S %p'. "
             f"Sample bad values: {bad_samples}"
         )
 
