@@ -181,7 +181,7 @@ def _sanitize_cover_group(series: pd.Series) -> np.ndarray:
     :param series: CoverGroup column.
     :return: Object ndarray.
     """
-    s = series.astype(str).str.strip('"').str.strip()
+    s = series.fillna('').astype(str).str.strip('"').str.strip()
     s = s.replace({'nan': '', 'None': '', 'NA': '', 'N/A': ''})
     return s.to_numpy(dtype=object)
 
