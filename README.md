@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/gagreene/FuelAnalyst/actions/workflows/tests.yml/badge.svg)](https://github.com/gagreene/FuelAnalyst/actions/workflows/tests.yml)
 
-FuelAnalyst is a Python package for converting forest-fuel inventory data exported from ArcGIS Survey123 into analysis-ready plot, tree, fuel-load, and fire-model input tables. It was developed for forest fuel characterization and wildfire analysis in British Columbia.
+FuelAnalyst is a Python package for converting forest-fuel inventory data exported from ArcGIS Survey123 into analysis-ready plot, tree, fuel-load, and fire-model input tables. It was developed for forest fuel characterization and wildfire analysis in Canada and the Northwestern United States.
 
 The core pipeline processes five related Survey123 forms:
 
