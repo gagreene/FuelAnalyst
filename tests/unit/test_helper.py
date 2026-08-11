@@ -46,6 +46,28 @@ def test_get_unique_id_keeps_most_recent_duplicate():
     assert result['value'].tolist() == ['new']
 
 
+@pytest.mark.parametrize(
+    ('older_date', 'newer_date'),
+    [
+        ('01/01/2025 11:59:59 AM', '01/01/2025 12:00:00 PM'),
+        ('01/01/2025 11:59:59 PM', '01/02/2025 12:00:00 AM'),
+    ],
+)
+def test_get_unique_id_orders_am_pm_boundaries(older_date, newer_date):
+    df = pd.DataFrame({
+        '_date': [newer_date, older_date],
+        'treatment_area': ['A', 'A'],
+        'treatment_unit': ['U', 'U'],
+        'treatment_type': ['treated', 'treated'],
+        'plot_id': ['1', '1'],
+        'value': ['newer', 'older'],
+    })
+
+    result = helper.get_unique_id(df)
+
+    assert result['value'].tolist() == ['newer']
+
+
 def test_get_unique_id_rejects_unparseable_dates():
     df = pd.DataFrame({
         '_date': ['not-a-date'],
