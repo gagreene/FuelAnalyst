@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from fuel_analyst.components.trees import (
+    _add_tree_processing_status,
     _calc_plot_multipliers,
     _calc_sapling_dbh,
     _calc_sapling_density,
@@ -17,23 +18,47 @@ from fuel_analyst.components.trees import (
     _calc_tree_fire_attributes,
     _calc_tree_fsg,
     _calc_tree_type,
+    _gen_tree_processing_issues,
     _get_temesgen_tree_height,
     _merge_saplings_to_trees,
+    _normalize_sapling_inputs,
+    _normalize_tree_inputs,
     _round_plot_data,
     _round_tree_data,
 )
 
 
-def test_calc_plot_multipliers_handles_standard_custom_and_missing_radii():
+def test_calc_plot_multipliers_uses_rounded_circular_plot_areas():
     df = pd.DataFrame({
-        'lgtree_plot_radius': [11.28, 20.0, np.nan],
-        'smtree_plot_radius': [5.64, 10.0, np.nan],
-        'sapling_plot_radius': [5.64, 10.0, np.nan],
+        'lgtree_plot_radius': [11.28, 7.98, 20.0, np.nan, 0.0, -1.0],
+        'smtree_plot_radius': [5.64, 3.99, 10.0, np.nan, 0.0, -1.0],
+        'sapling_plot_radius': [5.64, 3.99, 10.0, np.nan, 0.0, -1.0],
     })
+
     result = _calc_plot_multipliers(df)
-    assert result['plot_lgtree_mult'].tolist()[:2] == [25.0, 50.0]
-    assert result['plot_smtree_mult'].tolist()[:2] == [100.0, 200.0]
-    assert np.isnan(result.loc[2, 'plot_sapling_mult'])
+
+    assert result['plot_lgtree_mult'].iloc[:2].tolist() == [25.0, 50.0]
+    assert result['plot_smtree_mult'].iloc[:2].tolist() == [100.0, 200.0]
+    assert result.loc[2, 'plot_lgtree_mult'] == pytest.approx(10000 / 1257)
+    assert result.loc[2, 'plot_smtree_mult'] == pytest.approx(10000 / 314)
+    assert result.loc[2, 'plot_sapling_mult'] == pytest.approx(10000 / 314)
+    assert result.loc[3:, ['plot_lgtree_mult', 'plot_smtree_mult', 'plot_sapling_mult']].isna().all().all()
+
+
+def test_calc_plot_multipliers_classifies_invalid_source_values():
+    df = pd.DataFrame({
+        'lgtree_plot_radius': [None, 'not measured', np.inf, 0],
+        'smtree_plot_radius': [5.64] * 4,
+        'sapling_plot_radius': [5.64] * 4,
+    })
+
+    result = _calc_plot_multipliers(df)
+
+    assert result['_plot_lgtree_radius_issue'].tolist() == [
+        'missing_plot_radius', 'non_numeric_plot_radius',
+        'non_finite_plot_radius', 'non_positive_plot_radius',
+    ]
+    assert result['plot_lgtree_mult'].isna().all()
 
 
 def test_tree_and_sapling_type_mapping():
@@ -68,6 +93,25 @@ def test_calc_sapling_dbh_defaults_present_missing_values_and_clears_absent_valu
     assert np.isnan(result.loc[1, 'sapling_live_dbh'])
 
 
+def test_normalize_sapling_inputs_validates_counts_before_dbh_helpers():
+    saplings = pd.DataFrame({
+        'sapling_species': ['FDI', 'FDI', 'NO_SAPLINGS'],
+        'sapling_live_count': ['bad', 2, 'bad'],
+        'sapling_dead_count': [0, 0, 'bad'],
+        'sapling_live_dbh': [3, 0, 'bad'],
+        'sapling_dead_dbh': [None, None, 'bad'],
+    })
+
+    result = _normalize_sapling_inputs(saplings)
+
+    assert result.loc[0, '_sapling_live_count_issue'] == 'non_numeric_sapling_count'
+    assert np.isnan(result.loc[0, 'sapling_live_count'])
+    assert result.loc[1, 'sapling_live_dbh'] == 0.1
+    assert result.loc[1, '_sapling_live_dbh_warning'] == 'sapling_dbh_zero_normalized'
+    assert result.loc[2, ['sapling_live_count', 'sapling_dead_count']].tolist() == [0, 0]
+    assert result.loc[2, '_sapling_live_count_issue'] == ''
+
+
 def test_calc_tree_basal_area_uses_density_weighting():
     result = _calc_tree_basal_area(pd.DataFrame({'tree_dbh': [20.0], 'tree_dens_ha': [100.0]}))
     expected = np.pi * 0.1 ** 2
@@ -94,6 +138,98 @@ def test_tree_density_selects_plot_multiplier_by_dbh_and_tree_count():
     })
     trees = pd.DataFrame({'ParentGlobalID': ['p1'] * 3, 'tree_dbh': [12.5, 5.0, 4.9], 'tree_count': [2, 2, 2]})
     assert _calc_tree_density(plots, trees)['tree_dens_ha'].tolist() == [50, 200, 400]
+
+
+def test_tree_density_reports_each_root_cause_and_keeps_batch_results_finite():
+    plots = pd.DataFrame({
+        'GlobalID': ['p1'], 'unique_id': ['Unit_Plot_1_2025'],
+        'treatment_area': ['Example'], 'treatment_unit': ['Unit'],
+        'treatment_type': ['Pre'], 'plot_id': [1],
+        'lgtree_plot_radius': [None], 'smtree_plot_radius': [5.64],
+        'sapling_plot_radius': [5.64],
+    })
+    plots = _calc_plot_multipliers(plots)
+    trees = _normalize_tree_inputs(pd.DataFrame({
+        'GlobalID': ['t1', 't2'], 'ParentGlobalID': ['p1', 'p1'],
+        'tree_dbh': [20, 'not measured'],
+    }))
+
+    density = _calc_tree_density(plots, trees)
+    issues = _gen_tree_processing_issues(plots, pd.DataFrame(), density)
+    status = _add_tree_processing_status(plots, pd.DataFrame(), density, issues)
+
+    assert density['tree_dens_ha'].tolist() == [0.0, 0.0]
+    assert density['tree_density_primary_issue_code'].tolist() == [
+        'missing_plot_radius', 'non_numeric_tree_dbh',
+    ]
+    assert set(issues['issue_code']) == {'missing_plot_radius', 'non_numeric_tree_dbh'}
+    assert issues['results_partial'].all()
+    assert not status.loc[0, 'tree_density_complete']
+    assert status.loc[0, 'tree_density_failed_records'] == 2
+
+
+def test_tree_density_retains_simultaneous_row_failures():
+    plots = _calc_plot_multipliers(pd.DataFrame({
+        'GlobalID': ['p1'],
+        'lgtree_plot_radius': [11.28], 'smtree_plot_radius': [5.64],
+        'sapling_plot_radius': [5.64],
+    }))
+    trees = _normalize_tree_inputs(pd.DataFrame({
+        'GlobalID': ['t1'], 'ParentGlobalID': [None],
+        'tree_dbh': ['not measured'],
+    }))
+
+    result = _calc_tree_density(plots, trees)
+
+    assert result.loc[0, 'tree_density_issue_codes'] == (
+        'missing_parent_id|non_numeric_tree_dbh'
+    )
+    assert result.loc[0, 'tree_dens_ha'] == 0
+
+
+def test_tree_processing_status_ignores_unassigned_nullable_issue_ids():
+    plots = pd.DataFrame({
+        'GlobalID': ['p1'], 'unique_id': ['Unit_Plot_1_2025'],
+    })
+    trees = pd.DataFrame({
+        'ParentGlobalID': [pd.NA],
+        'tree_density_affected': [True],
+        'tree_density_radius_class': [pd.NA],
+        'tree_count': [1.0],
+    })
+    issues = pd.DataFrame({
+        'unique_id': pd.Series([pd.NA], dtype='string'),
+        'plot_global_id': pd.Series([pd.NA], dtype='string'),
+        'message': ['missing parent id; affected density assigned zero'],
+    })
+
+    result = _add_tree_processing_status(plots, pd.DataFrame(), trees, issues)
+
+    assert result.loc[0, 'tree_density_complete']
+    assert result.loc[0, 'tree_density_issue_count'] == 0
+
+
+def test_unused_invalid_radius_is_reported_without_marking_results_partial():
+    plots = pd.DataFrame({
+        'GlobalID': ['p1'], 'unique_id': ['Unit_Plot_1_2025'],
+        'treatment_area': ['Example'], 'treatment_unit': ['Unit'],
+        'treatment_type': ['Pre'], 'plot_id': [1],
+        'lgtree_plot_radius': [None], 'smtree_plot_radius': [5.64],
+        'sapling_plot_radius': [5.64],
+    })
+    plots = _calc_plot_multipliers(plots)
+    trees = _normalize_tree_inputs(pd.DataFrame({
+        'GlobalID': ['t1'], 'ParentGlobalID': ['p1'], 'tree_dbh': [8],
+    }))
+    density = _calc_tree_density(plots, trees)
+    issues = _gen_tree_processing_issues(plots, pd.DataFrame(), density)
+    status = _add_tree_processing_status(plots, pd.DataFrame(), density, issues)
+
+    assert density.loc[0, 'tree_dens_ha'] == 100
+    assert issues.loc[0, 'issue_code'] == 'missing_plot_radius'
+    assert not issues.loc[0, 'results_partial']
+    assert status.loc[0, 'tree_density_complete']
+    assert status.loc[0, 'tree_density_issue_count'] == 1
 
 
 def test_tree_cbh_cleanup_crown_depth_and_crown_fuels():
