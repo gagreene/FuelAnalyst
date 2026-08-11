@@ -9,7 +9,7 @@ import pytest
 
 fake_package = types.ModuleType('pyfofem')
 fake_package.pyfofem = types.SimpleNamespace()
-sys.modules.setdefault('pyfofem', fake_package)
+sys.modules['pyfofem'] = fake_package
 
 emissions = importlib.import_module('fuel_analyst.components.fofem_emissions')
 mortality = importlib.import_module('fuel_analyst.components.fofem_mortality')

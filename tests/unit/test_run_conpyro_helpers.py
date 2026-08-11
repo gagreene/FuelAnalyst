@@ -9,7 +9,7 @@ import pytest
 
 fake_conpyro_package = types.ModuleType('conpyro')
 fake_conpyro_package.conpyro = types.SimpleNamespace()
-sys.modules.setdefault('conpyro', fake_conpyro_package)
+sys.modules['conpyro'] = fake_conpyro_package
 
 fake_flame = types.ModuleType('flame_components')
 fake_flame.get_mid_flame_ws = lambda **kwargs: np.asarray(kwargs['wind_speed']) / 2
@@ -18,7 +18,7 @@ fake_flame.get_flame_residence_time = lambda **kwargs: np.ones(len(kwargs['ros']
 fake_flame.get_flame_depth = lambda **kwargs: np.asarray(kwargs['ros']) * np.asarray(kwargs['res_time'])
 fake_flame.get_flame_height = lambda **kwargs: np.asarray(kwargs['flame_length']) / 2
 fake_flame.get_flame_tilt = lambda **kwargs: np.ones(len(next(iter(kwargs.values())))) * 45
-sys.modules.setdefault('flame_components', fake_flame)
+sys.modules['flame_components'] = fake_flame
 
 module = importlib.import_module('fuel_analyst.run_conpyro')
 
