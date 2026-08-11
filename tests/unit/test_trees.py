@@ -187,6 +187,28 @@ def test_tree_density_retains_simultaneous_row_failures():
     assert result.loc[0, 'tree_dens_ha'] == 0
 
 
+def test_tree_processing_status_ignores_unassigned_nullable_issue_ids():
+    plots = pd.DataFrame({
+        'GlobalID': ['p1'], 'unique_id': ['Unit_Plot_1_2025'],
+    })
+    trees = pd.DataFrame({
+        'ParentGlobalID': [pd.NA],
+        'tree_density_affected': [True],
+        'tree_density_radius_class': [pd.NA],
+        'tree_count': [1.0],
+    })
+    issues = pd.DataFrame({
+        'unique_id': pd.Series([pd.NA], dtype='string'),
+        'plot_global_id': pd.Series([pd.NA], dtype='string'),
+        'message': ['missing parent id; affected density assigned zero'],
+    })
+
+    result = _add_tree_processing_status(plots, pd.DataFrame(), trees, issues)
+
+    assert result.loc[0, 'tree_density_complete']
+    assert result.loc[0, 'tree_density_issue_count'] == 0
+
+
 def test_unused_invalid_radius_is_reported_without_marking_results_partial():
     plots = pd.DataFrame({
         'GlobalID': ['p1'], 'unique_id': ['Unit_Plot_1_2025'],

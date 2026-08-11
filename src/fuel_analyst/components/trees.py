@@ -1407,10 +1407,14 @@ def _add_tree_processing_status(
         failed_records = len(plot_affected) + len(source_invalid_counts)
         is_partial = failed_records > 0 or ambiguous_affected
 
-        plot_issues = issues[
+        issue_mask = (
             issues['unique_id'].eq(unique_id)
-            | (issues['unique_id'].isna() & issues['plot_global_id'].eq(plot.get('GlobalID')))
-        ]
+            | (
+                issues['unique_id'].isna()
+                & issues['plot_global_id'].eq(plot.get('GlobalID'))
+            )
+        ).fillna(False)
+        plot_issues = issues.loc[issue_mask]
         classes = set(plot_affected['tree_density_radius_class'].dropna().astype(str))
         classes.update(row['radius_class'] for row in source_invalid_counts)
         messages = sorted(set(plot_issues['message'].dropna().astype(str)))
