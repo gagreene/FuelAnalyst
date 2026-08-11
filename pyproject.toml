@@ -42,6 +42,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+test = [
+    "pytest>=7.0",
+]
 conpyro = [
     "conpyro @ git+https://github.com/gagreene/conpyro.git",
     "flame-components @ git+https://github.com/gagreene/flame_components.git",
@@ -73,4 +76,12 @@ fuel_analyst = [
     "supporting_data/*.csv",
     "supporting_data/*.json",
     "_vendor/*.py",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: tests interactions between FuelAnalyst components",
+    "regression: preserves behavior for confirmed defects",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]

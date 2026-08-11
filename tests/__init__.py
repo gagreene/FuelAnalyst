@@ -1,0 +1,1 @@
+"""FuelAnalyst test suite."""
