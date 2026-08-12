@@ -128,16 +128,24 @@ def _get_dom_substrate(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
 
 
 def _get_photoload_biomass(photoload_code: str, pct_cover: float, height: float):
+    """Estimate plant biomass from the final objective-cover PhotoLoad models.
+
+    The fitted cover-to-biomass equations are constrained through the origin.
+    Biomass is then scaled by the observed plant height relative to the
+    reference height used for the corresponding PhotoLoad series.
+    """
     photoload_dict = {
-        'AMAL': (height / 35.56) * 0.0148 * np.exp(0.0454 * pct_cover),
-        'MARE': (height / 10.16) * 0.0013 * pct_cover,  # USED TO BE BERE
-        'SYAL': (height / 35.56) * 0.0107 * np.exp(0.0442 * pct_cover),
-        'VAGL': (height / 35.56) * 0.0052 * pct_cover,
-        'VASC': (height / 17.78) * 0.0135 * np.exp(0.035 * pct_cover),
-        'ARLA': (height / 30.48) * 0.001 * pct_cover,
-        'CARU': (height / 20.30) * 0.0194 * np.exp(0.0282 * pct_cover),
-        'FESC': (height / 30.5) * 0.0188 * np.exp(0.0298 * pct_cover),
-        'XETE': (height / 25.4) * 0.0154 * np.exp(0.0444 * pct_cover),
+        'AMAL': (height / 35.56) * 0.0694081 * (np.exp(0.0239616 * pct_cover) - 1),
+        'MARE': (height / 10.16) * 0.000794352 * np.power(pct_cover, 1.14948),
+        'SYAL': (height / 35.56) * (
+            0.00122434 * pct_cover + 0.0000169664 * np.power(pct_cover, 2)
+        ),
+        'VAGL': (height / 35.56) * 0.380891 * (np.exp(0.0114212 * pct_cover) - 1),
+        'VASC': (height / 17.78) * 0.00256257 * pct_cover,
+        'ARLA': (height / 30.48) * 0.000647724 * np.power(pct_cover, 1.1414),
+        'CARU': (height / 20.30) * 0.0089042 * (np.exp(0.0402093 * pct_cover) - 1),
+        'FESC': (height / 30.5) * 0.015769 * (np.exp(0.0332087 * pct_cover) - 1),
+        'XETE': (height / 25.4) * 0.00385736 * pct_cover,
         'MOSS': 0,
         'TREE': 0
     }
