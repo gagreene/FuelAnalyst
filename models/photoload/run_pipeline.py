@@ -10,7 +10,12 @@ from photoload import run_workflow
 
 MODEL_ROOT = Path(__file__).resolve().parent
 DEFAULT_OUTPUT_DIR = MODEL_ROOT / ".work"
-DEFAULT_PDF = MODEL_ROOT.parents[1] / "docs" / "reference" / "rmrs_gtr190.pdf"
+DEFAULT_PDF = (
+    MODEL_ROOT.parents[1]
+    / "docs"
+    / "reference"
+    / "rmrs_gtr190_Kean_and_Dickinson_2007.pdf"
+)
 
 
 def main() -> None:

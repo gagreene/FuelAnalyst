@@ -36,7 +36,12 @@ from photoload.workflow import CALIBRATION_CSV  # noqa: E402
 
 
 DEFAULT_OUTPUT_DIR = MODEL_ROOT / ".work" / "experiments"
-DEFAULT_PDF = MODEL_ROOT.parents[1] / "docs" / "reference" / "rmrs_gtr190.pdf"
+DEFAULT_PDF = (
+    MODEL_ROOT.parents[1]
+    / "docs"
+    / "reference"
+    / "rmrs_gtr190_Kean_and_Dickinson_2007.pdf"
+)
 HISTORICAL_PIXEL_STEPS = (2, 4, 6, 8, 12)
 HISTORICAL_RIDGE_THRESHOLDS = (0.045, 0.055, 0.070)
 PIXEL_STEPS = tuple(range(2, 13))

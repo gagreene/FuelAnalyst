@@ -4,8 +4,11 @@ This directory contains only the production workflow used to derive the nine
 PhotoLoad biomass equations reported by FuelAnalyst. The exploratory model and
 mask benchmarks remain outside the repository.
 
+The scientific methods are documented in
+[`methods/photoload_model_development.md`](methods/photoload_model_development.md).
+
 The workflow starts from Keane and Dickinson's PhotoLoad report at
-[`docs/reference/rmrs_gtr190.pdf`](../../docs/reference/rmrs_gtr190.pdf),
+[`docs/reference/rmrs_gtr190_Kean_and_Dickinson_2007.pdf`](../../docs/reference/rmrs_gtr190_Kean_and_Dickinson_2007.pdf),
 extracts the 81 appendix photographs, creates the final selected masks, measures
 objective cover, fits the origin-constrained candidate equations, applies the
 documented multi-criteria choice for every species, and produces the final
