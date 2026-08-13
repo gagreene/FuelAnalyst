@@ -34,7 +34,7 @@ Biomass values were recorded in kg m⁻². Archived mean analyst estimates of
 percent cover were retained for visual comparison, but were not treated as
 ground truth, used to train a pixel classifier, or used as the predictor in
 the final biomass equations. The final predictor was objective percent cover
-measured from the selected binary image mask.
+measured from the morphology-specific ensemble selection frequency.
 
 ## Photograph extraction and cropping
 
@@ -109,11 +109,11 @@ reducing recovery of residual edge cross-hatching. Visual comparison across
 the full low-to-high biomass sequence supported Variation 3 as the shared
 source mask for the subsequent morphology-specific review.
 
-### Step 2: morphology-specific refinement
+### Step 2: morphology-specific ensembles
 
-Species were assigned to three morphology groups before choosing final shared
-parameters. The same rule and parameter value were applied to every species in
-a group; parameters were not tuned separately by species.
+Species were assigned to three morphology groups. Rather than selecting one
+refinement parameter, every photograph was processed over a complete,
+prespecified parameter range and the resulting cover values were averaged.
 
 #### Broadleaf group
 
@@ -122,17 +122,18 @@ Variation 3, high-confidence plant seeds were pixels meeting at least one of
 the following CIELAB criteria: lightness `L* < 70`, green direction
 `a* < 0`, or strong yellow direction `b* > 25`. Seeds were expanded by
 binary dilation but were permitted to grow only through pixels already present
-in Variation 3. The retained visual comparison evaluated 2, 4, 6, 8, and 12
-dilation steps. Two steps best removed isolated tan foam-board regions while
-retaining connected mixed-colour leaf and stem pixels and was selected for the
-group.
+in Variation 3. The range-bound experiment grew each mask one pixel at a time
+until another dilation could no longer change it and recorded the last step
+that changed every broadleaf and fine-structure calibration mask. One pixel
+was the lower bound because it is the smallest nonzero growth operation. The
+largest observed last-changing step was 30 px, which established the common
+upper bound. Production masks were therefore calculated after every integer
+growth step from 1 through 30 px, including the complete observed response.
 
 #### Fine-structure group
 
 VASC and XETE were classified as fine-structure species and evaluated with the
-same seeded CIELAB rule. Four dilation steps were selected because they
-retained more of the narrow, connected plant structure than the two-step rule
-without restoring the full set of weakly supported pixels in Variation 3.
+same seeded CIELAB rule and complete 1–30 px growth range.
 
 #### Dense-mat group
 
@@ -145,38 +146,40 @@ removed as neutral backing material.
 Because pale grass blades overlapped the foam board in colour, a structural
 rescue was then applied. The maximum bright-ridge and dark-ridge response from
 a Sato filter at scales 1, 2, and 3 was calculated. A provisionally removed
-pixel was restored only if it (i) exceeded the shared ridge threshold, (ii)
+pixel was restored only if it (i) exceeded the evaluated ridge threshold, (ii)
 was within two dilation steps of the cleaned plant mask, and (iii) occurred
-where cleaned plant occupied more than 20% of a 15-pixel local window. Retained
-comparisons at thresholds 0.045, 0.055, and 0.070 supported 0.045, which
-preserved the most plausible linear blade structure without unacceptable
-restoration of foam-board texture.
+where cleaned plant occupied more than 20% of a 15-pixel local window. The
+range-bound experiment recorded the maximum Sato response among pixels that
+satisfied all other rescue criteria in every dense-mat photograph. A threshold
+of 0.000 was the lower bound because it includes every eligible pixel with a
+positive ridge response. The largest eligible response was 0.218704; rounding
+upward to the next 0.005 unit established 0.220 as the upper bound and exact
+no-rescue endpoint. Production masks were therefore calculated at thresholds
+from 0.000 through 0.220 in increments of 0.005.
 
-### Expanded confirmation review
-
-For transparent documentation, the final algorithms were subsequently
-rendered over a denser grid: every integer from 2 through 12 dilation steps for
-the broadleaf and fine-structure groups, and ridge thresholds from 0.010
-through 0.095 in increments of 0.005 for the dense-mat group. Each panel showed
-the original image and all alternatives, with the lowest biomass at the top
-and highest at the bottom. This expanded review reaffirmed the existing
-2-step, 4-step, and 0.045 choices; it did not introduce species-specific
-parameters or alter the frozen production masks. The panel-generating method
-is documented in
-[the PhotoLoad method-selection experiments](../experiments/README.md).
+The production workflow rendered the parameter-specific masks and ensemble
+means in paginated panels, with the lowest biomass at the top and highest at
+the bottom. The separate
+[PhotoLoad source-mask and range-bound experiment](../experiments/README.md)
+preserved the per-image measurements and diagnostic plot used to establish
+both upper bounds.
 
 ### Calculation of objective cover
 
-The selected mask contained only original-image pixels classified as plant.
-No pixels were synthesized or smoothed for cover measurement. Objective
-percent cover was calculated as:
+For each photograph, the binary masks across its morphology-specific parameter
+range were averaged pixel by pixel. The resulting selection frequency lies
+between zero and one and expresses the fraction of parameter-specific masks in
+which a pixel was classified as plant. Objective percent cover was calculated
+from the mean selection frequency:
 
 ```text
-x = 100 × Nplant / Ntotal
+x = 100 × sum(selection frequency) / Ntotal
 ```
 
-where `Nplant` was the number of selected pixels and `Ntotal` was
-the number of pixels in the cropped photograph.
+where `Ntotal` was the number of pixels in the cropped photograph. This is
+algebraically identical to averaging the objective-cover values across all
+parameter-specific masks. No synthetic plant pixels or analyst cover values
+entered the calculation.
 
 ## Biomass-model development
 
@@ -233,11 +236,15 @@ selection rule. Each final choice considered:
 5. fitted RMSE and coefficient of determination (R²); and
 6. parsimony when competing models received comparable support.
 
+This rule applies to production fitting, sensitivity analyses, and any later
+refitting. A minimum-AICc model may be identified for comparison, but no model
+may be designated selected or final from AICc alone.
+
 No weighted composite score was used. A model and written rationale were
 specified explicitly for each species. Eight selections agreed with the
 minimum-AICc model. For SYAL, the quadratic-through-origin model was selected
 instead of the linear AICc minimum because it represented the observed
-curvature and improved LOOCV RMSE, fitted RMSE, R², and AIC; its ΔAICc of 2.69
+curvature and improved LOOCV RMSE, fitted RMSE, R², and AIC; its ΔAICc of 2.71
 was not considered decisive with only nine observations.
 
 The species-level selection evidence was recorded explicitly:
@@ -246,7 +253,7 @@ The species-level selection evidence was recorded explicitly:
 |---|---|
 | AMAL | The shifted exponential represented pronounced positive curvature and had the strongest information-criterion support, lowest fitted and LOOCV RMSE, and highest R². |
 | MARE | The power model represented modest positive curvature, removed the systematic residual progression of the linear model, and had the strongest overall statistical support. |
-| SYAL | The quadratic represented visible curvature and improved predictive and fitted errors relative to the linear AICc minimum; ΔAICc was 2.69. |
+| SYAL | The quadratic represented visible curvature and improved predictive and fitted errors relative to the linear AICc minimum; ΔAICc was 2.71. |
 | VAGL | The shifted exponential and quadratic were nearly tied; the shifted exponential was marginally better for AICc, AIC, BIC, fitted RMSE, R², and LOOCV RMSE. |
 | VASC | The linear model had the strongest AICc support and lowest LOOCV RMSE; curved models added complexity without improving prediction. |
 | ARLA | The power model represented modest positive curvature and had the strongest information-criterion, fitted-error, and predictive-error support. |
@@ -262,15 +269,15 @@ scale from the nine objective-cover observations per species.
 
 | Code | Species | Selected model and equation | R² | RMSE (kg m⁻²) | LOOCV RMSE (kg m⁻²) | ΔAICc |
 |---|---|---|---:|---:|---:|---:|
-| AMAL | *Amelanchier alnifolia* | `y = 0.0694081[exp(0.0239616x) − 1]` | 0.9928 | 0.00621 | 0.01190 | 0.00 |
-| MARE | *Berberis repens* | `y = 0.000794352x^1.14948` | 0.9921 | 0.00229 | 0.00372 | 0.00 |
-| SYAL | *Symphoricarpos albus* | `y = 0.00122434x + 1.69664 × 10⁻⁵x²` | 0.9207 | 0.01278 | 0.01774 | 2.69 |
-| VAGL | *Vaccinium globulare* | `y = 0.380891[exp(0.0114212x) − 1]` | 0.9954 | 0.00494 | 0.00842 | 0.00 |
-| VASC | *Vaccinium scoparium* | `y = 0.00256257x` | 0.9618 | 0.01400 | 0.01916 | 0.00 |
-| ARLA | *Arnica latifolia* | `y = 0.000647724x^1.1414` | 0.9983 | 0.00102 | 0.00130 | 0.00 |
-| CARU | *Calamagrostis rubescens* | `y = 0.00890419[exp(0.0402093x) − 1]` | 0.8459 | 0.05069 | 0.06446 | 0.00 |
-| FESC | *Festuca scabrella* | `y = 0.015769[exp(0.0332087x) − 1]` | 0.9432 | 0.03078 | 0.03931 | 0.00 |
-| XETE | *Xerophyllum tenax* | `y = 0.00385736x` | 0.9642 | 0.01382 | 0.01874 | 0.00 |
+| AMAL | *Amelanchier alnifolia* | `y = 0.0690181[exp(0.0240242x) − 1]` | 0.9927 | 0.00625 | 0.01200 | 0.00 |
+| MARE | *Berberis repens* | `y = 0.000733871x^1.16779` | 0.9916 | 0.00237 | 0.00379 | 0.00 |
+| SYAL | *Symphoricarpos albus* | `y = 0.00119555x + 1.69686 × 10⁻⁵x²` | 0.9174 | 0.01305 | 0.01801 | 2.71 |
+| VAGL | *Vaccinium globulare* | `y = 0.398329[exp(0.0109776x) − 1]` | 0.9957 | 0.00480 | 0.00800 | 0.00 |
+| VASC | *Vaccinium scoparium* | `y = 0.0025455x` | 0.9588 | 0.01454 | 0.01978 | 0.00 |
+| ARLA | *Arnica latifolia* | `y = 0.0005745x^1.16228` | 0.9981 | 0.00110 | 0.00149 | 0.00 |
+| CARU | *Calamagrostis rubescens* | `y = 0.0117766[exp(0.0379728x) − 1]` | 0.8155 | 0.05545 | 0.06941 | 0.00 |
+| FESC | *Festuca scabrella* | `y = 0.0161917[exp(0.0330081x) − 1]` | 0.9444 | 0.03044 | 0.03896 | 0.00 |
+| XETE | *Xerophyllum tenax* | `y = 0.00366616x` | 0.9601 | 0.01459 | 0.01927 | 0.00 |
 
 CARU produced the weakest fit and greatest cross-validated error, consistent
 with cover saturation in the dense high-biomass photographs. Consequently,
@@ -307,13 +314,14 @@ The default source is the bundled report and the default output is the ignored
 overridden explicitly. The stored report has SHA-256 digest
 `14eaeb69784e3f26dee23a67686fad9c86e50099aaca60bcc079f687d1c313c2`.
 
-The production run writes the extracted photographs, source and selected
-masks, objective-cover table, candidate statistics, selected-model summary,
-model plots, and nine original-versus-final panels. It also compares all 81
+The production run writes the extracted photographs, source masks, ensemble
+selection-frequency images, objective-cover table, candidate statistics,
+selected-model summary, model plots, and nine original-versus-ensemble panels.
+It also compares all 81
 newly calculated cover values with the frozen calibration fixture and stops if
 the maximum absolute difference exceeds `10⁻⁹` percentage points. The
 verified run reproduced the frozen objective-cover values with a maximum
-difference of `1.42 × 10⁻¹⁴` percentage points.
+difference of `2.84 × 10⁻¹⁴` percentage points.
 
 ## Methodological limitations
 
@@ -334,14 +342,14 @@ as improved field-estimation accuracy.
 
 The residual foam-board cross-hatching in dense-mat photographs represents an
 information limitation because its colour and line structure overlap real
-grass blades. More aggressive removal also removed plausible plant material.
-The selected ridge threshold represents a shared, visually supported
-compromise and does not eliminate this uncertainty.
+grass blades. Averaging the complete ridge-response range incorporates
+parameter sensitivity but cannot distinguish cross-hatching from blades when
+their image features coincide.
 
 ## Reference
 
-1. Keane RE, Dickinson LJ. *The photoload sampling technique: estimating
+1. Keane RE, Dickinson LJ. 2007. *The photoload sampling technique: estimating
    surface fuel loadings from downward-looking photographs of synthetic
    fuelbeds*. General Technical Report RMRS-GTR-190. Fort Collins, CO: U.S.
    Department of Agriculture, Forest Service, Rocky Mountain Research Station;
-   2007. https://doi.org/10.2737/RMRS-GTR-190.
+   https://doi.org/10.2737/RMRS-GTR-190.

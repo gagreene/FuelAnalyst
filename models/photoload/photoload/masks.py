@@ -11,7 +11,6 @@ from skimage.color import rgb2gray, rgb2lab
 from skimage.filters import meijering, sato, threshold_otsu
 from skimage.morphology import disk, remove_small_objects
 
-
 BODY_EDGE_THRESHOLD_FACTOR = 1.08
 BOARD_DELTA_E_MINIMUM = 6.0
 BROADLEAF_SPECIES = {"AMAL", "ARLA", "MARE", "SYAL", "VAGL"}
@@ -21,17 +20,18 @@ EDGE_ARTIFACT_BAND_PIXELS = 20
 EDGE_CHROMA_THRESHOLD_FACTOR = 0.75
 FINE_STRUCTURE_SPECIES = {"VASC", "XETE"}
 LOCAL_WINDOW_SIZE = 15
+PIXEL_STEPS = tuple(range(1, 31))
 RIDGE_CONNECTION_RADIUS = 2
 RIDGE_EXTENSION_STEPS = 12
 RIDGE_MINIMUM_SIZE = 3
-RIDGE_RESCUE_THRESHOLD = 0.045
+RIDGE_THRESHOLDS = tuple(value / 1000 for value in range(0, 225, 5))
 RIDGE_SIGMAS = range(1, 3)
 SATURATION_RIDGE_THRESHOLD = 0.03
 
 
 def _dense_mat_components(
-    source: np.ndarray,
-    rgb: np.ndarray,
+        source: np.ndarray,
+        rgb: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Return the shared dense-mat cleanup components and ridge response."""
     lab = rgb2lab(rgb)
@@ -56,10 +56,10 @@ def _dense_mat_components(
 
 
 def _distance_from_board(
-    lab: np.ndarray,
-    saturation: np.ndarray,
-    value: np.ndarray,
-    body: np.ndarray,
+        lab: np.ndarray,
+        saturation: np.ndarray,
+        value: np.ndarray,
+        body: np.ndarray,
 ) -> tuple[np.ndarray, float]:
     """Estimate color distance from pale board pixels."""
     board_seed = (saturation < 0.12) & (value > 0.75) & ~body
@@ -82,26 +82,26 @@ def _edge_artifact_mask(chroma: np.ndarray, threshold: float) -> np.ndarray:
         [rows, columns, height - 1 - rows, width - 1 - columns]
     )
     return (edge_distance < EDGE_ARTIFACT_BAND_PIXELS) & (
-        chroma < threshold * EDGE_CHROMA_THRESHOLD_FACTOR
+            chroma < threshold * EDGE_CHROMA_THRESHOLD_FACTOR
     )
 
 
-def _selected_mask(species_code: str, source: np.ndarray, rgb: np.ndarray) -> np.ndarray:
-    """Apply the selected morphology-group recipe."""
+def _ensemble_mask(species_code: str, source: np.ndarray, rgb: np.ndarray) -> np.ndarray:
+    """Return the morphology-group ensemble selection frequency."""
     if species_code in BROADLEAF_SPECIES:
-        return grow_color_support(source, rgb, steps=2)
+        return color_support_ensemble(source, rgb)
     if species_code in DENSE_MAT_SPECIES:
-        return ridge_rescue_mask(source, rgb, RIDGE_RESCUE_THRESHOLD)
+        return ridge_rescue_ensemble(source, rgb)
     if species_code in FINE_STRUCTURE_SPECIES:
-        return grow_color_support(source, rgb, steps=4)
-    raise ValueError(f"No selected mask recipe for species code {species_code}")
+        return color_support_ensemble(source, rgb)
+    raise ValueError(f"No ensemble mask recipe for species code {species_code}")
 
 
 def _selected_ridges(
-    ridge_mask: np.ndarray,
-    body: np.ndarray,
-    delta_e: np.ndarray,
-    delta_e_gate: float,
+        ridge_mask: np.ndarray,
+        body: np.ndarray,
+        delta_e: np.ndarray,
+        delta_e_gate: float,
 ) -> np.ndarray:
     """Retain plant-colored ridge pixels grown from an existing body."""
     candidate = ridge_mask & ~body & (delta_e > delta_e_gate)
@@ -116,8 +116,8 @@ def _selected_ridges(
 
 
 def _source_masks(
-    rgb: np.ndarray,
-    chroma_threshold: float,
+        rgb: np.ndarray,
+        chroma_threshold: float,
 ) -> dict[str, np.ndarray]:
     """Return the three retained source-mask variations."""
     lab = rgb2lab(rgb)
@@ -127,13 +127,13 @@ def _source_masks(
     value = hsv[:, :, 2] / 255.0
     body = chroma > chroma_threshold
     refined = ndimage.binary_erosion(body, structure=disk(1)) | (
-        body & (chroma > chroma_threshold * BODY_EDGE_THRESHOLD_FACTOR)
+            body & (chroma > chroma_threshold * BODY_EDGE_THRESHOLD_FACTOR)
     )
     delta_e, delta_e_gate = _distance_from_board(lab, saturation, value, body)
     edge_artifact = _edge_artifact_mask(chroma, chroma_threshold)
     saturation_ridges = (
-        meijering(saturation, black_ridges=False, sigmas=RIDGE_SIGMAS)
-        > SATURATION_RIDGE_THRESHOLD
+            meijering(saturation, black_ridges=False, sigmas=RIDGE_SIGMAS)
+            > SATURATION_RIDGE_THRESHOLD
     )
     connected_saturation = _selected_ridges(
         saturation_ridges & ~edge_artifact,
@@ -142,8 +142,8 @@ def _source_masks(
         delta_e_gate,
     )
     dark_ridges = (
-        meijering(lab[:, :, 0] / 100.0, black_ridges=True, sigmas=RIDGE_SIGMAS)
-        > DARK_RIDGE_THRESHOLD
+            meijering(lab[:, :, 0] / 100.0, black_ridges=True, sigmas=RIDGE_SIGMAS)
+            > DARK_RIDGE_THRESHOLD
     )
     connected_dark = _selected_ridges(
         dark_ridges & ~edge_artifact,
@@ -155,18 +155,80 @@ def _source_masks(
         "variation_1_cielab": body,
         "variation_2_refined_saturation": refined | connected_saturation,
         "variation_3_refined_saturation_dark": (
-            refined | connected_saturation | connected_dark
+                refined | connected_saturation | connected_dark
         ),
     }
 
 
+def color_support_ensemble(
+        source: np.ndarray,
+        rgb: np.ndarray,
+        steps: tuple[int, ...] = PIXEL_STEPS,
+) -> np.ndarray:
+    """Average seeded color-support masks across the full growth range."""
+    if not steps or min(steps) < 1 or tuple(sorted(set(steps))) != steps:
+        raise ValueError("Color-support ensemble steps must be unique increasing positives")
+    lab = rgb2lab(rgb)
+    selected = source & (
+            (lab[:, :, 0] < 70) | (lab[:, :, 1] < 0) | (lab[:, :, 2] > 25)
+    )
+    accumulator = np.zeros(source.shape, dtype=np.float64)
+    step_index = 0
+    for iteration in range(1, steps[-1] + 1):
+        selected = ndimage.binary_dilation(selected) & source
+        if iteration == steps[step_index]:
+            accumulator += selected
+            step_index += 1
+            if step_index == len(steps):
+                break
+    return accumulator / len(steps)
+
+
+def color_support_stabilization_step(source: np.ndarray, rgb: np.ndarray) -> int:
+    """Return the final seeded-growth step that changes the selected mask."""
+    lab = rgb2lab(rgb)
+    selected = source & (
+            (lab[:, :, 0] < 70) | (lab[:, :, 1] < 0) | (lab[:, :, 2] > 25)
+    )
+    for step in range(1, source.size + 1):
+        grown = ndimage.binary_dilation(selected) & source
+        if np.array_equal(grown, selected):
+            return step - 1
+        selected = grown
+    raise RuntimeError("Seeded color-support growth did not stabilize")
+
+
+def color_support_sweep(
+        source: np.ndarray,
+        rgb: np.ndarray,
+        steps: tuple[int, ...] = PIXEL_STEPS,
+) -> dict[int, np.ndarray]:
+    """Return seeded color-support masks while growing the seeds only once."""
+    if not steps or min(steps) < 1 or tuple(sorted(set(steps))) != steps:
+        raise ValueError("Color-support sweep steps must be unique increasing positives")
+    lab = rgb2lab(rgb)
+    selected = source & (
+            (lab[:, :, 0] < 70) | (lab[:, :, 1] < 0) | (lab[:, :, 2] > 25)
+    )
+    masks: dict[int, np.ndarray] = {}
+    step_index = 0
+    for iteration in range(1, steps[-1] + 1):
+        selected = ndimage.binary_dilation(selected) & source
+        if iteration == steps[step_index]:
+            masks[iteration] = selected.copy()
+            step_index += 1
+            if step_index == len(steps):
+                break
+    return masks
+
+
 def generate_masks(
-    raw_root: Path,
-    source_root: Path,
-    selected_root: Path,
-    biomass_by_folder: dict[str, list[float]],
+        raw_root: Path,
+        source_root: Path,
+        frequency_root: Path,
+        biomass_by_folder: dict[str, list[float]],
 ) -> list[dict[str, object]]:
-    """Write source/final masks and return objective cover records."""
+    """Write source/ensemble masks and return objective cover records."""
     records: list[dict[str, object]] = []
     for folder, biomass_values in biomass_by_folder.items():
         species_dir = raw_root / folder
@@ -184,23 +246,25 @@ def generate_masks(
             source = source_mask_variations(rgb, threshold)[
                 "variation_3_refined_saturation_dark"
             ]
-            selected = _selected_mask(species_code, source, rgb)
+            selected = _ensemble_mask(species_code, source, rgb)
             relative = Path(species_dir.name) / f"{image_path.stem}.png"
             (source_root / relative.parent).mkdir(parents=True, exist_ok=True)
-            (selected_root / relative.parent).mkdir(parents=True, exist_ok=True)
+            (frequency_root / relative.parent).mkdir(parents=True, exist_ok=True)
             Image.fromarray(source.astype(np.uint8) * 255).save(source_root / relative)
-            Image.fromarray(selected.astype(np.uint8) * 255).save(selected_root / relative)
+            Image.fromarray(np.rint(selected * 65535).astype(np.uint16)).save(
+                frequency_root / relative
+            )
             records.append(
                 {
                     "folder": species_dir.name,
                     "kg_m2": float(image_path.stem.split("_")[0]),
                     "objective_pct_cover": float(100 * selected.mean()),
                     "selected_model": (
-                        "broadleaf_2px"
+                        "broadleaf_ensemble_1_30px"
                         if species_code in BROADLEAF_SPECIES
-                        else "dense_mat_ridge_0.045"
+                        else "dense_mat_ensemble_0.000_0.220"
                         if species_code in DENSE_MAT_SPECIES
-                        else "fine_structure_4px"
+                        else "fine_structure_ensemble_1_30px"
                     ),
                 }
             )
@@ -208,26 +272,49 @@ def generate_masks(
 
 
 def grow_color_support(
-    source: np.ndarray,
-    rgb: np.ndarray,
-    steps: int,
+        source: np.ndarray,
+        rgb: np.ndarray,
+        steps: int,
 ) -> np.ndarray:
     """Grow strong plant-color seeds through a source mask for N pixels."""
     if steps < 0:
         raise ValueError("Color-support growth steps cannot be negative")
     lab = rgb2lab(rgb)
     selected = source & (
-        (lab[:, :, 0] < 70) | (lab[:, :, 1] < 0) | (lab[:, :, 2] > 25)
+            (lab[:, :, 0] < 70) | (lab[:, :, 1] < 0) | (lab[:, :, 2] > 25)
     )
     for _ in range(steps):
         selected = ndimage.binary_dilation(selected) & source
     return selected
 
 
+def maximum_eligible_ridge_response(source: np.ndarray, rgb: np.ndarray) -> float:
+    """Return the largest ridge response among pixels eligible for rescue."""
+    _, neutral_removed, ridge, eligible = _dense_mat_components(source, rgb)
+    responses = ridge[neutral_removed & eligible]
+    return float(responses.max()) if responses.size else 0.0
+
+
+def ridge_rescue_ensemble(
+        source: np.ndarray,
+        rgb: np.ndarray,
+        thresholds: tuple[float, ...] = RIDGE_THRESHOLDS,
+) -> np.ndarray:
+    """Average dense-mat masks across the full ridge-response range."""
+    if not thresholds or min(thresholds) < 0 or tuple(sorted(set(thresholds))) != thresholds:
+        raise ValueError("Ridge thresholds must be unique increasing nonnegative values")
+    cleaned, neutral_removed, ridge, eligible = _dense_mat_components(source, rgb)
+    rescuable = neutral_removed & eligible
+    accumulator = np.zeros(source.shape, dtype=np.float64)
+    for threshold in thresholds:
+        accumulator += cleaned | (rescuable & (ridge > threshold))
+    return accumulator / len(thresholds)
+
+
 def ridge_rescue_mask(
-    source: np.ndarray,
-    rgb: np.ndarray,
-    threshold: float,
+        source: np.ndarray,
+        rgb: np.ndarray,
+        threshold: float,
 ) -> np.ndarray:
     """Return dense-mat cleanup with neutral blade pixels rescued by ridges."""
     cleaned, neutral_removed, ridge, eligible = _dense_mat_components(source, rgb)
@@ -235,9 +322,25 @@ def ridge_rescue_mask(
     return cleaned | blade_rescue
 
 
+def ridge_rescue_sweep(
+        source: np.ndarray,
+        rgb: np.ndarray,
+        thresholds: tuple[float, ...] = RIDGE_THRESHOLDS,
+) -> dict[float, np.ndarray]:
+    """Return ridge-rescue masks from one calculation of shared components."""
+    if not thresholds or min(thresholds) < 0 or tuple(sorted(set(thresholds))) != thresholds:
+        raise ValueError("Ridge thresholds must be unique increasing nonnegative values")
+    cleaned, neutral_removed, ridge, eligible = _dense_mat_components(source, rgb)
+    rescuable = neutral_removed & eligible
+    return {
+        threshold: cleaned | (rescuable & (ridge > threshold))
+        for threshold in thresholds
+    }
+
+
 def source_mask_variations(
-    rgb: np.ndarray,
-    chroma_threshold: float,
+        rgb: np.ndarray,
+        chroma_threshold: float,
 ) -> dict[str, np.ndarray]:
     """Return CIELAB, refined+saturation, and refined+saturation+dark masks."""
     return _source_masks(rgb, chroma_threshold)

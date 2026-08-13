@@ -1,13 +1,9 @@
-# PhotoLoad method-selection experiments
+# PhotoLoad source-mask and range-bound experiment
 
-This directory preserves only the visual comparisons that support the final
-PhotoLoad image-method decisions. It does not restore the discarded early
-classification attempts or the broader exploratory work.
-
-The experiment is deliberately separated from the frozen production workflow
-in the parent directory. Its current selections remain 2 px for broadleaf
-species, 4 px for fine-structure species, and ridge rescue 0.045 for dense-mat
-species, but the expanded panels allow those decisions to be reviewed again.
+This experiment documents the evidence used to define the image-processing
+stages and the bounds of the parameter ranges used by the production PhotoLoad
+workflow. Complete parameter-specific image panels are production outputs;
+they are not duplicated here.
 
 ## Step 1 — source-mask comparison
 
@@ -19,45 +15,64 @@ For every species, the first panel compares:
 
 The photographs are first extracted and cropped by the production extraction
 process. Printed borders, scan antialiasing, and visible foam-board edges are
-removed during that one extraction operation; they are not presented as
-separate candidate methods.
+removed during that one extraction operation; they are not separate candidate
+methods. Variation 3 is the common source mask for Step 2.
 
-## Step 2 — morphology-group comparisons
+## Step 2 — production-range bounds
 
-Variation 3 is the common input to all Step 2 candidates:
+Species are assigned to three morphology groups:
 
-- Broadleaf (`AMAL`, `ARLA`, `MARE`, `SYAL`, `VAGL`): seeded CIELAB color
-  support grown 2 through 12 px. The current selection is 2 px.
-- Fine structure (`VASC`, `XETE`): the same 2 through 12 px sweep. The current
-  selection is 4 px.
-- Dense mat (`CARU`, `FESC`): expanded neutral cleanup without rescue, followed
-  by Sato ridge-rescue thresholds 0.010 through 0.095 in increments of 0.005.
-  The current selection is 0.045.
+- Broadleaf (`AMAL`, `ARLA`, `MARE`, `SYAL`, `VAGL`) and fine-structure
+  (`VASC`, `XETE`) masks are grown one pixel at a time until another dilation
+  cannot alter the selected mask. The last growth step that changed each mask
+  is recorded for every calibration photograph.
+- For dense-mat species (`CARU`, `FESC`), the maximum Sato response is recorded
+  among every provisionally removed pixel that satisfies the spatial rescue
+  criteria.
 
-The historically saved comparisons used 2, 4, 6, 8, and 12 px and ridge
-thresholds 0.045, 0.055, and 0.070. The denser grids are intentional additions
-for the new review; the underlying algorithms are unchanged.
+The bounds are therefore defined by algorithm behavior rather than visual
+selection. One pixel is the smallest nonzero seeded-growth operation. The
+largest last-changing step establishes 30 px as the common upper bound. A
+ridge threshold of 0.000 includes every positive eligible response. The
+largest observed eligible response is rounded upward to the next 0.005 unit,
+establishing 0.220 as the upper bound and exact no-rescue endpoint.
 
-Each species panel places the lowest-biomass image at the top and the
-highest-biomass image at the bottom. Masks show selected pixels from the
-original photograph on white, with objective cover printed above every result.
-Analyst cover is shown only as a comparison guide, not as ground truth.
+The experiment writes the per-image stabilization steps and eligible-response
+maxima, a diagnostic figure, and a manifest containing both the observed
+extrema and the resulting production bounds. The production workflow then
+uses every integer growth step from 1 through 30 px and every ridge threshold
+from 0.000 through 0.220 in increments of 0.005. Objective cover is the
+arithmetic mean across the applicable complete range.
+
+Any biomass-model refitting based on these ranges must use the documented
+multi-criteria process for every species. Physical behavior, residual shape,
+LOOCV RMSE, AICc/AIC/BIC, fitted RMSE, R-squared, and parsimony are considered
+together. AICc may be reported as one diagnostic but cannot alone designate a
+selected or final model.
 
 ## Run
 
 From the repository root:
 
 ```powershell
-python models/photoload/experiments/run_comparisons.py
+python models/photoload/experiments/run_range_experiment.py
 ```
 
-The default output is the ignored `models/photoload/.work/experiments`
-directory. A different location can be provided without changing source code:
+The default output is the ignored `models/photoload/.work/range_experiment`
+directory. A different location can be supplied without editing source code:
 
 ```powershell
-python models/photoload/experiments/run_comparisons.py --output-dir D:\analysis\photoload-review
+python models/photoload/experiments/run_range_experiment.py --output-dir D:\analysis\photoload-range-experiment
 ```
 
-The command writes the extracted photographs, nine Step 1 panels, nine Step 2
-panels, per-image cover values, analyst-agreement summaries, and a manifest
-that distinguishes historically reviewed values from the expanded review grid.
+The principal output files are:
+
+- `01_source_mask_evaluation/source_mask_cover_by_image.csv`;
+- `01_source_mask_evaluation/source_mask_agreement_summary.csv`;
+- `02_parameter_bound_derivation/seeded_growth_last_change.csv`;
+- `02_parameter_bound_derivation/eligible_ridge_response_maxima.csv`;
+- `02_parameter_bound_derivation/parameter_bound_diagnostics.png`; and
+- `range_experiment_manifest.json`.
+
+Species-level source-mask panels are stored under
+`01_source_mask_evaluation/panels`.
