@@ -1,4 +1,4 @@
-"""Frozen PhotoLoad workflow used for the FuelAnalyst paper."""
+"""Production PhotoLoad workflow used for the FuelAnalyst paper."""
 
 from .workflow import run_workflow
 

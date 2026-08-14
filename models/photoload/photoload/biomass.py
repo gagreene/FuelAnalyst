@@ -1,4 +1,4 @@
-"""Fit and document the frozen origin-constrained PhotoLoad biomass models."""
+"""Fit and document the production origin-constrained PhotoLoad biomass models."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Orchestrate the frozen PhotoLoad workflow and its reproducibility checks."""
+"""Orchestrate the production PhotoLoad workflow and its reproducibility checks."""
 
 from __future__ import annotations
 
@@ -207,7 +207,7 @@ def _isolate_plant(rgb: np.ndarray, mask: np.ndarray) -> np.ndarray:
 
 
 def _load_calibration() -> pd.DataFrame:
-    """Load and validate the frozen paper calibration table."""
+    """Load and validate the versioned reference calibration table."""
     data = pd.read_csv(CALIBRATION_CSV)
     required = {
         "species",
@@ -257,7 +257,9 @@ def run_workflow(pdf_path: Path, output_dir: Path) -> None:
     )
     results = data.merge(measured, on=["folder", "kg_m2"], validate="one_to_one")
     if not (results["selected_model_x"] == results["selected_model_y"]).all():
-        raise RuntimeError("Generated mask recipe does not match frozen calibration metadata")
+        raise RuntimeError(
+            "Generated mask recipe does not match reference calibration metadata"
+        )
     results = results.drop(columns=["selected_model_y"]).rename(
         columns={"selected_model_x": "selected_model"}
     )
@@ -267,7 +269,7 @@ def run_workflow(pdf_path: Path, output_dir: Path) -> None:
     maximum_difference = float(results["cover_difference_from_reference"].abs().max())
     if maximum_difference > 1e-9:
         raise RuntimeError(
-            "Generated objective cover does not reproduce the frozen paper results; "
+            "Generated objective cover does not reproduce the reference results; "
             f"maximum difference={maximum_difference:.12g} percentage points"
         )
     cover_dir.mkdir(parents=True, exist_ok=True)

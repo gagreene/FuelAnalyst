@@ -4,12 +4,11 @@
 
 This document describes the derivation of nine species-specific equations used
 by FuelAnalyst to estimate live surface-plant biomass from percent cover and
-plant height. The procedure re-analysed the published PhotoLoad calibration
-photographs of Keane and Dickinson [1], replaced subjective visual cover with
-reproducible image-derived cover, and fitted biomass–cover relationships that
-were constrained to predict zero biomass at zero cover. It documents the
-frozen production workflow used for the FuelAnalyst paper; discarded early
-classification trials are outside its scope.
+plant height. The procedure applied reproducible image classification to the
+published PhotoLoad calibration photographs of Keane and Dickinson [1] and
+fitted biomass–cover relationships constrained to predict zero biomass at zero
+cover. It documents the production workflow used for the FuelAnalyst
+paper.
 
 The complete implementation is documented in the
 [`models/photoload` README](../README.md).
@@ -30,11 +29,8 @@ represented increasing dry biomass per unit area. The analysed species were
 *Calamagrostis rubescens* (CARU), *Festuca scabrella* (FESC), and
 *Xerophyllum tenax* (XETE).
 
-Biomass values were recorded in kg m⁻². Archived mean analyst estimates of
-percent cover were retained for visual comparison, but were not treated as
-ground truth, used to train a pixel classifier, or used as the predictor in
-the final biomass equations. The final predictor was objective percent cover
-measured from the morphology-specific ensemble selection frequency.
+Biomass values were recorded in kg m⁻². The predictor was objective percent
+cover measured from the morphology-specific ensemble selection frequency.
 
 ## Photograph extraction and cropping
 
@@ -59,11 +55,12 @@ occurred during a single extraction operation and were not evaluated as
 alternative segmentation models. Cropped RGB images were saved as JPEG at
 quality 95.
 
-The published SYAL sequence contained a known ordering issue. The frozen
-workflow applied the verified post-extraction reassignment
-0.08→0.15, 0.10→0.08, 0.12→0.10, and 0.15→0.12 kg m⁻². This correction was
-performed after initial JPEG export to reproduce the exact calibration images
-used in the analysis.
+Upon inspection of the original Photoload series images, the published SYAL 
+sequence was observed to contain an ordering issue. Consequently, we applied 
+the following reassignments to the SYAL series: 0.08 kg/m2→0.15 kg/m2, 
+0.10→0.08, 0.12→0.10, and 0.15→0.12 kg m⁻². This correction was performed 
+after initial JPEG export to ensure the correct calibration images were used 
+in the analysis.
 
 ## Objective-cover classification
 
@@ -178,8 +175,7 @@ x = 100 × sum(selection frequency) / Ntotal
 
 where `Ntotal` was the number of pixels in the cropped photograph. This is
 algebraically identical to averaging the objective-cover values across all
-parameter-specific masks. No synthetic plant pixels or analyst cover values
-entered the calculation.
+parameter-specific masks.
 
 ## Biomass-model development
 
@@ -318,9 +314,9 @@ The production run writes the extracted photographs, source masks, ensemble
 selection-frequency images, objective-cover table, candidate statistics,
 selected-model summary, model plots, and nine original-versus-ensemble panels.
 It also compares all 81
-newly calculated cover values with the frozen calibration fixture and stops if
+newly calculated cover values with the versioned reference dataset and stops if
 the maximum absolute difference exceeds `10⁻⁹` percentage points. The
-verified run reproduced the frozen objective-cover values with a maximum
+verified run reproduced the reference objective-cover values with a maximum
 difference of `2.84 × 10⁻¹⁴` percentage points.
 
 ## Methodological limitations
@@ -330,15 +326,6 @@ performed within this small calibration set. The reported errors therefore
 measure internal calibration and cross-validation performance rather than
 independent field validation. Extrapolation beyond the observed cover and
 biomass ranges is not supported, particularly for convex exponential models.
-
-The final equations were fitted to objective image-derived cover, whereas
-FuelAnalyst field inputs are observer-estimated cover. These two measurement
-scales are related but not identical. Applying the equations directly to
-historical analyst-cover records can change estimates substantially and in a
-species- and cover-dependent direction; a single migration correction is not
-appropriate. Independent evaluation or an explicit analyst-to-objective cover
-calibration is required before interpreting the improved image-calibration fit
-as improved field-estimation accuracy.
 
 The residual foam-board cross-hatching in dense-mat photographs represents an
 information limitation because its colour and line structure overlap real

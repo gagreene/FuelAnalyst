@@ -1,4 +1,4 @@
-# Frozen PhotoLoad workflow
+# Production PhotoLoad workflow
 
 This directory contains the production workflow used to derive the nine
 PhotoLoad biomass equations reported by FuelAnalyst. The scientific methods
@@ -18,7 +18,7 @@ ridge-rescue masks at thresholds from 0.000 through 0.220 in increments of
 0.005. The stored selection-frequency images preserve each pixel's fraction of
 ensemble masks rather than reducing the result to one binary threshold choice.
 
-`data/paper_calibration.csv` is the frozen regression fixture. It preserves the
+`data/paper_calibration.csv` is the versioned reference dataset. It preserves the
 biomass labels and analyst means, together with the final ensemble-cover
 values. A production run fails if regenerated cover differs from the fixture.
 

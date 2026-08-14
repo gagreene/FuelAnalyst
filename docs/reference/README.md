@@ -1,6 +1,6 @@
 # References
 
-`rmrs_gtr190_Kean_and_Dickinson_2007.pdf` is the source publication for the frozen PhotoLoad workflow
+`rmrs_gtr190_Kean_and_Dickinson_2007.pdf` is the source publication for the production PhotoLoad workflow
 in [`models/photoload`](../../models/photoload/README.md):
 
 Keane, Robert E.; Dickinson, Laura J. 2007. *The photoload sampling technique:
