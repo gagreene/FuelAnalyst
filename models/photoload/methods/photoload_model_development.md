@@ -56,8 +56,8 @@ alternative segmentation models. Cropped RGB images were saved as JPEG at
 quality 95.
 
 Upon inspection of the original Photoload series images, the published SYAL 
-sequence was observed to contain an ordering issue. Consequently, we applied 
-the following reassignments to the SYAL series: 0.08 kg/m2→0.15 kg/m2, 
+sequence was observed to contain an ordering issue. We applied the following 
+reassignments to the SYAL series as a correction: 0.08 kg/m^2→0.15 kg/m^2, 
 0.10→0.08, 0.12→0.10, and 0.15→0.12 kg m⁻². This correction was performed 
 after initial JPEG export to ensure the correct calibration images were used 
 in the analysis.
