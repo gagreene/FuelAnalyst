@@ -104,13 +104,13 @@ def _get_dom_substrate(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     df['dom_substrate'] = np.select(
         [
             shrubs_dom,  # Shrubs dominant
-            bryo_dom,    # Bryoid dominant
-            herbs_dom,   # Herbs/forbs dominant
-            grass_dom,   # Grasses dominate
+            bryo_dom,  # Bryoid dominant
+            herbs_dom,  # Herbs/forbs dominant
+            grass_dom,  # Grasses dominate
             herbs_grass_dom & (herbs_ratio > 0.5),  # Herbs/forbs > 50% and dominate over grass
             herbs_grass_dom & (grass_ratio > 0.5),  # Grasses > 50% and dominate over herbs
             herbs_grass_dom,  # Herbs + grass > 50% but neither dominates
-            dom_shrubs       # Initial dominant substrate is shrubs
+            dom_shrubs  # Initial dominant substrate is shrubs
         ],
         [
             np.where(tall_shrubs, 'ST', 'SL'),  # Tall or low shrubland
@@ -135,17 +135,17 @@ def _get_photoload_biomass(photoload_code: str, pct_cover: float, height: float)
     reference height used for the corresponding PhotoLoad series.
     """
     photoload_dict = {
-        'AMAL': (height / 35.56) * 0.0694081 * (np.exp(0.0239616 * pct_cover) - 1),
-        'MARE': (height / 10.16) * 0.000794352 * np.power(pct_cover, 1.14948),
+        'AMAL': (height / 35.56) * 0.0690181 * (np.exp(0.0240242 * pct_cover) - 1),
+        'MARE': (height / 10.16) * 0.000733871 * np.power(pct_cover, 1.16779),
         'SYAL': (height / 35.56) * (
-            0.00122434 * pct_cover + 0.0000169664 * np.power(pct_cover, 2)
+                0.00119555 * pct_cover + 0.0000169686 * np.power(pct_cover, 2)
         ),
-        'VAGL': (height / 35.56) * 0.380891 * (np.exp(0.0114212 * pct_cover) - 1),
-        'VASC': (height / 17.78) * 0.00256257 * pct_cover,
-        'ARLA': (height / 30.48) * 0.000647724 * np.power(pct_cover, 1.1414),
-        'CARU': (height / 20.30) * 0.0089042 * (np.exp(0.0402093 * pct_cover) - 1),
-        'FESC': (height / 30.5) * 0.015769 * (np.exp(0.0332087 * pct_cover) - 1),
-        'XETE': (height / 25.4) * 0.00385736 * pct_cover,
+        'VAGL': (height / 35.56) * 0.398329 * (np.exp(0.0109776 * pct_cover) - 1),
+        'VASC': (height / 17.78) * 0.0025455 * pct_cover,
+        'ARLA': (height / 30.48) * 0.0005745 * np.power(pct_cover, 1.16228),
+        'CARU': (height / 20.30) * 0.0117766 * (np.exp(0.0379728 * pct_cover) - 1),
+        'FESC': (height / 30.5) * 0.0161917 * (np.exp(0.0330081 * pct_cover) - 1),
+        'XETE': (height / 25.4) * 0.00366616 * pct_cover,
         'MOSS': 0,
         'TREE': 0
     }
@@ -242,7 +242,7 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
 
         # Change plants with 0 percent or 0 cm height values to 1 percent
         mask = (df[f'pc_species_{x}'].notnull()) & (
-            (df[f'pc_species_{x}_pct'] == 0) | (df[f'pc_species_{x}_ht'] == 0)
+                (df[f'pc_species_{x}_pct'] == 0) | (df[f'pc_species_{x}_ht'] == 0)
         )
         df.loc[mask, f'pc_species_{x}_pct'] = 1
 

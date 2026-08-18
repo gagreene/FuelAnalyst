@@ -30,7 +30,7 @@ SYAL_REORDER_FIX = {
 
 
 def _apply_syal_reorder(species_dir: Path) -> None:
-    """Apply the frozen post-export SYAL sequence correction."""
+    """Apply the defined post-export SYAL sequence correction."""
     corrected = {
         new_biomass: Image.open(species_dir / f"{old_biomass:.3f}_kgm2.jpg").copy()
         for old_biomass, new_biomass in SYAL_REORDER_FIX.items()

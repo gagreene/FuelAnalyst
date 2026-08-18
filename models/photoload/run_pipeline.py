@@ -1,4 +1,4 @@
-"""Run the frozen PhotoLoad workflow used for the FuelAnalyst paper."""
+"""Run the production PhotoLoad workflow used for the FuelAnalyst paper."""
 
 from __future__ import annotations
 
@@ -10,11 +10,16 @@ from photoload import run_workflow
 
 MODEL_ROOT = Path(__file__).resolve().parent
 DEFAULT_OUTPUT_DIR = MODEL_ROOT / ".work"
-DEFAULT_PDF = MODEL_ROOT.parents[1] / "docs" / "reference" / "rmrs_gtr190.pdf"
+DEFAULT_PDF = (
+    MODEL_ROOT.parents[1]
+    / "docs"
+    / "reference"
+    / "rmrs_gtr190_Kean_and_Dickinson_2007.pdf"
+)
 
 
 def main() -> None:
-    """Parse command-line arguments and run the frozen workflow."""
+    """Parse command-line arguments and run the production workflow."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output-dir",

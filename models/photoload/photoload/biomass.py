@@ -1,4 +1,4 @@
-"""Fit and document the frozen origin-constrained PhotoLoad biomass models."""
+"""Fit and document the production origin-constrained PhotoLoad biomass models."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
-
 
 SPECIES_ORDER = (
     "Amelanchier alnifolia",
@@ -45,7 +44,7 @@ def _equation(model: str, parameters: np.ndarray) -> str:
 
 def _guess_linear_origin(x: np.ndarray, y: np.ndarray) -> list[float]:
     """Return a least-squares slope through the origin."""
-    return [float(np.sum(x * y) / np.sum(x**2))]
+    return [float(np.sum(x * y) / np.sum(x ** 2))]
 
 
 def _guess_power(x: np.ndarray, y: np.ndarray) -> list[float]:
@@ -56,7 +55,7 @@ def _guess_power(x: np.ndarray, y: np.ndarray) -> list[float]:
 
 def _guess_quadratic_origin(x: np.ndarray, y: np.ndarray) -> list[float]:
     """Start the quadratic at the through-origin linear solution."""
-    return [float(np.sum(x * y) / np.sum(x**2)), 0.0]
+    return [float(np.sum(x * y) / np.sum(x ** 2)), 0.0]
 
 
 def _guess_saturating(x: np.ndarray, y: np.ndarray) -> list[float]:
@@ -68,7 +67,7 @@ def _guess_shifted_exponential(x: np.ndarray, y: np.ndarray) -> list[float]:
     """Return starting values for the shifted exponential model."""
     exponent = 0.02
     basis = np.expm1(exponent * x)
-    scale = np.sum(basis * y) / np.sum(basis**2)
+    scale = np.sum(basis * y) / np.sum(basis ** 2)
     return [float(max(scale, 1e-6)), exponent]
 
 
@@ -122,7 +121,7 @@ def _power(x: np.ndarray, scale: float, exponent: float) -> np.ndarray:
 
 def _quadratic_origin(x: np.ndarray, linear: float, quadratic: float) -> np.ndarray:
     """Return a no-intercept quadratic prediction."""
-    return linear * x + quadratic * x**2
+    return linear * x + quadratic * x ** 2
 
 
 def _r_squared(y: np.ndarray, prediction: np.ndarray) -> float:
@@ -179,7 +178,7 @@ DOCUMENTED_SELECTIONS = {
     "Amelanchier alnifolia": {
         "model": "shifted_exponential",
         "basis": (
-            "Shifted exponential selected by multi-indicator review: it best "
+            "Shifted exponential selected by multi-criteria review: it best "
             "represents the pronounced positive curvature and has the lowest fitted "
             "and LOOCV RMSE, the highest R-squared, and the strongest AICc, AIC, and "
             "BIC support. The model is monotonic and nonnegative over the observed domain."
@@ -188,7 +187,7 @@ DOCUMENTED_SELECTIONS = {
     "Berberis repens": {
         "model": "power",
         "basis": (
-            "Power selected by multi-indicator review: it captures the modest positive "
+            "Power selected by multi-criteria review: it captures the modest positive "
             "curvature, removes the systematic low-to-high residual progression of the "
             "linear model, and has the best AICc, fitted RMSE, and R-squared. Its LOOCV "
             "RMSE is also marginally the lowest, and the fitted curve is monotonic and nonnegative."
@@ -197,16 +196,16 @@ DOCUMENTED_SELECTIONS = {
     "Symphoricarpos albus": {
         "model": "quadratic_origin",
         "basis": (
-            "Quadratic selected by multi-indicator review: it preserves the origin "
+            "Quadratic selected by multi-criteria review: it preserves the origin "
             "constraint, follows the visible curvature, and improves LOOCV RMSE, fitted "
             "RMSE, R-squared, and AIC relative to the linear AICc winner. Its delta AICc "
-            "is 2.69, which is not decisive evidence against it at n=9."
+            "is 2.71, which is not decisive evidence against it at n=9."
         ),
     },
     "Vaccinium globulare": {
         "model": "shifted_exponential",
         "basis": (
-            "Shifted exponential selected by multi-indicator review: it and the quadratic "
+            "Shifted exponential selected by multi-criteria review: it and the quadratic "
             "are effectively tied visually and statistically, but the shifted exponential "
             "has marginally better AICc, AIC, BIC, fitted RMSE, R-squared, and LOOCV RMSE. "
             "Both have two parameters; selection uncertainty and extrapolation beyond the "
@@ -216,7 +215,7 @@ DOCUMENTED_SELECTIONS = {
     "Vaccinium scoparium": {
         "model": "linear_origin",
         "basis": (
-            "Linear-through-origin selected by multi-indicator review: it has the strongest "
+            "Linear-through-origin selected by multi-criteria review: it has the strongest "
             "AICc support and lowest LOOCV RMSE, is physically valid, and uses only one "
             "parameter. Curved candidates improve the in-sample fit only slightly while "
             "worsening predictive error and adding unsupported complexity."
@@ -225,7 +224,7 @@ DOCUMENTED_SELECTIONS = {
     "Arnica latifolia": {
         "model": "power",
         "basis": (
-            "Power selected by multi-indicator review: it follows the modest positive "
+            "Power selected by multi-criteria review: it follows the modest positive "
             "curvature and has the lowest fitted and LOOCV RMSE, the highest R-squared, "
             "and the strongest AICc, AIC, and BIC support. The fitted relationship is "
             "monotonic and nonnegative."
@@ -234,7 +233,7 @@ DOCUMENTED_SELECTIONS = {
     "Calamagrostis rubescens": {
         "model": "shifted_exponential",
         "basis": (
-            "Shifted exponential selected by multi-indicator review: it best captures the "
+            "Shifted exponential selected by multi-criteria review: it best captures the "
             "strong convex rise caused by cover saturation and has the lowest fitted and "
             "LOOCV RMSE, highest R-squared, and best AICc, AIC, and BIC. The quadratic is "
             "physically invalid at low positive cover because its fitted linear coefficient "
@@ -244,7 +243,7 @@ DOCUMENTED_SELECTIONS = {
     "Festuca scabrella": {
         "model": "shifted_exponential",
         "basis": (
-            "Shifted exponential selected by multi-indicator review: it follows the observed "
+            "Shifted exponential selected by multi-criteria review: it follows the observed "
             "convex relationship and outperforms the alternatives on fitted RMSE, LOOCV "
             "RMSE, R-squared, AICc, AIC, and BIC. The quadratic is physically invalid at low "
             "positive cover because its fitted linear coefficient is negative."
@@ -253,7 +252,7 @@ DOCUMENTED_SELECTIONS = {
     "Xerophyllum tenax": {
         "model": "linear_origin",
         "basis": (
-            "Linear-through-origin selected by multi-indicator review: it has the best AICc "
+            "Linear-through-origin selected by multi-criteria review: it has the best AICc "
             "and ties the effectively linear shifted exponential for lowest LOOCV RMSE while "
             "using one fewer parameter. Curved models improve in-sample fit modestly but "
             "worsen prediction, so parsimony and stability favor the linear model."
@@ -306,7 +305,7 @@ def _write_model_results(data: pd.DataFrame, output_dir: Path) -> pd.DataFrame:
         decision = DOCUMENTED_SELECTIONS[species]
         selected = species_candidates.loc[
             species_candidates["model"] == decision["model"]
-        ].iloc[0].copy()
+            ].iloc[0].copy()
         selected["selection_basis"] = decision["basis"]
         selected["minimum_aicc_model"] = species_candidates.loc[
             species_candidates["aicc"].idxmin(), "model"
@@ -351,7 +350,7 @@ def _write_overview(data: pd.DataFrame, selected: pd.DataFrame, output_dir: Path
         axis.set_xlabel("Objective percent cover (%)", fontsize=8)
         axis.set_ylabel("Biomass (kg/m²)", fontsize=8)
         axis.grid(alpha=0.2)
-    figure.suptitle("Final multi-indicator PhotoLoad biomass models", fontsize=16)
+    figure.suptitle("Final multi-criteria PhotoLoad biomass models", fontsize=16)
     figure.tight_layout(rect=(0, 0, 1, 0.97))
     figure.savefig(output_dir / "selected_models_overview.png", dpi=200)
     plt.close(figure)
