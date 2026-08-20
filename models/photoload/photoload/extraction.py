@@ -5,7 +5,7 @@ from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
 
-import pymupdf as fitz
+import pymupdf
 import numpy as np
 from PIL import Image
 
@@ -31,12 +31,17 @@ SYAL_REORDER_FIX = {
 
 def _apply_syal_reorder(species_dir: Path) -> None:
     """Apply the defined post-export SYAL sequence correction."""
-    corrected = {
-        new_biomass: Image.open(species_dir / f"{old_biomass:.3f}_kgm2.jpg").copy()
-        for old_biomass, new_biomass in SYAL_REORDER_FIX.items()
-    }
-    for new_biomass, image in corrected.items():
-        image.save(species_dir / f"{new_biomass:.3f}_kgm2.jpg", quality=95)
+    corrected: dict[float, Image.Image] = {}
+    for old_biomass, new_biomass in SYAL_REORDER_FIX.items():
+        source_path = species_dir / f"{old_biomass:.3f}_kgm2.jpg"
+        with Image.open(source_path) as source_image:
+            corrected[new_biomass] = source_image.copy()
+    try:
+        for new_biomass, image in corrected.items():
+            image.save(species_dir / f"{new_biomass:.3f}_kgm2.jpg", quality=95)
+    finally:
+        for image in corrected.values():
+            image.close()
 
 
 def _crop_line(gray_panel: np.ndarray, side: str, offset: int) -> np.ndarray:
@@ -250,7 +255,7 @@ def extract_images(
     if not pdf_path.is_file():
         raise FileNotFoundError(f"PhotoLoad PDF not found: {pdf_path}")
     output_dir.mkdir(parents=True, exist_ok=True)
-    with fitz.open(pdf_path) as document:
+    with pymupdf.open(pdf_path) as document:
         for page_index, folder in SPECIES_PAGES.items():
             page_images = document[page_index].get_images(full=True)
             source = document.extract_image(page_images[0][0])

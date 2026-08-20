@@ -27,6 +27,9 @@ from .masks import (
 
 MODEL_ROOT = Path(__file__).resolve().parents[1]
 CALIBRATION_CSV = MODEL_ROOT / "data" / "paper_calibration.csv"
+EXPECTED_SOURCE_PDF_SHA256 = (
+    "14eaeb69784e3f26dee23a67686fad9c86e50099aaca60bcc079f687d1c313c2"
+)
 PANEL_PAGE_SIZE = 8
 
 
@@ -235,10 +238,24 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _validate_source_pdf(pdf_path: Path) -> str:
+    """Return the digest when the source PDF matches the versioned reference."""
+    if not pdf_path.is_file():
+        raise FileNotFoundError(f"PhotoLoad PDF not found: {pdf_path}")
+    actual_digest = _sha256(pdf_path)
+    if actual_digest != EXPECTED_SOURCE_PDF_SHA256:
+        raise ValueError(
+            "PhotoLoad PDF SHA-256 mismatch: "
+            f"expected {EXPECTED_SOURCE_PDF_SHA256}, got {actual_digest}"
+        )
+    return actual_digest
+
+
 def run_workflow(pdf_path: Path, output_dir: Path) -> None:
     """Run extraction, final masking, model fitting, and paper-output checks."""
     pdf_path = pdf_path.resolve()
     output_dir = output_dir.resolve()
+    source_pdf_sha256 = _validate_source_pdf(pdf_path)
     data = _load_calibration()
     biomass_by_folder = {
         folder: sorted(folder_data["kg_m2"].astype(float).tolist())
@@ -287,7 +304,7 @@ def run_workflow(pdf_path: Path, output_dir: Path) -> None:
         },
         "workflow": "FuelAnalyst paper PhotoLoad workflow",
         "source_pdf": str(pdf_path),
-        "source_pdf_sha256": _sha256(pdf_path),
+        "source_pdf_sha256": source_pdf_sha256,
         "calibration_table": str(CALIBRATION_CSV),
         "n_images": len(results),
         "n_species": results["species"].nunique(),
