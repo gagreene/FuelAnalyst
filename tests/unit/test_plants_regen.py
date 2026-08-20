@@ -10,9 +10,37 @@ from fuel_analyst.components.plants_regen import (
 )
 
 
-def test_get_photoload_biomass_known_unknown_and_zero_codes():
+@pytest.mark.parametrize(
+    ('code', 'reference_height', 'expected'),
+    [
+        ('AMAL', 35.56, 0.0690181 * (np.exp(0.0240242 * 50) - 1)),
+        ('ARLA', 30.48, 0.0005745 * np.power(50, 1.16228)),
+        ('CARU', 20.30, 0.0117766 * (np.exp(0.0379728 * 50) - 1)),
+        ('FESC', 30.5, 0.0161917 * (np.exp(0.0330081 * 50) - 1)),
+        ('MARE', 10.16, 0.000733871 * np.power(50, 1.16779)),
+        ('SYAL', 35.56, 0.00119555 * 50 + 0.0000169686 * np.power(50, 2)),
+        ('VAGL', 35.56, 0.398329 * (np.exp(0.0109776 * 50) - 1)),
+        ('VASC', 17.78, 0.0025455 * 50),
+        ('XETE', 25.4, 0.00366616 * 50),
+    ],
+)
+def test_get_photoload_biomass_uses_final_models(code, reference_height, expected):
+    assert _get_photoload_biomass(code, 50, reference_height) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    'code',
+    ['AMAL', 'ARLA', 'CARU', 'FESC', 'MARE', 'SYAL', 'VAGL', 'VASC', 'XETE'],
+)
+def test_get_photoload_biomass_models_pass_through_origin(code):
+    assert _get_photoload_biomass(code, 0, 20) == pytest.approx(0)
+
+
+def test_get_photoload_biomass_scales_with_height_and_handles_special_codes():
+    reference_biomass = _get_photoload_biomass('VAGL', 20, 35.56)
+    assert _get_photoload_biomass('VAGL', 20, 71.12) == pytest.approx(2 * reference_biomass)
     assert _get_photoload_biomass('MOSS', 50, 10) == 0
-    assert _get_photoload_biomass('VAGL', 20, 35.56) == pytest.approx(0.104)
+    assert _get_photoload_biomass('TREE', 50, 10) == 0
     assert np.isnan(_get_photoload_biomass('UNKNOWN', 20, 10))
 
 

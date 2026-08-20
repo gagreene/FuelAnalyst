@@ -31,7 +31,7 @@ jobs:
       - name: Install FuelAnalyst and test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[test]"
+          python -m pip install -e ".[test,photoload]"
 
       - name: Run test suite
         run: python -m pytest -vv --basetemp="${{ runner.temp }}/pytest"

@@ -61,12 +61,16 @@ credentials.json
 *.zip
 *.tar.gz
 *.csv
+!models/photoload/data/*.csv
 
 # Testing data (keep sample data in supporting_data only)
 src/fuel_analyst/tests/results/
 tests/results/
 !tests/test_data/
 !tests/test_data/**
+
+# Reproducible local workspace for the frozen PhotoLoad workflow
+models/photoload/.work/
 
 # Python version file
 .python-version

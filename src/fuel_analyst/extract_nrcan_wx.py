@@ -441,7 +441,7 @@ def extract_weather_data(
     :return: None
     """
     # Create output directory if it doesn't exist
-    os.makedirs(_out_dir, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
 
     # Get weather variable directories
     wx_directories = _get_wx_directories(wx_data_dir)

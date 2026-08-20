@@ -45,6 +45,11 @@ dependencies = [
 test = [
     "pytest>=7.0",
 ]
+photoload = [
+    "Pillow>=9.0",
+    "PyMuPDF>=1.24",
+    "scikit-image>=0.20",
+]
 conpyro = [
     "conpyro @ git+https://github.com/gagreene/conpyro.git",
     "flame-components @ git+https://github.com/gagreene/flame_components.git",
@@ -53,7 +58,7 @@ fofem = [
     "pyfofem @ git+https://github.com/gagreene/pyfofem.git",
 ]
 all = [
-    "fuel-analyst[conpyro,fofem]",
+    "fuel-analyst[conpyro,fofem,photoload]",
 ]
 dev = [
     "build",
