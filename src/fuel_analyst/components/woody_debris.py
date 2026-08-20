@@ -85,7 +85,8 @@ def _calc_plot_duff_litter_biomass(plot_df: pd.DataFrame,
     Calculate plot-level duff and litter biomass (kg/m^2) for each plot, using species composition
     and bulk density data. Biomass is scaled by the proportion of flammable ground cover.
 
-    :param plot_df: DataFrame containing plot-level attributes, including 'pc_flammable'.
+    :param plot_df: DataFrame containing plot-level attributes, including 'pc_flammable' if the
+        Plants and Regeneration form was processed.
     :param df: DataFrame containing plot-level data with unique IDs and spp_comp_type.
     :param spp_comp_df: DataFrame containing species composition and calculated bulk densities.
     :return: Updated df with duff and litter biomass columns.
@@ -119,13 +120,19 @@ def _calc_plot_duff_litter_biomass(plot_df: pd.DataFrame,
     # Initialize list of columns to keep
     keep_columns = []
 
-    # Scale biomass by percent flammable ground cover, if available
+    # Scale biomass by percent flammable ground cover. Plots missing a pc_flammable value
+    # (e.g., the Plants and Regeneration form was not processed for any plot) default to fully
+    # flammable (100) rather than dropping the computed duff/litter values.
     if 'pc_flammable' in plot_df.columns:
         flammable_map = plot_df.set_index('unique_id')['pc_flammable'].to_dict()
-        for _, _, _, out_col in bulk_density_map:
-            if out_col in df.columns:
-                df[out_col] = df[out_col] * df['unique_id'].map(flammable_map) / 100
-                keep_columns.append(out_col)
+    else:
+        flammable_map = {}
+
+    for _, _, _, out_col in bulk_density_map:
+        if out_col in df.columns:
+            flammable_pct = df['unique_id'].map(flammable_map).fillna(100)
+            df[out_col] = df[out_col] * flammable_pct / 100
+            keep_columns.append(out_col)
 
     return df, keep_columns
 
