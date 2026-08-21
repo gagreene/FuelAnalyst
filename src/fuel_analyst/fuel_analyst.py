@@ -10,6 +10,7 @@ import os
 import pandas as pd
 from typing import Optional
 
+from .components import error_handling
 from .components import helper
 from .components import plot_attributes as pa
 from .components import plants_regen as pr
@@ -560,9 +561,12 @@ def fuel_analyst(
         # Check if the input path exists
         if not os.path.exists(in_path):
             if mask.any():
-                print(f'Warning: Input folder for {form_dict[form]} is missing but '
-                      f'{mask.sum()} plot(s) selected this form. '
-                      f'These plots will have no {form_dict[form]} data: {id_list}')
+                for missing_id in id_list:
+                    error_handling.get_logger(form).warning(
+                        f'Input folder for {form_dict[form]} is missing but this plot '
+                        f'selected this form; it will have no {form_dict[form]} data.',
+                        extra={'unique_id': missing_id, 'issue_code': 'form_folder_missing'},
+                    )
             continue
 
         # Only process the form if there are IDs to process
