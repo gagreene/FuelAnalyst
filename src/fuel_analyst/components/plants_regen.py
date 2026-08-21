@@ -6,11 +6,14 @@ Created on Tue May 27, 9:35:00 2025
 """
 __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
+import logging
 import os
 import pandas as pd
 import numpy as np
 
 from . import helper
+
+logger = logging.getLogger(__name__)
 
 
 def _calc_pc_flammable(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
@@ -25,8 +28,8 @@ def _calc_pc_flammable(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     or when the calculated pc_nonflammable falls outside the valid 0-100 range.
 
     :param df: DataFrame containing 'pc_rock' and 'pc_mineral_soil' percent cover columns.
-    :return: Updated DataFrame with 'pc_nonflammable', 'pc_flammable', and 'pc_flammable_note'
-        columns, and a list of columns to keep.
+    :return: Updated DataFrame with 'pc_nonflammable' and 'pc_flammable' columns, and a list
+        of columns to keep.
     """
     print('\tCalculating percent flammable substrate cover')
 
@@ -45,22 +48,22 @@ def _calc_pc_flammable(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     out_of_range = (df['pc_nonflammable'] < 0) | (df['pc_nonflammable'] > 100)
     fallback_mask = no_data_provided | out_of_range
 
-    if 'pc_flammable_note' not in df.columns:
-        df['pc_flammable_note'] = ''
-    df.loc[no_data_provided, 'pc_flammable_note'] = (
-        df.loc[no_data_provided, 'pc_flammable_note'].astype(str) +
-        ' [Fuel Analyst Note] No pc_rock or pc_mineral_soil cover provided; pc_flammable defaulted to 100; '
-    )
-    df.loc[out_of_range & ~no_data_provided, 'pc_flammable_note'] = (
-        df.loc[out_of_range & ~no_data_provided, 'pc_flammable_note'].astype(str) +
-        ' [Fuel Analyst Note] Calculated pc_nonflammable outside the valid 0-100 range; '
-        'pc_flammable defaulted to 100; '
-    )
+    plot_ids = df['unique_id'] if 'unique_id' in df.columns else df.index
+    for idx in df.index[no_data_provided]:
+        logger.info(
+            'No pc_rock or pc_mineral_soil cover provided; pc_flammable defaulted to 100.',
+            extra={'unique_id': plot_ids.loc[idx], 'issue_code': 'pc_flammable_no_data'},
+        )
+    for idx in df.index[out_of_range & ~no_data_provided]:
+        logger.info(
+            'Calculated pc_nonflammable outside the valid 0-100 range; pc_flammable defaulted to 100.',
+            extra={'unique_id': plot_ids.loc[idx], 'issue_code': 'pc_flammable_out_of_range'},
+        )
 
     df.loc[fallback_mask, 'pc_nonflammable'] = 0.0
     df.loc[fallback_mask, 'pc_flammable'] = 100.0
 
-    return df, ['pc_nonflammable', 'pc_flammable', 'pc_flammable_note']
+    return df, ['pc_nonflammable', 'pc_flammable']
 
 
 def _calc_plants_fccs_fofem_attributes(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
