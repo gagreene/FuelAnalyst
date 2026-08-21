@@ -7,6 +7,7 @@ import pytest
 from fuel_analyst.components.woody_debris import (
     _add_spp_comp_type,
     _assign_spp_comp_id_col,
+    _calc_plot_duff_litter_biomass,
     _calc_plot_duff_litter_depths,
     _calc_plot_t2_azimuth,
     _calc_plot_tsct_slope_correction,
@@ -21,6 +22,51 @@ from fuel_analyst.components.woody_debris import (
     _calc_woody_weight,
     _concat_spp_comp_frames,
 )
+
+
+def _make_duff_litter_frames(plot_df):
+    df = pd.DataFrame({
+        'unique_id': ['A', 'B'],
+        'spp_comp_type': ['transect_data', 'transect_data'],
+        'stand_duff_depth_cm': [2.0, 2.0],
+        'stand_litter_depth_cm': [1.0, 1.0],
+    })
+    spp_comp_df = pd.DataFrame({
+        'unique_id': ['A', 'B'],
+        'spp_comp_type': ['transect_data', 'transect_data'],
+        'stand_duff_bd_kgpm3': [50.0, 50.0],
+        'stand_litter_bd_kgpm3': [30.0, 30.0],
+    })
+    return plot_df, df, spp_comp_df
+
+
+def test_calc_plot_duff_litter_biomass_scales_by_flammable_percent():
+    plot_df = pd.DataFrame({'unique_id': ['A', 'B'], 'pc_flammable': [80.0, 50.0]})
+    result, keep = _calc_plot_duff_litter_biomass(*_make_duff_litter_frames(plot_df))
+    assert keep == ['ffl_duff_kgpm2', 'ffl_litter_kgpm2']
+    assert result.loc[0, 'ffl_duff_kgpm2'] == pytest.approx(0.8)
+    assert result.loc[0, 'ffl_litter_kgpm2'] == pytest.approx(0.24)
+    assert result.loc[1, 'ffl_duff_kgpm2'] == pytest.approx(0.5)
+    assert result.loc[1, 'ffl_litter_kgpm2'] == pytest.approx(0.15)
+
+
+def test_calc_plot_duff_litter_biomass_defaults_to_fully_flammable_when_column_missing():
+    plot_df = pd.DataFrame({'unique_id': ['A', 'B']})  # no pc_flammable column at all
+    result, keep = _calc_plot_duff_litter_biomass(*_make_duff_litter_frames(plot_df))
+    assert keep == ['ffl_duff_kgpm2', 'ffl_litter_kgpm2']
+    assert result.loc[0, 'ffl_duff_kgpm2'] == pytest.approx(1.0)
+    assert result.loc[0, 'ffl_litter_kgpm2'] == pytest.approx(0.3)
+    assert result.loc[1, 'ffl_duff_kgpm2'] == pytest.approx(1.0)
+    assert result.loc[1, 'ffl_litter_kgpm2'] == pytest.approx(0.3)
+
+
+def test_calc_plot_duff_litter_biomass_defaults_missing_plot_when_column_present():
+    # Plot A has a real pc_flammable value; plot B is missing from plot_df entirely.
+    plot_df = pd.DataFrame({'unique_id': ['A'], 'pc_flammable': [80.0]})
+    result, keep = _calc_plot_duff_litter_biomass(*_make_duff_litter_frames(plot_df))
+    assert keep == ['ffl_duff_kgpm2', 'ffl_litter_kgpm2']
+    assert result.loc[0, 'ffl_duff_kgpm2'] == pytest.approx(0.8)
+    assert result.loc[1, 'ffl_duff_kgpm2'] == pytest.approx(1.0)
 
 
 def test_concat_spp_comp_frames_preserves_schema_without_future_warning():

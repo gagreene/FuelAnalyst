@@ -3,11 +3,53 @@ import pandas as pd
 import pytest
 
 from fuel_analyst.components.plants_regen import (
+    _calc_pc_flammable,
     _calc_plants_fccs_fofem_attributes,
     _get_dom_substrate,
     _get_photoload_biomass,
     _process_regen,
 )
+
+
+def test_calc_pc_flammable_computes_survey123_formula():
+    df = pd.DataFrame({'pc_rock': [10.0], 'pc_mineral_soil': [20.0]})
+    result, keep = _calc_pc_flammable(df)
+    assert result.loc[0, 'pc_nonflammable'] == 30.0
+    assert result.loc[0, 'pc_flammable'] == 70.0
+    assert result.loc[0, 'pc_flammable_note'] == ''
+    assert keep == ['pc_nonflammable', 'pc_flammable', 'pc_flammable_note']
+
+
+def test_calc_pc_flammable_treats_one_missing_value_as_zero():
+    df = pd.DataFrame({'pc_rock': [5.0], 'pc_mineral_soil': [np.nan]})
+    result, _ = _calc_pc_flammable(df)
+    assert result.loc[0, 'pc_nonflammable'] == 5.0
+    assert result.loc[0, 'pc_flammable'] == 95.0
+    assert result.loc[0, 'pc_flammable_note'] == ''
+
+
+def test_calc_pc_flammable_defaults_to_fully_flammable_when_no_data_provided():
+    df = pd.DataFrame({'pc_rock': [np.nan], 'pc_mineral_soil': [np.nan]})
+    result, _ = _calc_pc_flammable(df)
+    assert result.loc[0, 'pc_nonflammable'] == 0.0
+    assert result.loc[0, 'pc_flammable'] == 100.0
+    assert 'No pc_rock or pc_mineral_soil cover provided' in result.loc[0, 'pc_flammable_note']
+
+
+def test_calc_pc_flammable_defaults_to_fully_flammable_when_columns_are_missing():
+    df = pd.DataFrame({'other_col': [1]})
+    result, _ = _calc_pc_flammable(df)
+    assert result.loc[0, 'pc_nonflammable'] == 0.0
+    assert result.loc[0, 'pc_flammable'] == 100.0
+    assert 'No pc_rock or pc_mineral_soil cover provided' in result.loc[0, 'pc_flammable_note']
+
+
+def test_calc_pc_flammable_defaults_to_fully_flammable_when_result_out_of_range():
+    df = pd.DataFrame({'pc_rock': [60.0], 'pc_mineral_soil': [60.0]})
+    result, _ = _calc_pc_flammable(df)
+    assert result.loc[0, 'pc_nonflammable'] == 0.0
+    assert result.loc[0, 'pc_flammable'] == 100.0
+    assert 'outside the valid 0-100 range' in result.loc[0, 'pc_flammable_note']
 
 
 @pytest.mark.parametrize(
