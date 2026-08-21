@@ -1,3 +1,4 @@
+import logging
 import warnings
 
 import numpy as np
@@ -70,42 +71,44 @@ def test_calc_plot_duff_litter_biomass_defaults_missing_plot_when_column_present
     assert result.loc[1, 'ffl_duff_kgpm2'] == pytest.approx(1.0)
 
 
-def test_resolve_spp_comp_type_falls_back_when_declared_source_has_no_data():
-    # Plot A declares 'tree_data' (e.g., a Survey123 form default) but the Trees form was
-    # never processed, so spp_comp_df has no 'tree_data' rows; only 'transect_data' exists.
+def test_resolve_spp_comp_type_falls_back_when_declared_source_has_no_data(caplog):
     df = pd.DataFrame({'unique_id': ['A'], 'spp_comp_type': ['tree_data']})
     spp_comp_df = pd.DataFrame({
         'unique_id': ['A'],
         'spp_comp_type': ['transect_data'],
         'spp_comp_code': ['FDI'],
     })
-    result, keep = _resolve_spp_comp_type(df, spp_comp_df)
-    assert keep == ['spp_comp_type_declared', 'spp_comp_type_note']
+    with caplog.at_level(logging.INFO, logger='fuel_analyst.components.woody_debris'):
+        result, keep = _resolve_spp_comp_type(df, spp_comp_df)
+    assert keep == ['spp_comp_type_declared']
     assert result.loc[0, 'spp_comp_type'] == 'transect_data'
     assert result.loc[0, 'spp_comp_type_declared'] == 'tree_data'
-    assert 'tree_data' in result.loc[0, 'spp_comp_type_note']
-    assert 'transect_data' in result.loc[0, 'spp_comp_type_note']
+    assert len(caplog.records) == 1
+    assert 'tree_data' in caplog.records[0].message
+    assert 'transect_data' in caplog.records[0].message
+    assert caplog.records[0].unique_id == 'A'
 
 
-def test_resolve_spp_comp_type_keeps_declared_source_when_available():
+def test_resolve_spp_comp_type_keeps_declared_source_when_available(caplog):
     df = pd.DataFrame({'unique_id': ['A'], 'spp_comp_type': ['transect_data']})
     spp_comp_df = pd.DataFrame({
         'unique_id': ['A'],
         'spp_comp_type': ['transect_data'],
         'spp_comp_code': ['FDI'],
     })
-    result, keep = _resolve_spp_comp_type(df, spp_comp_df)
+    with caplog.at_level(logging.INFO, logger='fuel_analyst.components.woody_debris'):
+        result, _ = _resolve_spp_comp_type(df, spp_comp_df)
     assert result.loc[0, 'spp_comp_type'] == 'transect_data'
-    assert result.loc[0, 'spp_comp_type_note'] == ''
+    assert caplog.records == []
 
 
-def test_resolve_spp_comp_type_leaves_declared_when_no_source_available():
-    # No spp_comp_df rows at all for plot A under any type; nothing to fall back to.
+def test_resolve_spp_comp_type_leaves_declared_when_no_source_available(caplog):
     df = pd.DataFrame({'unique_id': ['A'], 'spp_comp_type': ['tree_data']})
     spp_comp_df = pd.DataFrame({'unique_id': [], 'spp_comp_type': [], 'spp_comp_code': []})
-    result, keep = _resolve_spp_comp_type(df, spp_comp_df)
+    with caplog.at_level(logging.INFO, logger='fuel_analyst.components.woody_debris'):
+        result, _ = _resolve_spp_comp_type(df, spp_comp_df)
     assert result.loc[0, 'spp_comp_type'] == 'tree_data'
-    assert result.loc[0, 'spp_comp_type_note'] == ''
+    assert caplog.records == []
 
 
 def test_concat_spp_comp_frames_preserves_schema_without_future_warning():
