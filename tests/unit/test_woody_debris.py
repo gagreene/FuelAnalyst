@@ -21,6 +21,7 @@ from fuel_analyst.components.woody_debris import (
     _calc_woody_volume,
     _calc_woody_weight,
     _concat_spp_comp_frames,
+    _resolve_spp_comp_type,
 )
 
 
@@ -67,6 +68,44 @@ def test_calc_plot_duff_litter_biomass_defaults_missing_plot_when_column_present
     assert keep == ['ffl_duff_kgpm2', 'ffl_litter_kgpm2']
     assert result.loc[0, 'ffl_duff_kgpm2'] == pytest.approx(0.8)
     assert result.loc[1, 'ffl_duff_kgpm2'] == pytest.approx(1.0)
+
+
+def test_resolve_spp_comp_type_falls_back_when_declared_source_has_no_data():
+    # Plot A declares 'tree_data' (e.g., a Survey123 form default) but the Trees form was
+    # never processed, so spp_comp_df has no 'tree_data' rows; only 'transect_data' exists.
+    df = pd.DataFrame({'unique_id': ['A'], 'spp_comp_type': ['tree_data']})
+    spp_comp_df = pd.DataFrame({
+        'unique_id': ['A'],
+        'spp_comp_type': ['transect_data'],
+        'spp_comp_code': ['FDI'],
+    })
+    result, keep = _resolve_spp_comp_type(df, spp_comp_df)
+    assert keep == ['spp_comp_type_declared', 'spp_comp_type_note']
+    assert result.loc[0, 'spp_comp_type'] == 'transect_data'
+    assert result.loc[0, 'spp_comp_type_declared'] == 'tree_data'
+    assert 'tree_data' in result.loc[0, 'spp_comp_type_note']
+    assert 'transect_data' in result.loc[0, 'spp_comp_type_note']
+
+
+def test_resolve_spp_comp_type_keeps_declared_source_when_available():
+    df = pd.DataFrame({'unique_id': ['A'], 'spp_comp_type': ['transect_data']})
+    spp_comp_df = pd.DataFrame({
+        'unique_id': ['A'],
+        'spp_comp_type': ['transect_data'],
+        'spp_comp_code': ['FDI'],
+    })
+    result, keep = _resolve_spp_comp_type(df, spp_comp_df)
+    assert result.loc[0, 'spp_comp_type'] == 'transect_data'
+    assert result.loc[0, 'spp_comp_type_note'] == ''
+
+
+def test_resolve_spp_comp_type_leaves_declared_when_no_source_available():
+    # No spp_comp_df rows at all for plot A under any type; nothing to fall back to.
+    df = pd.DataFrame({'unique_id': ['A'], 'spp_comp_type': ['tree_data']})
+    spp_comp_df = pd.DataFrame({'unique_id': [], 'spp_comp_type': [], 'spp_comp_code': []})
+    result, keep = _resolve_spp_comp_type(df, spp_comp_df)
+    assert result.loc[0, 'spp_comp_type'] == 'tree_data'
+    assert result.loc[0, 'spp_comp_type_note'] == ''
 
 
 def test_concat_spp_comp_frames_preserves_schema_without_future_warning():
