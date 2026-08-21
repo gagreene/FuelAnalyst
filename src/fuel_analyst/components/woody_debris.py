@@ -85,7 +85,8 @@ def _calc_plot_duff_litter_biomass(plot_df: pd.DataFrame,
     Calculate plot-level duff and litter biomass (kg/m^2) for each plot, using species composition
     and bulk density data. Biomass is scaled by the proportion of flammable ground cover.
 
-    :param plot_df: DataFrame containing plot-level attributes, including 'pc_flammable'.
+    :param plot_df: DataFrame containing plot-level attributes, including 'pc_flammable' if the
+        Plants and Regeneration form was processed.
     :param df: DataFrame containing plot-level data with unique IDs and spp_comp_type.
     :param spp_comp_df: DataFrame containing species composition and calculated bulk densities.
     :return: Updated df with duff and litter biomass columns.
@@ -119,13 +120,19 @@ def _calc_plot_duff_litter_biomass(plot_df: pd.DataFrame,
     # Initialize list of columns to keep
     keep_columns = []
 
-    # Scale biomass by percent flammable ground cover, if available
+    # Scale biomass by percent flammable ground cover. Plots missing a pc_flammable value
+    # (e.g., the Plants and Regeneration form was not processed for any plot) default to fully
+    # flammable (100) rather than dropping the computed duff/litter values.
     if 'pc_flammable' in plot_df.columns:
         flammable_map = plot_df.set_index('unique_id')['pc_flammable'].to_dict()
-        for _, _, _, out_col in bulk_density_map:
-            if out_col in df.columns:
-                df[out_col] = df[out_col] * df['unique_id'].map(flammable_map) / 100
-                keep_columns.append(out_col)
+    else:
+        flammable_map = {}
+
+    for _, _, _, out_col in bulk_density_map:
+        if out_col in df.columns:
+            flammable_pct = df['unique_id'].map(flammable_map).fillna(100)
+            df[out_col] = df[out_col] * flammable_pct / 100
+            keep_columns.append(out_col)
 
     return df, keep_columns
 
@@ -1067,6 +1074,46 @@ def _merge_spp_comp(
     return spp_comp_df
 
 
+def _resolve_spp_comp_type(df: pd.DataFrame, spp_comp_df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
+    """
+    Resolve the species composition source actually usable for each plot, falling back to
+    another available source when the declared 'spp_comp_type' has no matching rows in
+    spp_comp_df (e.g., a plot declares 'tree_data' but the Trees form was not processed).
+
+    :param df: DataFrame containing plot-level data with 'unique_id' and declared 'spp_comp_type'.
+    :param spp_comp_df: DataFrame containing merged species composition data with 'unique_id'
+        and 'spp_comp_type'.
+    :return: Updated df with 'spp_comp_type' overwritten to the resolved source, a new
+        'spp_comp_type_declared' column preserving the original value, and a new
+        'spp_comp_type_note' column recording any fallback, plus a list of columns to keep.
+    """
+    print('\tResolving species composition source availability')
+
+    priority = ['tree_data', 'transect_data', 'manual_entry']
+    available = {
+        spp_comp_type: set(sub['unique_id'])
+        for spp_comp_type, sub in spp_comp_df.groupby('spp_comp_type')
+    }
+
+    def _resolve(row):
+        declared = row['spp_comp_type']
+        if row['unique_id'] in available.get(declared, set()):
+            return declared, ''
+        for fallback in priority:
+            if fallback != declared and row['unique_id'] in available.get(fallback, set()):
+                note = (f'[Fuel Analyst Note] Declared spp_comp_type \'{declared}\' had no matching '
+                        f'species composition data; used \'{fallback}\' instead; ')
+                return fallback, note
+        return declared, ''
+
+    resolved = df.apply(_resolve, axis=1, result_type='expand')
+    df['spp_comp_type_declared'] = df['spp_comp_type']
+    df['spp_comp_type'] = resolved[0]
+    df['spp_comp_type_note'] = resolved[1]
+
+    return df, ['spp_comp_type_declared', 'spp_comp_type_note']
+
+
 def process_woody_debris(
         in_folder: str,
         out_folder: str,
@@ -1122,6 +1169,8 @@ def process_woody_debris(
     spp_comp_df = _assign_spp_comp_id_col(df, spp_comp_df)
     spp_comp_df = _add_spp_comp_type(spp_comp_df)
     spp_comp_df = _merge_spp_comp(plot_df, df, woody_merged_df, spp_comp_df)
+    df, add_columns = _resolve_spp_comp_type(df, spp_comp_df)
+    keep_columns.extend(add_columns)
     spp_comp_df = _calc_spp_comp_duff_litter_bulk_density(spp_comp_df, tree_params_df)
     spp_comp_df = _calc_spp_comp_specific_gravity(spp_comp_df, tree_params_df)
 

@@ -13,6 +13,56 @@ import numpy as np
 from . import helper
 
 
+def _calc_pc_flammable(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
+    """
+    Calculates percent nonflammable and flammable ground cover for each plot.
+
+    Replicates the calculation performed by the Survey123 form itself (CWC Fuels 2 - Plants
+    and Regen.xlsx): pc_nonflammable = pc_rock + pc_mineral_soil, and
+    pc_flammable = 100 - pc_nonflammable. Missing pc_rock or pc_mineral_soil values are treated
+    as 0% cover of that substrate type. Falls back to a fully flammable default
+    (pc_flammable = 100, pc_nonflammable = 0) when pc_rock and pc_mineral_soil are both missing,
+    or when the calculated pc_nonflammable falls outside the valid 0-100 range.
+
+    :param df: DataFrame containing 'pc_rock' and 'pc_mineral_soil' percent cover columns.
+    :return: Updated DataFrame with 'pc_nonflammable', 'pc_flammable', and 'pc_flammable_note'
+        columns, and a list of columns to keep.
+    """
+    print('\tCalculating percent flammable substrate cover')
+
+    pc_rock = pd.to_numeric(df['pc_rock'], errors='coerce') if 'pc_rock' in df.columns \
+        else pd.Series(np.nan, index=df.index)
+    pc_mineral_soil = pd.to_numeric(df['pc_mineral_soil'], errors='coerce') if 'pc_mineral_soil' in df.columns \
+        else pd.Series(np.nan, index=df.index)
+    no_data_provided = pc_rock.isnull() & pc_mineral_soil.isnull()
+
+    # Missing rock or mineral soil cover is treated as 0% cover of that substrate type
+    df['pc_nonflammable'] = pc_rock.fillna(0) + pc_mineral_soil.fillna(0)
+    df['pc_flammable'] = 100 - df['pc_nonflammable']
+
+    # Fall back to fully flammable when no nonflammable cover was provided, or the
+    # calculated percentage falls outside the valid 0-100 range
+    out_of_range = (df['pc_nonflammable'] < 0) | (df['pc_nonflammable'] > 100)
+    fallback_mask = no_data_provided | out_of_range
+
+    if 'pc_flammable_note' not in df.columns:
+        df['pc_flammable_note'] = ''
+    df.loc[no_data_provided, 'pc_flammable_note'] = (
+        df.loc[no_data_provided, 'pc_flammable_note'].astype(str) +
+        ' [Fuel Analyst Note] No pc_rock or pc_mineral_soil cover provided; pc_flammable defaulted to 100; '
+    )
+    df.loc[out_of_range & ~no_data_provided, 'pc_flammable_note'] = (
+        df.loc[out_of_range & ~no_data_provided, 'pc_flammable_note'].astype(str) +
+        ' [Fuel Analyst Note] Calculated pc_nonflammable outside the valid 0-100 range; '
+        'pc_flammable defaulted to 100; '
+    )
+
+    df.loc[fallback_mask, 'pc_nonflammable'] = 0.0
+    df.loc[fallback_mask, 'pc_flammable'] = 100.0
+
+    return df, ['pc_nonflammable', 'pc_flammable', 'pc_flammable_note']
+
+
 def _calc_plants_fccs_fofem_attributes(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     """
     Aggregates shrub species composition for each plot where the dominant substrate is shrubland.
@@ -350,6 +400,9 @@ def process_plants_regen(in_folder: str, out_folder: str) -> tuple[pd.DataFrame,
     df = helper.get_df(os.path.join(in_folder, 'survey_0.csv'))
     # Generate a unique ID for each plot
     df = helper.get_unique_id(df)
+    # Calculate percent flammable/nonflammable substrate cover
+    df, add_columns = _calc_pc_flammable(df)
+    keep_columns.extend(add_columns)
 
     # ### PROCESS PLANT DATA
     # Calculate plant attributes

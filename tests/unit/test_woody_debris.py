@@ -7,6 +7,7 @@ import pytest
 from fuel_analyst.components.woody_debris import (
     _add_spp_comp_type,
     _assign_spp_comp_id_col,
+    _calc_plot_duff_litter_biomass,
     _calc_plot_duff_litter_depths,
     _calc_plot_t2_azimuth,
     _calc_plot_tsct_slope_correction,
@@ -20,7 +21,91 @@ from fuel_analyst.components.woody_debris import (
     _calc_woody_volume,
     _calc_woody_weight,
     _concat_spp_comp_frames,
+    _resolve_spp_comp_type,
 )
+
+
+def _make_duff_litter_frames(plot_df):
+    df = pd.DataFrame({
+        'unique_id': ['A', 'B'],
+        'spp_comp_type': ['transect_data', 'transect_data'],
+        'stand_duff_depth_cm': [2.0, 2.0],
+        'stand_litter_depth_cm': [1.0, 1.0],
+    })
+    spp_comp_df = pd.DataFrame({
+        'unique_id': ['A', 'B'],
+        'spp_comp_type': ['transect_data', 'transect_data'],
+        'stand_duff_bd_kgpm3': [50.0, 50.0],
+        'stand_litter_bd_kgpm3': [30.0, 30.0],
+    })
+    return plot_df, df, spp_comp_df
+
+
+def test_calc_plot_duff_litter_biomass_scales_by_flammable_percent():
+    plot_df = pd.DataFrame({'unique_id': ['A', 'B'], 'pc_flammable': [80.0, 50.0]})
+    result, keep = _calc_plot_duff_litter_biomass(*_make_duff_litter_frames(plot_df))
+    assert keep == ['ffl_duff_kgpm2', 'ffl_litter_kgpm2']
+    assert result.loc[0, 'ffl_duff_kgpm2'] == pytest.approx(0.8)
+    assert result.loc[0, 'ffl_litter_kgpm2'] == pytest.approx(0.24)
+    assert result.loc[1, 'ffl_duff_kgpm2'] == pytest.approx(0.5)
+    assert result.loc[1, 'ffl_litter_kgpm2'] == pytest.approx(0.15)
+
+
+def test_calc_plot_duff_litter_biomass_defaults_to_fully_flammable_when_column_missing():
+    plot_df = pd.DataFrame({'unique_id': ['A', 'B']})  # no pc_flammable column at all
+    result, keep = _calc_plot_duff_litter_biomass(*_make_duff_litter_frames(plot_df))
+    assert keep == ['ffl_duff_kgpm2', 'ffl_litter_kgpm2']
+    assert result.loc[0, 'ffl_duff_kgpm2'] == pytest.approx(1.0)
+    assert result.loc[0, 'ffl_litter_kgpm2'] == pytest.approx(0.3)
+    assert result.loc[1, 'ffl_duff_kgpm2'] == pytest.approx(1.0)
+    assert result.loc[1, 'ffl_litter_kgpm2'] == pytest.approx(0.3)
+
+
+def test_calc_plot_duff_litter_biomass_defaults_missing_plot_when_column_present():
+    # Plot A has a real pc_flammable value; plot B is missing from plot_df entirely.
+    plot_df = pd.DataFrame({'unique_id': ['A'], 'pc_flammable': [80.0]})
+    result, keep = _calc_plot_duff_litter_biomass(*_make_duff_litter_frames(plot_df))
+    assert keep == ['ffl_duff_kgpm2', 'ffl_litter_kgpm2']
+    assert result.loc[0, 'ffl_duff_kgpm2'] == pytest.approx(0.8)
+    assert result.loc[1, 'ffl_duff_kgpm2'] == pytest.approx(1.0)
+
+
+def test_resolve_spp_comp_type_falls_back_when_declared_source_has_no_data():
+    # Plot A declares 'tree_data' (e.g., a Survey123 form default) but the Trees form was
+    # never processed, so spp_comp_df has no 'tree_data' rows; only 'transect_data' exists.
+    df = pd.DataFrame({'unique_id': ['A'], 'spp_comp_type': ['tree_data']})
+    spp_comp_df = pd.DataFrame({
+        'unique_id': ['A'],
+        'spp_comp_type': ['transect_data'],
+        'spp_comp_code': ['FDI'],
+    })
+    result, keep = _resolve_spp_comp_type(df, spp_comp_df)
+    assert keep == ['spp_comp_type_declared', 'spp_comp_type_note']
+    assert result.loc[0, 'spp_comp_type'] == 'transect_data'
+    assert result.loc[0, 'spp_comp_type_declared'] == 'tree_data'
+    assert 'tree_data' in result.loc[0, 'spp_comp_type_note']
+    assert 'transect_data' in result.loc[0, 'spp_comp_type_note']
+
+
+def test_resolve_spp_comp_type_keeps_declared_source_when_available():
+    df = pd.DataFrame({'unique_id': ['A'], 'spp_comp_type': ['transect_data']})
+    spp_comp_df = pd.DataFrame({
+        'unique_id': ['A'],
+        'spp_comp_type': ['transect_data'],
+        'spp_comp_code': ['FDI'],
+    })
+    result, keep = _resolve_spp_comp_type(df, spp_comp_df)
+    assert result.loc[0, 'spp_comp_type'] == 'transect_data'
+    assert result.loc[0, 'spp_comp_type_note'] == ''
+
+
+def test_resolve_spp_comp_type_leaves_declared_when_no_source_available():
+    # No spp_comp_df rows at all for plot A under any type; nothing to fall back to.
+    df = pd.DataFrame({'unique_id': ['A'], 'spp_comp_type': ['tree_data']})
+    spp_comp_df = pd.DataFrame({'unique_id': [], 'spp_comp_type': [], 'spp_comp_code': []})
+    result, keep = _resolve_spp_comp_type(df, spp_comp_df)
+    assert result.loc[0, 'spp_comp_type'] == 'tree_data'
+    assert result.loc[0, 'spp_comp_type_note'] == ''
 
 
 def test_concat_spp_comp_frames_preserves_schema_without_future_warning():
