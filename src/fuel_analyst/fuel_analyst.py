@@ -475,6 +475,8 @@ def fuel_analyst(
     :param gen_fofem_consume_df: Boolean indicating whether to generate the FOFEM consumption DataFrame.
     :return: None
     """
+    error_handling.start_run()
+
     # Create the list of forms to process
     form_select_list = ['plants', 'trees', 'cover', 'woody']
 
@@ -636,6 +638,10 @@ def fuel_analyst(
         print(f'\n\nSaving the Master Fuel DataFrame to: {master_df_path}')
         plot_df = plot_df[keep_columns]  # Keep only the specified columns
         helper.export_csv(plot_df, master_df_path)
+
+    error_report_path = os.path.join(out_dir, 'master_fuel_df_errors.csv')
+    print(f'Saving the Error Report to: {error_report_path}')
+    error_handling.write_report(error_report_path, plot_df=plot_df)
 
     # Save the Master Tree DataFrame to the output folder if it exists
     if master_tree_df is not None:
