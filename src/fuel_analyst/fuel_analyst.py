@@ -10,14 +10,15 @@ import os
 import pandas as pd
 from typing import Optional
 
-from .components import helper
-from .components import plot_attributes as pa
-from .components import plants_regen as pr
-from .components import trees
-from .components import canopy_cover as cc
-from .components import woody_debris as wd
-from .components import conpyro_attributes
-from .components import fofem_attributes
+# set to absolute imports rather than relative (removed '.' before components)
+from components import helper
+from components import plot_attributes as pa
+from components import plants_regen as pr
+from components import trees
+from components import canopy_cover as cc
+from components import woody_debris as wd
+from components import conpyro_attributes
+from components import fofem_attributes
 
 default_stand_summary_dict = {
     'dens': {
@@ -167,6 +168,23 @@ default_stand_summary_dict = {
         'summary_permutation': 'exact',  # This is fixed (no user options)
         'metrics': ['min', 'max', 'mean'],  # These are the only options
         'units': 'kWpm2',  # This option is fixed
+    },
+}
+
+default_tree_plot_dict = {
+    'plot_type': 'fixed_radius', # This is currently the only option but variable_radius would be desirable
+    'plot_names': ['lgtree', 'smtree', 'sapling'], # Can be user specified
+    'present': {
+        # Not currently used
+        'present_cols': {'tree_large_present', 'tree_small_present', 'sapling_present'} # Can be user specified
+    },
+    'radius': {
+        # Columns to read radii from
+        'radius_cols':  ['lgtree_plot_radius', 'smtree_plot_radius', 'sapling_plot_radius'], # Can be user specified
+    },
+    'diameter': {
+        # Minimum DBH cutoff by class
+        'min_dbh': [12.5, 5, 0], # Can be user specified
     },
 }
 
@@ -452,6 +470,7 @@ def fuel_analyst(
         out_dir: str,
         surface_fire_intensity_model: str,
         stand_summary_params: Optional[dict] = None,
+        tree_plot_params: Optional[dict] = None,
         woody_debris_params: Optional[dict] = None,
         conpyro_params: Optional[dict] = None,
         fofem_consume_params: Optional[dict] = None,
@@ -466,6 +485,7 @@ def fuel_analyst(
     :param out_dir: Path to the output folder where results will be saved.
     :param surface_fire_intensity_model: Model to use for surface fire intensity calculations.
     :param stand_summary_params: Dictionary containing stand summary parameters.
+    :param tree_plot_params: Dictionary containing tree plot parameters.
     :param woody_debris_params: Dictionary containing parameters for woody debris processing.
     :param conpyro_params: Dictionary containing ConPyro parameters.
     :param fofem_consume_params: Dictionary containing FOFEM consumption parameters.
@@ -497,6 +517,9 @@ def fuel_analyst(
 
     if stand_summary_params is None:
         stand_summary_params = default_stand_summary_dict.copy()
+
+    if tree_plot_params is None:
+        tree_plot_params = default_tree_plot_dict.copy()
 
     if woody_debris_params is None:
         woody_debris_params = default_woody_debris_dict.copy()
@@ -677,6 +700,7 @@ if __name__ == '__main__':
                  out_dir=_out_dir,
                  surface_fire_intensity_model=_surface_fire_intensity_model,
                  stand_summary_params=_stand_summary_dict,
+                 tree_plot_params=_default_tree_plot_dict,
                  woody_debris_params=_woody_debris_dict,
                  conpyro_params=_conpyro_dict,
                  fofem_consume_params=_fofem_consume_dict,

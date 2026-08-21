@@ -80,11 +80,9 @@ attribute_weighting_dict = {
     'fire_intensity': 'ba',
 }
 
-_PLOT_RADIUS_FIELDS = {
-    'lgtree': 'lgtree_plot_radius',
-    'smtree': 'smtree_plot_radius',
-    'sapling': 'sapling_plot_radius',
-}
+# should maybe be a _calc for radius and diameter cutoffs
+_PLOT_RADIUS_FIELDS = dict(zip(tree_plot_params.get('plot_names'),
+                               tree_plot_params.get('radius').get('radius_cols')))
 
 _TREE_DENSITY_ISSUE_COLUMNS = [
     'issue_id', 'unique_id', 'plot_global_id', 'treatment_area',
