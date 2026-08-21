@@ -48,16 +48,21 @@ def _calc_pc_flammable(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     out_of_range = (df['pc_nonflammable'] < 0) | (df['pc_nonflammable'] > 100)
     fallback_mask = no_data_provided | out_of_range
 
-    plot_ids = df['unique_id'] if 'unique_id' in df.columns else df.index
     for idx in df.index[no_data_provided]:
         logger.info(
             'No pc_rock or pc_mineral_soil cover provided; pc_flammable defaulted to 100.',
-            extra={'unique_id': plot_ids.loc[idx], 'issue_code': 'pc_flammable_no_data'},
+            extra={
+                'unique_id': df.loc[idx, 'unique_id'] if 'unique_id' in df.columns else idx,
+                'issue_code': 'pc_flammable_no_data',
+            },
         )
     for idx in df.index[out_of_range & ~no_data_provided]:
         logger.info(
             'Calculated pc_nonflammable outside the valid 0-100 range; pc_flammable defaulted to 100.',
-            extra={'unique_id': plot_ids.loc[idx], 'issue_code': 'pc_flammable_out_of_range'},
+            extra={
+                'unique_id': df.loc[idx, 'unique_id'] if 'unique_id' in df.columns else idx,
+                'issue_code': 'pc_flammable_out_of_range',
+            },
         )
 
     df.loc[fallback_mask, 'pc_nonflammable'] = 0.0

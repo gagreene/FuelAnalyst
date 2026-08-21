@@ -59,6 +59,15 @@ def test_calc_pc_flammable_defaults_to_fully_flammable_when_result_out_of_range(
     assert 'outside the valid 0-100 range' in caplog.records[0].message
 
 
+def test_calc_pc_flammable_handles_missing_unique_id_column(caplog):
+    df = pd.DataFrame({'pc_rock': [np.nan], 'pc_mineral_soil': [np.nan]})
+    with caplog.at_level(logging.INFO, logger='fuel_analyst.components.plants_regen'):
+        result, _ = _calc_pc_flammable(df)
+    assert result.loc[0, 'pc_flammable'] == 100.0
+    assert len(caplog.records) == 1
+    assert caplog.records[0].unique_id == 0
+
+
 @pytest.mark.parametrize(
     ('code', 'reference_height', 'expected'),
     [
