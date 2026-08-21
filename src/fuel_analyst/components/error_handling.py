@@ -14,6 +14,7 @@ already attached by the caller's own logging configuration.
 """
 import logging
 import os
+import sys
 from collections import defaultdict
 from typing import Optional
 
@@ -41,6 +42,7 @@ _GENERAL_ERROR_ROW = 'General Error'
 _IDENTITY_COLUMNS = ['treatment_area', 'treatment_unit', 'treatment_type', 'plot_id']
 
 _active_handler: Optional['_CollectingHandler'] = None
+_console_handler: Optional[logging.StreamHandler] = None
 _previous_level: Optional[int] = None
 
 
@@ -69,12 +71,14 @@ def get_logger(form: str) -> logging.Logger:
 
 def start_run() -> None:
     """Attach a fresh collecting handler for the duration of one pipeline run."""
-    global _active_handler, _previous_level
+    global _active_handler, _console_handler, _previous_level
     root_logger = logging.getLogger(_LOGGER_NAME_ROOT)
     if _active_handler is not None:
         root_logger.removeHandler(_active_handler)
-        if _previous_level is not None:
-            root_logger.setLevel(_previous_level)
+    if _console_handler is not None:
+        root_logger.removeHandler(_console_handler)
+    if _previous_level is not None:
+        root_logger.setLevel(_previous_level)
     # Loggers default to the root logger's WARNING threshold. Without raising this
     # namespace's effective level, every .info(...) call (the fallback-note severity)
     # would be discarded by Logger.isEnabledFor() before it ever reached the handler.
@@ -84,19 +88,24 @@ def start_run() -> None:
     root_logger.setLevel(logging.INFO)
     _active_handler = _CollectingHandler()
     root_logger.addHandler(_active_handler)
+    _console_handler = logging.StreamHandler(sys.stdout)
+    root_logger.addHandler(_console_handler)
 
 
 def write_report(out_path: str, plot_df: Optional[pd.DataFrame] = None) -> None:
     """Pivot everything collected since start_run() into one CSV; detach the handler."""
-    global _active_handler, _previous_level
+    global _active_handler, _console_handler, _previous_level
     if _active_handler is None:
         raise RuntimeError('write_report() called without a matching start_run()')
     records = _active_handler.records
     root_logger = logging.getLogger(_LOGGER_NAME_ROOT)
     root_logger.removeHandler(_active_handler)
+    if _console_handler is not None:
+        root_logger.removeHandler(_console_handler)
     if _previous_level is not None:
         root_logger.setLevel(_previous_level)
     _active_handler = None
+    _console_handler = None
     _previous_level = None
 
     identity_cols = []

@@ -114,3 +114,15 @@ def test_multiple_issues_per_cell_are_numbered_in_order(tmp_path):
     assert result.loc[0, 'Woody Debris'] == (
         '1. [WARNING] first issue\n2. [ERROR] second issue'
     )
+
+
+def test_logger_calls_reach_console_during_active_run(capsys):
+    """Verify that logger calls made during start_run/write_report
+    actually reach stdout, not just the collecting handler."""
+    error_handling.start_run()
+    logger = error_handling.get_logger('trees')
+    logger.warning('test warning message during run', extra={'unique_id': 'A'})
+    error_handling.write_report('/dev/null', plot_df=None)
+
+    captured = capsys.readouterr()
+    assert 'test warning message during run' in captured.out
