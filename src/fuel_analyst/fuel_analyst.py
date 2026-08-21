@@ -588,15 +588,23 @@ def fuel_analyst(
             # Add the new columns to the keep_columns list
             keep_columns.extend(add_columns)
 
-            # Verify that all IDs in id_list are present in the form_df
-            if not all(id in form_df['unique_id'].values for id in id_list):
-                missing_ids = [id for id in id_list if id not in form_df['unique_id'].values]
+            # Verify that all IDs in id_list are present in the form_df, and vice versa
+            missing_from_form = [id for id in id_list if id not in form_df['unique_id'].values]
+            extra_in_form = [id for id in form_df['unique_id'].values if id not in id_list]
+            if missing_from_form or extra_in_form:
                 print(f'\tWarning:')
-                print(f'\t\tThe following IDs are in the Plot Attributes dataset, '
-                      f'but not in {form_dict[form]}: {missing_ids}')
-                missing_ids = [id for id in form_df['unique_id'].values if id not in id_list]
-                print(f'\t\tThe following IDs are in the {form_dict[form]} dataset, '
-                      f'but not in Plot Attributes: {missing_ids}')
+                if missing_from_form:
+                    for missing_id in missing_from_form:
+                        error_handling.get_logger(form).warning(
+                            f'Plot is in the Plot Attributes dataset but not in {form_dict[form]}.',
+                            extra={'unique_id': missing_id, 'issue_code': 'id_missing_from_form'},
+                        )
+                if extra_in_form:
+                    for extra_id in extra_in_form:
+                        error_handling.get_logger(form).warning(
+                            f'Plot is in the {form_dict[form]} dataset but not in Plot Attributes.',
+                            extra={'unique_id': extra_id, 'issue_code': 'id_extra_in_form'},
+                        )
             else:
                 print(f'\tAll IDs from the Plot Attributes dataset are present in the {form} dataset. Merging data.')
 
