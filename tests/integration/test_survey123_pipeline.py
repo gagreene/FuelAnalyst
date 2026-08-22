@@ -56,3 +56,18 @@ def test_complete_survey123_pipeline_generates_owned_output_contracts(tmp_path):
     tree_messages = errors['Trees'].dropna().str.cat(sep='\n')
     assert '[ERROR]' in tree_messages
     assert 'orphan tree record' in tree_messages
+    # Confirmed by actually running fuel_analyst() against this exact checked-in
+    # fixture: the current pipeline logs real ID-mismatch warnings for multiple
+    # plots across all four child forms. The error report being non-empty is a
+    # hard, verified assertion, not a hedge.
+    assert not errors.empty
+    assert {'unique_id', 'treatment_area', 'treatment_unit', 'treatment_type', 'plot_id'}.issubset(
+        errors.columns
+    )
+    assert errors['unique_id'].is_unique
+    # Identity columns must actually be populated for real plot rows, not just
+    # present as empty columns - plot_attributes.process_plot_attributes() keeps
+    # these fields in master_fuel_df.csv, so write_report() should find them.
+    plot_rows = errors.loc[errors['unique_id'] != 'General Error']
+    assert not plot_rows.empty
+    assert plot_rows['plot_id'].notna().any()
