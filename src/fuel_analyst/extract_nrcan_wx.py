@@ -161,6 +161,12 @@ def _extract_weather(
             if not missing_dates.empty:
                 print(f'Warning: {len(missing_dates)} plots have missing fire season dates due to missing or '
                       f'unrecognized ecodivision. These plots will be dropped from the analysis.')
+                for missing_id in missing_dates[plot_id_col_name]:
+                    logger.warning(
+                        'Plot has missing fire season dates due to missing or unrecognized '
+                        'ecodivision and will be dropped from the analysis.',
+                        extra={'unique_id': missing_id, 'issue_code': 'missing_fire_season_dates'},
+                    )
                 plots = plots.dropna(subset=['start_month_day', 'end_month_day'])
         else:
             plots['start_month_day'] = start_month_day
