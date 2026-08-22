@@ -2224,119 +2224,76 @@ git commit -m "feat(run_conpyro): write a saved error report for FOFEM mortality
 
 ## Task 10: Update the integration test contract
 
+**PLAN CORRECTION (made during Task 10's dispatch prep):** the "Replace X
+with Y" block originally written here targeted `tree_processing_issues.csv`
+-era text. Task 5 already rewrote this entire test file (necessarily, as a
+direct consequence of removing that CSV) and Task 9's earlier review flagged
+that this task's find/replace anchors no longer exist. The block below has
+been corrected to target the file's actual current content — an *append*
+after the existing `errors`-report assertions, not a full-block replace.
+Verified empirically against the real checked-in `examples/data/Survey123_Data`
+fixture (ran the full pipeline and inspected `master_fuel_df_errors.csv`
+directly) before writing this: `errors.columns` really does contain
+`unique_id, treatment_area, treatment_unit, treatment_type, plot_id` plus one
+column per form that logged an issue; `unique_id` is unique (13 rows, one
+`'General Error'` + 12 real plots); `plot_id` is populated (non-NaN) for most
+real plot rows in this fixture.
+
 **Files:**
 - Modify: `tests/integration/test_survey123_pipeline.py`
 
 **Interfaces:**
-- Consumes: `master_fuel_df_errors.csv` written by Task 2's wiring.
+- Consumes: `master_fuel_df_errors.csv` written by Task 2's wiring (already
+  read into a variable named `errors` by Task 5's fix — reuse it, don't
+  re-read the file under a different name).
 
-- [ ] **Step 1: Update the expected-outputs list and assertions**
+- [ ] **Step 1: Append identity-column and uniqueness assertions**
 
-Replace:
+The file's current tail (after Task 5's fix) ends with:
 
 ```python
-    expected_outputs = [
-        'master_fuel_df.csv', 'master_tree_df.csv', 'conpyro_df.csv',
-        'fbp_prep_df.csv', 'fofem_tree_df.csv', 'fofem_consume_df.csv',
-        '1_Plot_Attributes/survey_0.csv', '2_Plants_Regeneration/survey_0.csv',
-        '3_Trees/survey_0.csv', '3_Trees/tree_processing_issues.csv',
-        '4_Canopy_Cover/survey_0.csv',
-        '5_Woody_Debris/survey_0.csv',
-    ]
-    assert all((output_dir / relative).is_file() for relative in expected_outputs)
-
-    master = pd.read_csv(output_dir / 'master_fuel_df.csv', low_memory=False)
-    conpyro = pd.read_csv(output_dir / 'conpyro_df.csv', low_memory=False)
-    fbp = pd.read_csv(output_dir / 'fbp_prep_df.csv', low_memory=False)
-    fofem_trees = pd.read_csv(output_dir / 'fofem_tree_df.csv', low_memory=False)
-    tree_plots = pd.read_csv(output_dir / '3_Trees/survey_0.csv', low_memory=False)
-    tree_issues = pd.read_csv(
-        output_dir / '3_Trees/tree_processing_issues.csv', low_memory=False
-    )
-
-    assert master['unique_id'].is_unique
-    assert set(conpyro['unique_id']) == set(master['unique_id'])
-    assert set(fbp['unique_id']) == set(master['unique_id'])
-    # The checked-in child forms contain documented orphan IDs. They are
-    # retained in detailed outputs while the pipeline prints mismatch warnings.
-    assert fofem_trees['# PlotId'].notna().all()
-    assert set(fofem_trees['# PlotId']) & set(master['unique_id'])
-    assert 'treatment_unit_other' not in master.columns
-    assert 'treatment_unit_other' not in fbp.columns
-    assert (master.filter(regex='kgpm2').fillna(0) >= 0).all().all()
-    assert {
-        'tree_density_complete', 'tree_density_issue_count',
-        'tree_density_failed_records', 'tree_density_failed_stems',
-        'tree_density_failed_classes', 'tree_density_issues',
-    }.issubset(tree_plots.columns)
-    assert {
-        'issue_id', 'plot_global_id', 'issue_code', 'action_taken',
-        'results_partial', 'message',
-    }.issubset(tree_issues.columns)
+    assert 'Trees' in errors.columns
+    tree_messages = errors['Trees'].dropna().str.cat(sep='\n')
+    assert '[ERROR]' in tree_messages
+    assert 'orphan tree record' in tree_messages
 ```
 
-with:
+Append immediately after those four lines (same indentation, same function,
+nothing removed):
 
 ```python
-    expected_outputs = [
-        'master_fuel_df.csv', 'master_fuel_df_errors.csv', 'master_tree_df.csv',
-        'conpyro_df.csv', 'fbp_prep_df.csv', 'fofem_tree_df.csv', 'fofem_consume_df.csv',
-        '1_Plot_Attributes/survey_0.csv', '2_Plants_Regeneration/survey_0.csv',
-        '3_Trees/survey_0.csv',
-        '4_Canopy_Cover/survey_0.csv',
-        '5_Woody_Debris/survey_0.csv',
-    ]
-    assert all((output_dir / relative).is_file() for relative in expected_outputs)
-
-    master = pd.read_csv(output_dir / 'master_fuel_df.csv', low_memory=False)
-    conpyro = pd.read_csv(output_dir / 'conpyro_df.csv', low_memory=False)
-    fbp = pd.read_csv(output_dir / 'fbp_prep_df.csv', low_memory=False)
-    fofem_trees = pd.read_csv(output_dir / 'fofem_tree_df.csv', low_memory=False)
-    error_report = pd.read_csv(output_dir / 'master_fuel_df_errors.csv', keep_default_na=False)
-
-    assert master['unique_id'].is_unique
-    assert set(conpyro['unique_id']) == set(master['unique_id'])
-    assert set(fbp['unique_id']) == set(master['unique_id'])
-    # The checked-in child forms contain documented orphan IDs. They are
-    # retained in detailed outputs while the pipeline logs mismatch warnings
-    # into master_fuel_df_errors.csv.
-    assert fofem_trees['# PlotId'].notna().all()
-    assert set(fofem_trees['# PlotId']) & set(master['unique_id'])
-    assert 'treatment_unit_other' not in master.columns
-    assert 'treatment_unit_other' not in fbp.columns
-    assert (master.filter(regex='kgpm2').fillna(0) >= 0).all().all()
     # Confirmed by actually running fuel_analyst() against this exact checked-in
-    # fixture during this plan's review: the current, unmodified pipeline prints
-    # real ID-mismatch "Warning:" blocks for every one of the four forms (e.g.
-    # 'Williams Lake WUI_501_untreated_C1_2025' is in Plot Attributes but missing
-    # from Plants and Regeneration, Trees, Canopy Cover, and Woody Debris alike).
-    # This is not a guess from the pre-existing intersection assertion above
-    # (which only proves some overlap exists, not that a mismatch exists) - the
-    # error report being non-empty is a hard, verified assertion, not a hedge.
-    assert not error_report.empty
+    # fixture: the current pipeline logs real ID-mismatch warnings for multiple
+    # plots across all four child forms. The error report being non-empty is a
+    # hard, verified assertion, not a hedge.
+    assert not errors.empty
     assert {'unique_id', 'treatment_area', 'treatment_unit', 'treatment_type', 'plot_id'}.issubset(
-        error_report.columns
+        errors.columns
     )
-    assert error_report['unique_id'].is_unique
+    assert errors['unique_id'].is_unique
     # Identity columns must actually be populated for real plot rows, not just
     # present as empty columns - plot_attributes.process_plot_attributes() keeps
     # these fields in master_fuel_df.csv, so write_report() should find them.
-    plot_rows = error_report.loc[error_report['unique_id'] != 'General Error']
+    plot_rows = errors.loc[errors['unique_id'] != 'General Error']
     assert not plot_rows.empty
-    assert (plot_rows['plot_id'] != '').any()
+    assert plot_rows['plot_id'].notna().any()
 ```
 
 - [ ] **Step 2: Run the integration test**
 
-Run: `pytest tests/integration/test_survey123_pipeline.py -v`
+Run:
+`PYTHONPATH="C:\Users\ggreene\PycharmProjects\FuelAnalyst\src" python -m pytest tests/integration/test_survey123_pipeline.py -v`
 Expected: PASS. This is a predetermined contract, not a hedge: if
-`error_report.empty` or the identity-value assertion fails, that is a real
-defect in the wiring (Task 2) or the writer (Task 1) — fix the implementation,
-do not loosen this assertion to make it pass.
+`errors.empty` or the identity-value assertion fails, that is a real defect
+in the wiring or the writer — fix the implementation, do not loosen this
+assertion to make it pass.
 
 - [ ] **Step 3: Run the full test suite**
 
-Run: `pytest tests/ -v`
+Run:
+`PYTHONPATH="C:\Users\ggreene\PycharmProjects\FuelAnalyst\src" python -m pytest tests/unit tests/integration tests/regression -q`
+(do NOT run bare `pytest tests/` — `tests/results/` contains a gitignored
+pytest-cache-like dir that raises `PermissionError` on collection.)
 Expected: all PASS, confirming no other test references the removed
 `tree_processing_issues.csv`, `pc_flammable_note`, or `spp_comp_type_note`.
 
@@ -2344,7 +2301,7 @@ Expected: all PASS, confirming no other test references the removed
 
 ```bash
 git add tests/integration/test_survey123_pipeline.py
-git commit -m "test(integration): assert master_fuel_df_errors.csv shape instead of tree_processing_issues.csv"
+git commit -m "test(integration): assert identity-column shape and uniqueness on master_fuel_df_errors.csv"
 ```
 
 ---
