@@ -8,9 +8,11 @@ Components report issues through the standard `logging` module:
 start_run() attaches a fresh collecting handler for the duration of one
 pipeline run; write_report() pivots everything collected into a single CSV
 (one row per plot with >=1 issue, plus a reserved 'General Error' row for
-issues with no unique_id) and detaches the handler. Console output is
-unaffected - the collecting handler runs alongside whatever handlers are
-already attached by the caller's own logging configuration.
+issues with no unique_id) and detaches the handler. start_run() also attaches
+its own console StreamHandler (formatted by _ConsoleFormatter) so console
+output is preserved: attaching any handler to this namespace suppresses
+Python's logging.lastResort fallback, so without that dedicated console
+handler every migrated logger call would go silent for the whole run.
 """
 import logging
 import os
@@ -57,6 +59,17 @@ class _CollectingHandler(logging.Handler):
         self.records.append(record)
 
 
+class _ConsoleFormatter(logging.Formatter):
+    """Appends the affected plot ID to console output when a record carries one."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        message = super().format(record)
+        unique_id = getattr(record, 'unique_id', None)
+        if unique_id is not None and not pd.isna(unique_id) and unique_id != _GENERAL_ERROR_ROW:
+            message = f'{message} (plot: {unique_id})'
+        return message
+
+
 def _form_for_record(record: logging.LogRecord) -> str:
     for form, logger_name in _FORM_LOGGER_NAMES.items():
         if record.name == logger_name or record.name.startswith(logger_name + '.'):
@@ -89,6 +102,7 @@ def start_run() -> None:
     _active_handler = _CollectingHandler()
     root_logger.addHandler(_active_handler)
     _console_handler = logging.StreamHandler(sys.stdout)
+    _console_handler.setFormatter(_ConsoleFormatter())
     root_logger.addHandler(_console_handler)
 
 

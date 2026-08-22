@@ -126,3 +126,28 @@ def test_logger_calls_reach_console_during_active_run(capsys, tmp_path):
 
     captured = capsys.readouterr()
     assert 'test warning message during run' in captured.out
+
+
+def test_console_output_appends_plot_id_when_record_carries_one(capsys, tmp_path):
+    """The console handler needs a formatter; a bare StreamHandler uses '%(message)s'
+    and drops the extra={'unique_id': ...} identity entirely."""
+    error_handling.start_run()
+    error_handling.get_logger('trees').warning(
+        'radius problem', extra={'unique_id': 'plot-42', 'issue_code': 'missing_plot_radius'}
+    )
+    error_handling.write_report(str(tmp_path / 'errors.csv'), plot_df=None)
+
+    captured = capsys.readouterr()
+    assert 'plot-42' in captured.out
+    assert 'radius problem (plot: plot-42)' in captured.out
+
+
+def test_console_output_omits_plot_suffix_when_record_has_no_unique_id(capsys, tmp_path):
+    """A run-level record must print the bare message, with no '(plot: None)' garbage."""
+    error_handling.start_run()
+    error_handling.get_logger('trees').warning('run level problem')
+    error_handling.write_report(str(tmp_path / 'errors.csv'), plot_df=None)
+
+    captured = capsys.readouterr()
+    assert 'run level problem' in captured.out
+    assert '(plot:' not in captured.out
