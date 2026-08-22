@@ -258,7 +258,7 @@ The output directory mirrors processed form folders and may contain these top-le
 | File | Created when | Purpose |
 | --- | --- | --- |
 | `master_fuel_df.csv` | Every completed run | One plot-level table containing selected FuelAnalyst outputs |
-| `fuelanalyst_errors.csv` | Every completed run | Collected data-quality issues by plot and form |
+| `fuelanalyst_errors.csv` | Every completed run | Collected data-quality issues by plot and reporting source |
 | `master_tree_df.csv` | Tree data are processed | Detailed tree and sapling calculations |
 | `conpyro_df.csv` | `gen_conpyro_df=True` | Prepared ConPyro input attributes |
 | `fbp_prep_df.csv` | `gen_conpyro_df=True` | Additional attributes required by BC FBP fuel typing |
@@ -271,8 +271,10 @@ Every `fuel_analyst()` run that completes writes `fuelanalyst_errors.csv`
 alongside `master_fuel_df.csv`. It lists every data-quality issue encountered
 during the run - invalid tree-density inputs, ID mismatches between forms,
 and species-composition or percent-flammable fallbacks - one row per affected
-plot, one column per form, with a `General Error` row for issues not tied to
-any specific plot. Invalid plot radii remain missing during tree-density
+plot, one column per reporting source, with a `General Error` row for issues
+not tied to any specific plot. Known sources use stable display names; unknown
+sources retain their full logger names to prevent column collisions. Invalid
+plot radii remain missing during tree-density
 validation, and the density of only the affected tree records is assigned `0`
 so one bad plot does not stop the batch; check `fuelanalyst_errors.csv`'s
 Trees column for the reason.

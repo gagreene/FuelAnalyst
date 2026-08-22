@@ -79,7 +79,7 @@ The main files are:
 - `fbp_prep_df.csv` — prepared BC FBP fuel-typing inputs
 - `fofem_tree_df.csv` — prepared FOFEM mortality inputs
 - `fofem_consume_df.csv` — prepared FOFEM consumption inputs
-- `fuelanalyst_errors.csv` — every data-quality issue encountered during the run, by plot and form
+- `fuelanalyst_errors.csv` — every data-quality issue encountered during the run, by plot and reporting source
 
 The example enables all three model-preparation switches, so all seven files
 above should exist after it completes. Runs with different switches omit the

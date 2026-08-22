@@ -120,8 +120,11 @@ Provides `get_logger()`, `start_run()`, `write_report()`, and the `run_guard`
 decorator. The three pipeline entry points—`fuel_analyst()`,
 `extract_weather_data()`, and `run_conpyro()`—start a run-scoped collector and
 guarantee cleanup if execution raises. Completed runs write a wide CSV with one
-row per affected plot, dynamic form columns, and a reserved `General Error` row
-for records without a usable plot ID.
+row per affected plot, dynamic reporting-source columns, and a reserved
+`General Error` row for records without a usable plot ID. Known sources use
+stable display names such as `Trees`, `FOFEM Mortality`, and `NRCAN Weather`;
+unknown sources use their full logger name so similarly named modules cannot
+collide in one report column.
 
 The collector respects logging already configured by an embedding application.
 It installs a fallback console handler only when the package logger and its

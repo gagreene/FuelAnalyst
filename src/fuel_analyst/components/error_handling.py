@@ -26,20 +26,23 @@ import pandas as pd
 
 _LOGGER_NAME_ROOT = 'fuel_analyst'
 
-_FORM_DISPLAY_NAMES = {
-    'plot': 'Plot Attributes',
-    'plants': 'Plants and Regeneration',
-    'trees': 'Trees',
-    'cover': 'Canopy Cover',
-    'woody': 'Woody Debris',
-}
-
 _FORM_LOGGER_NAMES = {
     'plot': f'{_LOGGER_NAME_ROOT}.components.plot_attributes',
     'plants': f'{_LOGGER_NAME_ROOT}.components.plants_regen',
     'trees': f'{_LOGGER_NAME_ROOT}.components.trees',
     'cover': f'{_LOGGER_NAME_ROOT}.components.canopy_cover',
     'woody': f'{_LOGGER_NAME_ROOT}.components.woody_debris',
+}
+
+_LOGGER_DISPLAY_NAMES = {
+    _FORM_LOGGER_NAMES['cover']: 'Canopy Cover',
+    _FORM_LOGGER_NAMES['plants']: 'Plants and Regeneration',
+    _FORM_LOGGER_NAMES['plot']: 'Plot Attributes',
+    _FORM_LOGGER_NAMES['trees']: 'Trees',
+    _FORM_LOGGER_NAMES['woody']: 'Woody Debris',
+    f'{_LOGGER_NAME_ROOT}.components.fofem_emissions': 'FOFEM Emissions',
+    f'{_LOGGER_NAME_ROOT}.components.fofem_mortality': 'FOFEM Mortality',
+    f'{_LOGGER_NAME_ROOT}.extract_nrcan_wx': 'NRCAN Weather',
 }
 
 GENERAL_ERROR_ROW = 'General Error'
@@ -88,10 +91,10 @@ def _detach_handlers() -> None:
 
 
 def _form_for_record(record: logging.LogRecord) -> str:
-    for form, logger_name in _FORM_LOGGER_NAMES.items():
+    for logger_name, display_name in _LOGGER_DISPLAY_NAMES.items():
         if record.name == logger_name or record.name.startswith(logger_name + '.'):
-            return _FORM_DISPLAY_NAMES[form]
-    return record.name.rsplit('.', 1)[-1]
+            return display_name
+    return record.name
 
 
 def _has_output_handler(logger: logging.Logger) -> bool:

@@ -89,6 +89,26 @@ def test_identity_columns_populated_from_plot_df(tmp_path):
     assert result.loc[0, 'plot_id'] == 1
 
 
+def test_known_non_form_loggers_use_stable_display_names(tmp_path):
+    error_handling.start_run()
+    logging.getLogger('fuel_analyst.extract_nrcan_wx').warning(
+        'weather issue', extra={'unique_id': 'A'}
+    )
+    logging.getLogger('fuel_analyst.components.fofem_emissions').warning(
+        'emissions issue', extra={'unique_id': 'A'}
+    )
+    logging.getLogger('fuel_analyst.components.fofem_mortality').warning(
+        'mortality issue', extra={'unique_id': 'A'}
+    )
+    out_path = tmp_path / 'errors.csv'
+    error_handling.write_report(str(out_path), plot_df=None)
+
+    result = pd.read_csv(out_path, keep_default_na=False)
+    assert 'NRCAN Weather' in result.columns
+    assert 'FOFEM Emissions' in result.columns
+    assert 'FOFEM Mortality' in result.columns
+
+
 def test_logger_calls_reach_console_during_active_run(capsys, monkeypatch, tmp_path):
     monkeypatch.setattr(error_handling, '_has_output_handler', lambda logger: False)
     error_handling.start_run()
@@ -224,6 +244,25 @@ def test_start_run_write_report_pivots_by_plot_and_form(tmp_path):
     assert row_a['Woody Debris'] == '1. [ERROR] Woody issue for plot A'
     assert row_b['Trees'] == '1. [INFO] Tree issue for plot B'
     assert row_b['Woody Debris'] == ''
+
+
+def test_unknown_logger_names_remain_fully_qualified_and_distinct(tmp_path):
+    error_handling.start_run()
+    logging.getLogger('fuel_analyst.alpha.shared').warning(
+        'alpha issue', extra={'unique_id': 'A'}
+    )
+    logging.getLogger('fuel_analyst.beta.shared').warning(
+        'beta issue', extra={'unique_id': 'A'}
+    )
+    out_path = tmp_path / 'errors.csv'
+    error_handling.write_report(str(out_path), plot_df=None)
+
+    result = pd.read_csv(out_path, keep_default_na=False)
+    assert 'fuel_analyst.alpha.shared' in result.columns
+    assert 'fuel_analyst.beta.shared' in result.columns
+    assert 'shared' not in result.columns
+    assert result.loc[0, 'fuel_analyst.alpha.shared'] == '1. [WARNING] alpha issue'
+    assert result.loc[0, 'fuel_analyst.beta.shared'] == '1. [WARNING] beta issue'
 
 
 def test_write_report_restores_previous_logger_level(tmp_path):
