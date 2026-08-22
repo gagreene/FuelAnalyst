@@ -595,18 +595,16 @@ def fuel_analyst(
             extra_in_form = [id for id in form_df['unique_id'].values if id not in id_list]
             if missing_from_form or extra_in_form:
                 print(f'\tWarning:')
-                if missing_from_form:
-                    for missing_id in missing_from_form:
-                        error_handling.get_logger(form).warning(
-                            f'Plot is in the Plot Attributes dataset but not in {form_dict[form]}.',
-                            extra={'unique_id': missing_id, 'issue_code': 'id_missing_from_form'},
-                        )
-                if extra_in_form:
-                    for extra_id in extra_in_form:
-                        error_handling.get_logger(form).warning(
-                            f'Plot is in the {form_dict[form]} dataset but not in Plot Attributes.',
-                            extra={'unique_id': extra_id, 'issue_code': 'id_extra_in_form'},
-                        )
+                for missing_id in missing_from_form:
+                    error_handling.get_logger(form).warning(
+                        f'Plot is in the Plot Attributes dataset but not in {form_dict[form]}.',
+                        extra={'unique_id': missing_id, 'issue_code': 'id_missing_from_form'},
+                    )
+                for extra_id in extra_in_form:
+                    error_handling.get_logger(form).warning(
+                        f'Plot is in the {form_dict[form]} dataset but not in Plot Attributes.',
+                        extra={'unique_id': extra_id, 'issue_code': 'id_extra_in_form'},
+                    )
             else:
                 print(f'\tAll IDs from the Plot Attributes dataset are present in the {form} dataset. Merging data.')
 

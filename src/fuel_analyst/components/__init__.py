@@ -5,6 +5,7 @@ from importlib import import_module
 __all__ = [
 	'canopy_cover',
 	'conpyro_attributes',
+	'error_handling',
 	'fofem_attributes',
 	'fofem_emissions',
 	'fofem_gui_emissions',

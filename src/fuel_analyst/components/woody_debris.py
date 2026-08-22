@@ -1063,10 +1063,10 @@ def _merge_spp_comp(
             # Concatenate with existing spp_comp_df
             spp_comp_df = _concat_spp_comp_frames(spp_comp_df, plot_spp_comp)
         else:
-            print('\t\tThis is normal if trees were not processed or plots have no trees')
             logger.warning(
                 'stand_spp_comp_woody column exists but contains no valid data for any plot.'
             )
+            print('\t\tThis is normal if trees were not processed or plots have no trees')
     else:
         logger.warning('stand_spp_comp_woody column not found (trees may not have been processed).')
 

@@ -256,11 +256,10 @@ Processed copies of each Survey123 parent table are written under their correspo
 
 Every `fuel_analyst()` run that completes writes `master_fuel_df_errors.csv`
 alongside `master_fuel_df.csv`. It lists every data-quality issue encountered
-during the
-run - invalid tree-density inputs, ID mismatches between forms, and species-
-composition or percent-flammable fallbacks - one row per affected plot, one
-column per form, with a `General Error` row for issues not tied to any
-specific plot. Invalid plot radii remain missing during tree-density
+during the run - invalid tree-density inputs, ID mismatches between forms,
+and species-composition or percent-flammable fallbacks - one row per affected
+plot, one column per form, with a `General Error` row for issues not tied to
+any specific plot. Invalid plot radii remain missing during tree-density
 validation, and the density of only the affected tree records is assigned `0`
 so one bad plot does not stop the batch; check `master_fuel_df_errors.csv`'s
 Trees column for the reason.

@@ -304,6 +304,10 @@ def process_emissions(
         units='Imperial',
         soil_heating=model_soil_heating,
         soil_family=_prepare_soil_family(model_df) if model_soil_heating else None,
+        # num_workers fans this call out inside pyfofem. logging calls made from code that
+        # actually runs in a ProcessPoolExecutor/multiprocessing worker never reach
+        # error_handling's collecting handler in the parent process, so any future code moved
+        # into a worker must not rely on logger.warning() showing up in the error report.
         num_workers=max(1, int(num_workers)),
         show_progress=True,
     )
