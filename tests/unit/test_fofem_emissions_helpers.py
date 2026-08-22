@@ -83,3 +83,12 @@ def test_no_required_columns_present_logs_general_error(caplog):
         mortality._log_and_drop_incomplete_rows(plot_fire_df, [], 'unique_id')
     assert len(caplog.records) == 1
     assert not hasattr(caplog.records[0], 'unique_id') or caplog.records[0].unique_id is None
+
+
+def test_prepare_soil_family_logs_general_error_when_column_missing(caplog):
+    df = pd.DataFrame({'other_col': [1]})
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.components.fofem_emissions'):
+        result = emissions._prepare_soil_family(df)
+    assert result is None
+    assert len(caplog.records) == 1
+    assert 'SoilFamily' in caplog.records[0].message

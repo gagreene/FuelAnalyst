@@ -6,6 +6,7 @@ Created on Fri Apr 17, 2026
 """
 __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
+import logging
 import os
 import numpy as np
 import pandas as pd
@@ -14,6 +15,8 @@ from typing import Union
 from . import helper
 from . import fwis_moisture_content as mc
 from pyfofem import pyfofem as fofem
+
+logger = logging.getLogger(__name__)
 
 
 default_season_start_dict = {
@@ -195,6 +198,7 @@ def _prepare_soil_family(df: pd.DataFrame) -> Union[np.ndarray, None]:
     """
     if 'SoilFamily' not in df.columns:
         print('\tSoilFamily column is missing; disabling soil heating for this emissions run.')
+        logger.warning('SoilFamily column is missing; disabling soil heating for this emissions run.')
         return None
 
     soil = df['SoilFamily'].astype(str).str.strip()
