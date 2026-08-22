@@ -112,7 +112,13 @@ def write_report(out_path: str, plot_df: Optional[pd.DataFrame] = None) -> None:
     id_lookup = {}
     if plot_df is not None and 'unique_id' in plot_df.columns:
         identity_cols = [c for c in _IDENTITY_COLUMNS if c in plot_df.columns]
-        id_lookup = plot_df.set_index('unique_id')[identity_cols].to_dict('index')
+        # drop_duplicates() is required: run_conpyro.py passes one row per plot per
+        # weather date, and to_dict('index') raises ValueError on a non-unique index.
+        id_lookup = (
+            plot_df.drop_duplicates('unique_id')
+            .set_index('unique_id')[identity_cols]
+            .to_dict('index')
+        )
 
     forms = sorted({_form_for_record(r) for r in records})
     rows = defaultdict(lambda: {form: [] for form in forms})
