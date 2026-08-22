@@ -255,6 +255,31 @@ def test_tree_density_logs_each_root_cause_at_correct_severity(caplog):
     assert all(r.unique_id == 'Unit_Plot_1_2025' for r in caplog.records)
 
 
+def test_tree_density_radius_issues_name_the_failing_radius_class(caplog):
+    """Two radius classes failing with the same issue_code must not produce two
+    byte-identical report lines - each message names which radius field to fix."""
+    plots = pd.DataFrame({
+        'GlobalID': ['p1'], 'unique_id': ['Unit_Plot_1_2025'],
+        'lgtree_plot_radius': [None], 'smtree_plot_radius': [None],
+        'sapling_plot_radius': [5.64],
+    })
+    plots = _calc_plot_multipliers(plots)
+    trees = _normalize_tree_inputs(pd.DataFrame({
+        'GlobalID': ['t1'], 'ParentGlobalID': ['p1'], 'tree_dbh': [8],
+    }))
+    density = _calc_tree_density(plots, trees)
+
+    with caplog.at_level(logging.INFO, logger='fuel_analyst.components.trees'):
+        _log_tree_density_issues(plots, pd.DataFrame(), density)
+
+    messages = [r.getMessage() for r in caplog.records]
+    assert len(messages) == 2
+    assert len(set(messages)) == 2
+    assert any('lgtree' in m and 'smtree' not in m for m in messages)
+    assert any('smtree' in m and 'lgtree' not in m for m in messages)
+    assert {r.issue_code for r in caplog.records} == {'missing_plot_radius'}
+
+
 def test_tree_density_retains_simultaneous_row_failures():
     plots = _calc_plot_multipliers(pd.DataFrame({
         'GlobalID': ['p1'],

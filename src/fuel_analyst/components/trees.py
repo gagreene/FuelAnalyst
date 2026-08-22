@@ -1533,9 +1533,11 @@ def _log_tree_density_issues(
             return pd.NA
         return parent_by_id.loc[parent_id].get('unique_id')
 
-    def log_issue(parent_id, issue_code, results_partial):
+    def log_issue(parent_id, issue_code, results_partial, detail=None):
         unique_id = resolve_unique_id(parent_id)
         message = issue_code.replace('_', ' ')
+        if detail:
+            message = f'{message} ({detail})'
         extra = {'unique_id': unique_id, 'issue_code': issue_code}
         if results_partial:
             full_message = f'{message}; affected density assigned zero'
@@ -1555,7 +1557,8 @@ def _log_tree_density_issues(
                 & tree_df['tree_density_radius_class'].eq(radius_class)
                 & tree_df['tree_density_affected']
             ])
-            log_issue(plot.get('GlobalID'), issue_code, results_partial=affected_count > 0)
+            log_issue(plot.get('GlobalID'), issue_code, results_partial=affected_count > 0,
+                      detail=radius_class)
 
     radius_issue_codes = {
         'missing_plot_radius', 'non_numeric_plot_radius',
