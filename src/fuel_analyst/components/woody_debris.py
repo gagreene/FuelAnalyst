@@ -1030,7 +1030,17 @@ def _merge_spp_comp(
             
             # Filter to only rows with valid data before processing
             valid_rows = plot_df[valid_data].copy()
-            
+
+            for _, missing_row in plot_df.loc[~valid_data].iterrows():
+                logger.info(
+                    'No tree-derived species composition for this plot; falling back to '
+                    'another spp_comp_type source.',
+                    extra={
+                        'unique_id': missing_row.get('unique_id'),
+                        'issue_code': 'stand_spp_comp_woody_missing_for_plot',
+                    },
+                )
+
             # Split the string into tuples and create a DataFrame
             plot_spp_comp = (
                 valid_rows['stand_spp_comp_woody']
@@ -1053,10 +1063,12 @@ def _merge_spp_comp(
             # Concatenate with existing spp_comp_df
             spp_comp_df = _concat_spp_comp_frames(spp_comp_df, plot_spp_comp)
         else:
-            print('\t\tWarning: stand_spp_comp_woody column exists but contains no valid data')
             print('\t\tThis is normal if trees were not processed or plots have no trees')
+            logger.warning(
+                'stand_spp_comp_woody column exists but contains no valid data for any plot.'
+            )
     else:
-        print('\t\tNote: stand_spp_comp_woody column not found (trees may not have been processed)')
+        logger.warning('stand_spp_comp_woody column not found (trees may not have been processed).')
 
     # ### PROCESS TRANSECT SPECIES COMPOSITION DATA
     # All (plot, species) pairs in woody_merged_df with their summed percent
