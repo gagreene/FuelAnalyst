@@ -91,3 +91,10 @@ dmypy.json
 
 # Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
 .superpowers/
+
+# Local planning and review artifacts
+docs/superpowers/
+development/*plan*.md
+docs/*plan*.md
+docs/pr-description-*.md
+docs/commit-message-*.md
