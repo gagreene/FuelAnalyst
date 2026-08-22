@@ -23,7 +23,7 @@ def test_complete_survey123_pipeline_generates_owned_output_contracts(tmp_path):
     )
 
     expected_outputs = [
-        'master_fuel_df.csv', 'master_fuel_df_errors.csv', 'master_tree_df.csv',
+        'master_fuel_df.csv', 'fuelanalyst_errors.csv', 'master_tree_df.csv',
         'conpyro_df.csv', 'fbp_prep_df.csv', 'fofem_tree_df.csv', 'fofem_consume_df.csv',
         '1_Plot_Attributes/survey_0.csv', '2_Plants_Regeneration/survey_0.csv',
         '3_Trees/survey_0.csv',
@@ -33,7 +33,7 @@ def test_complete_survey123_pipeline_generates_owned_output_contracts(tmp_path):
     assert all((output_dir / relative).is_file() for relative in expected_outputs)
 
     master = pd.read_csv(output_dir / 'master_fuel_df.csv', low_memory=False)
-    errors = pd.read_csv(output_dir / 'master_fuel_df_errors.csv', low_memory=False)
+    errors = pd.read_csv(output_dir / 'fuelanalyst_errors.csv', low_memory=False)
     conpyro = pd.read_csv(output_dir / 'conpyro_df.csv', low_memory=False)
     fbp = pd.read_csv(output_dir / 'fbp_prep_df.csv', low_memory=False)
     fofem_trees = pd.read_csv(output_dir / 'fofem_tree_df.csv', low_memory=False)

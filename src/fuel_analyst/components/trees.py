@@ -1900,7 +1900,7 @@ def process_trees(in_folder: str,
         print(f'\tWARNING: Tree-density results are partial for {len(by_plot)} plot(s).')
         for plot_label, messages in by_plot.items():
             print(f'\t  {plot_label}: {"; ".join(messages)}')
-        print('\tSee the run-level error report (master_fuel_df_errors.csv) for full details.')
+        print('\tSee the run-level error report (fuelanalyst_errors.csv) for full details.')
 
     df = export_df
 

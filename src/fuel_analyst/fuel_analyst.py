@@ -637,7 +637,7 @@ def fuel_analyst(
         plot_df = plot_df[keep_columns]  # Keep only the specified columns
         helper.export_csv(plot_df, master_df_path)
 
-    error_report_path = os.path.join(out_dir, 'master_fuel_df_errors.csv')
+    error_report_path = os.path.join(out_dir, 'fuelanalyst_errors.csv')
     print(f'Saving the Error Report to: {error_report_path}')
     error_handling.write_report(error_report_path, plot_df=plot_df)
 
