@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -196,6 +198,27 @@ def test_tree_cbh_cleanup_crown_depth_and_crown_fuels():
     assert result.loc[0, 'tree_cfl_cnbe_ha'] == 4
     assert result.loc[0, 'tree_cbd_cnbe_ha'] == 1
     assert result.loc[1, 'tree_cfl_cnbe_ha'] == 0
+
+
+def test_calc_tree_fire_attributes_does_not_warn_for_valid_byram_model(caplog):
+    tree_df = pd.DataFrame({
+        'tree_bark_char_high': [10.0], 'tree_bark_char_low': [0.0],
+        'tree_ht': [15.0],
+    })
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.components.trees'):
+        _calc_tree_fire_attributes(tree_df, surface_fire_intensity_model='Byram')
+    assert caplog.records == []
+
+
+def test_calc_tree_fire_attributes_warns_for_truly_invalid_model(caplog):
+    tree_df = pd.DataFrame({
+        'tree_bark_char_high': [10.0], 'tree_bark_char_low': [0.0],
+        'tree_ht': [15.0],
+    })
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.components.trees'):
+        _calc_tree_fire_attributes(tree_df, surface_fire_intensity_model='not_a_model')
+    assert len(caplog.records) == 1
+    assert 'Invalid surface fireline intensity model' in caplog.records[0].message
 
 
 def test_tree_classification_boundaries_and_decay_combination():

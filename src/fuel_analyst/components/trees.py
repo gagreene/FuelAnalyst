@@ -6,6 +6,7 @@ Created on Tue May 27, 15:30:00 2025
 """
 __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
+import logging
 import os
 import pandas as pd
 import numpy as np
@@ -85,6 +86,8 @@ _PLOT_RADIUS_FIELDS = {
     'smtree': 'smtree_plot_radius',
     'sapling': 'sapling_plot_radius',
 }
+
+logger = logging.getLogger(__name__)
 
 _TREE_DENSITY_ISSUE_COLUMNS = [
     'issue_id', 'unique_id', 'plot_global_id', 'treatment_area',
@@ -1226,7 +1229,10 @@ def _calc_tree_fire_attributes(tree_df: pd.DataFrame, surface_fire_intensity_mod
         # Use the Thomas (1963) flame length model to estimate fireline intensity (kW/m)
         surface_model = (tree_df['tree_flame_length'] / 0.026700) ** (3 / 2)
     else:
-        print('Invalid surface fireline intensity model specified. Using Byram (1959) as default.')
+        if surface_fire_intensity_model != 'Byram':
+            logger.warning(
+                'Invalid surface fireline intensity model specified. Using Byram (1959) as default.'
+            )
         # Use the Byram (1959) flame length model to estimate fireline intensity (kW/m)
         surface_model = (tree_df['tree_flame_length'] / 0.0775) ** (1 / 0.46)
 
