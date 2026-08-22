@@ -6,6 +6,7 @@ Created on Tues Feb 11, 13:25:00 2026
 """
 __author__ = ['Florencia Tiribelli, ftiribelli@forsite.ca']
 
+import logging
 import os
 import numpy as np
 import rasterio as rio
@@ -17,6 +18,8 @@ from datetime import datetime
 from typing import Optional
 from functools import reduce
 from .components import helper
+
+logger = logging.getLogger(__name__)
 
 
 # Define constants for ecodivision shapefile and BCWS fire season dates by ecodivision
@@ -455,6 +458,11 @@ def extract_weather_data(
         missing_coords = plots[plots[lat_col_name].isna() | plots[lon_col_name].isna()]
         print(f'Warning: {len(missing_coords)} plots have missing lat or long data and will be skipped:')
         print(missing_coords[plot_id_col_name].to_list())
+        for missing_id in missing_coords[plot_id_col_name]:
+            logger.warning(
+                'Plot has missing lat or long data and will be skipped.',
+                extra={'unique_id': missing_id, 'issue_code': 'missing_lat_long'},
+            )
         plots = plots_sub
 
     # Sample weather data for all variables and merge results

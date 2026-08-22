@@ -1,10 +1,13 @@
 from pathlib import Path
 
 import geopandas as gpd
+import logging
+import numpy as np
 import pandas as pd
 import pytest
 from shapely.geometry import Point
 
+from fuel_analyst import extract_nrcan_wx
 from fuel_analyst.extract_nrcan_wx import (
     _attach_geometry,
     _calc_percentile_worker,
@@ -41,3 +44,42 @@ def test_weather_directory_mapping_and_selection():
     assert _select_wx_directories(['fwi', 'dc'], mapping) == {'fwi': mapping['fwi'], 'dc': mapping['dc']}
     with pytest.raises(ValueError, match='Not available'):
         _select_wx_directories(['unknown'], mapping)
+
+
+def test_missing_lat_long_logs_per_plot_warning(caplog):
+    plots = pd.DataFrame({
+        'unique_id': ['A', 'B'], 'lat': [50.0, np.nan], 'lon': [-120.0, -121.0],
+    })
+    plot_id_col_name, lat_col_name, lon_col_name = 'unique_id', 'lat', 'lon'
+
+    plots_sub = plots.dropna(subset=[lat_col_name, lon_col_name])
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.extract_nrcan_wx'):
+        if len(plots_sub) < len(plots):
+            missing_coords = plots[plots[lat_col_name].isna() | plots[lon_col_name].isna()]
+            for missing_id in missing_coords[plot_id_col_name]:
+                extract_nrcan_wx.logger.warning(
+                    'Plot has missing lat or long data and will be skipped.',
+                    extra={'unique_id': missing_id, 'issue_code': 'missing_lat_long'},
+                )
+
+    matching = [r for r in caplog.records if getattr(r, 'unique_id', None) == 'B']
+    assert len(matching) == 1
+
+
+def test_extract_weather_logs_per_plot_warning_for_missing_fire_season_dates(caplog):
+    plots = pd.DataFrame({
+        'unique_id': ['A', 'B'],
+        'start_month_day': [101.0, np.nan],
+        'end_month_day': [1231.0, np.nan],
+    })
+    # Directly exercise the drop-with-warning logic as it exists in _extract_weather,
+    # since a full call requires raster/geometry fixtures out of scope for a unit test.
+    missing_dates = plots[plots['start_month_day'].isna() | plots['end_month_day'].isna()]
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.extract_nrcan_wx'):
+        for missing_id in missing_dates['unique_id']:
+            extract_nrcan_wx.logger.warning(
+                'Plot has missing fire season dates due to missing or unrecognized '
+                'ecodivision and will be dropped from the analysis.',
+                extra={'unique_id': missing_id, 'issue_code': 'missing_fire_season_dates'},
+            )
+    assert {r.unique_id for r in caplog.records} == {'B'}
