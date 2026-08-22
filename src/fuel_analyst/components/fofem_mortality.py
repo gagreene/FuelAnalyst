@@ -6,6 +6,7 @@ Created on Sun Feb 1, 16:30:00 2026
 """
 __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
+import logging
 import os
 import numpy as np
 import pandas as pd
@@ -13,6 +14,8 @@ from typing import Union
 
 from . import helper
 from pyfofem import pyfofem as fofem
+
+logger = logging.getLogger(__name__)
 
 
 def _calc_plot_ba_killed(
@@ -60,6 +63,35 @@ def _calc_severity_class(plot_fire_df: pd.DataFrame) -> pd.DataFrame:
     return plot_fire_df
 
 
+def _log_and_drop_incomplete_rows(
+        plot_fire_df: pd.DataFrame,
+        filtered_required_cols: list,
+        plot_id_col_name: str,
+) -> pd.DataFrame:
+    """
+    Log a per-plot warning for any row with a NaN in a required column, then drop it.
+    Logs a single run-level warning instead if no required columns exist in plot_fire_df.
+
+    :param plot_fire_df: DataFrame to check and filter.
+    :param filtered_required_cols: Required columns that exist in plot_fire_df.
+    :param plot_id_col_name: Name of the unique ID column in plot_fire_df.
+    :return: plot_fire_df with incomplete rows removed.
+    """
+    if not filtered_required_cols:
+        logger.warning('None of the required columns were found in plot_fire_df. Skipping dropna.')
+        return plot_fire_df
+
+    incomplete_mask = plot_fire_df[filtered_required_cols].isna().any(axis=1)
+    for _, row in plot_fire_df.loc[incomplete_mask].iterrows():
+        missing_cols = [c for c in filtered_required_cols if pd.isna(row[c])]
+        logger.warning(
+            f'Plot dropped from FOFEM mortality processing; missing required column(s): '
+            f'{", ".join(missing_cols)}.',
+            extra={'unique_id': row.get(plot_id_col_name), 'issue_code': 'fofem_mortality_missing_required_column'},
+        )
+    return plot_fire_df.dropna(subset=filtered_required_cols)
+
+
 def process_mortality(
         plot_wx_fire_csv_path: str,
         fofem_tree_csv_path: str,
@@ -96,10 +128,7 @@ def process_mortality(
     required_cols = ['instand_ws_mps', 'canopy_cover', 'ht_ovrstry_live', 'fsg', 'ws', 'hfi', 'fire_type', 'temp']
     # Only keep columns that exist in plot_fire_df
     filtered_required_cols = [col for col in required_cols if col in plot_fire_df.columns]
-    if filtered_required_cols:
-        plot_fire_df = plot_fire_df.dropna(subset=filtered_required_cols)
-    else:
-        print('\t\tWarning: None of the required columns were found in plot_fire_df. Skipping dropna.')
+    plot_fire_df = _log_and_drop_incomplete_rows(plot_fire_df, filtered_required_cols, plot_id_col_name)
 
     # Merge tree data with all fire weather scenarios for each unique_id
     merged_tree_df = pd.merge(
