@@ -5,7 +5,6 @@ import pandas as pd
 import pytest
 
 from fuel_analyst.components.trees import (
-    _add_tree_processing_status,
     _calc_plot_multipliers,
     _calc_sapling_dbh,
     _calc_sapling_density,
@@ -20,8 +19,8 @@ from fuel_analyst.components.trees import (
     _calc_tree_fire_attributes,
     _calc_tree_fsg,
     _calc_tree_type,
-    _gen_tree_processing_issues,
     _get_temesgen_tree_height,
+    _log_tree_density_issues,
     _merge_saplings_to_trees,
     _normalize_sapling_inputs,
     _normalize_tree_inputs,
@@ -233,11 +232,9 @@ def test_tree_classification_boundaries_and_decay_combination():
     assert result['tree_dcy_class'].iloc[2:].isna().all()
 
 
-def test_tree_density_reports_each_root_cause_and_keeps_batch_results_finite():
+def test_tree_density_logs_each_root_cause_at_correct_severity(caplog):
     plots = pd.DataFrame({
         'GlobalID': ['p1'], 'unique_id': ['Unit_Plot_1_2025'],
-        'treatment_area': ['Example'], 'treatment_unit': ['Unit'],
-        'treatment_type': ['Pre'], 'plot_id': [1],
         'lgtree_plot_radius': [None], 'smtree_plot_radius': [5.64],
         'sapling_plot_radius': [5.64],
     })
@@ -248,17 +245,14 @@ def test_tree_density_reports_each_root_cause_and_keeps_batch_results_finite():
     }))
 
     density = _calc_tree_density(plots, trees)
-    issues = _gen_tree_processing_issues(plots, pd.DataFrame(), density)
-    status = _add_tree_processing_status(plots, pd.DataFrame(), density, issues)
+    with caplog.at_level(logging.INFO, logger='fuel_analyst.components.trees'):
+        _log_tree_density_issues(plots, pd.DataFrame(), density)
 
     assert density['tree_dens_ha'].tolist() == [0.0, 0.0]
-    assert density['tree_density_primary_issue_code'].tolist() == [
-        'missing_plot_radius', 'non_numeric_tree_dbh',
-    ]
-    assert set(issues['issue_code']) == {'missing_plot_radius', 'non_numeric_tree_dbh'}
-    assert issues['results_partial'].all()
-    assert not status.loc[0, 'tree_density_complete']
-    assert status.loc[0, 'tree_density_failed_records'] == 2
+    codes = {r.issue_code for r in caplog.records}
+    assert codes == {'missing_plot_radius', 'non_numeric_tree_dbh'}
+    assert all(r.levelname == 'ERROR' for r in caplog.records)
+    assert all(r.unique_id == 'Unit_Plot_1_2025' for r in caplog.records)
 
 
 def test_tree_density_retains_simultaneous_row_failures():
@@ -289,33 +283,9 @@ def test_tree_density_selects_plot_multiplier_by_dbh_and_tree_count():
     assert _calc_tree_density(plots, trees)['tree_dens_ha'].tolist() == [50, 200, 400]
 
 
-def test_tree_processing_status_ignores_unassigned_nullable_issue_ids():
+def test_unused_invalid_radius_is_logged_as_warning_not_error(caplog):
     plots = pd.DataFrame({
         'GlobalID': ['p1'], 'unique_id': ['Unit_Plot_1_2025'],
-    })
-    trees = pd.DataFrame({
-        'ParentGlobalID': [pd.NA],
-        'tree_density_affected': [True],
-        'tree_density_radius_class': [pd.NA],
-        'tree_count': [1.0],
-    })
-    issues = pd.DataFrame({
-        'unique_id': pd.Series([pd.NA], dtype='string'),
-        'plot_global_id': pd.Series([pd.NA], dtype='string'),
-        'message': ['missing parent id; affected density assigned zero'],
-    })
-
-    result = _add_tree_processing_status(plots, pd.DataFrame(), trees, issues)
-
-    assert result.loc[0, 'tree_density_complete']
-    assert result.loc[0, 'tree_density_issue_count'] == 0
-
-
-def test_unused_invalid_radius_is_reported_without_marking_results_partial():
-    plots = pd.DataFrame({
-        'GlobalID': ['p1'], 'unique_id': ['Unit_Plot_1_2025'],
-        'treatment_area': ['Example'], 'treatment_unit': ['Unit'],
-        'treatment_type': ['Pre'], 'plot_id': [1],
         'lgtree_plot_radius': [None], 'smtree_plot_radius': [5.64],
         'sapling_plot_radius': [5.64],
     })
@@ -324,11 +294,11 @@ def test_unused_invalid_radius_is_reported_without_marking_results_partial():
         'GlobalID': ['t1'], 'ParentGlobalID': ['p1'], 'tree_dbh': [8],
     }))
     density = _calc_tree_density(plots, trees)
-    issues = _gen_tree_processing_issues(plots, pd.DataFrame(), density)
-    status = _add_tree_processing_status(plots, pd.DataFrame(), density, issues)
+
+    with caplog.at_level(logging.INFO, logger='fuel_analyst.components.trees'):
+        _log_tree_density_issues(plots, pd.DataFrame(), density)
 
     assert density.loc[0, 'tree_dens_ha'] == 100
-    assert issues.loc[0, 'issue_code'] == 'missing_plot_radius'
-    assert not issues.loc[0, 'results_partial']
-    assert status.loc[0, 'tree_density_complete']
-    assert status.loc[0, 'tree_density_issue_count'] == 1
+    assert len(caplog.records) == 1
+    assert caplog.records[0].levelname == 'WARNING'
+    assert caplog.records[0].issue_code == 'missing_plot_radius'
