@@ -197,7 +197,6 @@ def _prepare_soil_family(df: pd.DataFrame) -> Union[np.ndarray, None]:
     :return: Soil family object ndarray.
     """
     if 'SoilFamily' not in df.columns:
-        print('\tSoilFamily column is missing; disabling soil heating for this emissions run.')
         logger.warning('SoilFamily column is missing; disabling soil heating for this emissions run.')
         return None
 
