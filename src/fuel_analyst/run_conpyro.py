@@ -606,7 +606,7 @@ def run_conpyro(
         fire_modelling_params: Optional[dict] = None
 ) -> None:
     """
-    Run ConPyro with the test datasets.
+    Run configured ConPyro, FOFEM mortality, and FOFEM emissions workflows.
 
     :param out_dir: Directory to save output CSV files.
     :param in_conpyro_csv_path: Path to the input CSV file containing required columns for ConPyro.
@@ -618,7 +618,7 @@ def run_conpyro(
         FOFEM fuel consumption data for emissions modelling.
     :param fire_modelling_params: Optional dictionary containing fire modelling parameters for ConPyro,
         FOFEM mortality, and FOFEM emissions modelling.
-    :return: None
+    :return: None. Writes selected model outputs and run_conpyro_errors.csv.
     """
     # Ensure the output directory exists
     os.makedirs(out_dir, exist_ok=True)

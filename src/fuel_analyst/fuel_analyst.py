@@ -477,7 +477,7 @@ def fuel_analyst(
         gen_fofem_consume_df: bool = False
 ) -> None:
     """
-    Main Fuel Analyst function to process the fuel attributes and save the results.
+    Process Survey123 fuel attributes and write the selected result tables.
 
     :param in_dir: Path to the input folder containing the survey data.
     :param out_dir: Path to the output folder where results will be saved.
@@ -489,7 +489,9 @@ def fuel_analyst(
     :param gen_conpyro_df: Boolean indicating whether to generate the ConPyro DataFrame.
     :param gen_fofem_tree_df: Boolean indicating whether to generate the FOFEM tree DataFrame.
     :param gen_fofem_consume_df: Boolean indicating whether to generate the FOFEM consumption DataFrame.
-    :return: None
+    :return: None. Every completed run writes master_fuel_df.csv and
+        fuelanalyst_errors.csv; model-preparation outputs depend on the generation
+        flags.
     """
     # Create the list of forms to process
     form_select_list = ['plants', 'trees', 'cover', 'woody']

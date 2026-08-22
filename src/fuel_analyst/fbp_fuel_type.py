@@ -104,7 +104,7 @@ def process_fbp_fuel_type(
     :param conpyro_df_path: Path to the ConPyro DataFrame CSV file to be updated with FBP fuel types.
     :param out_dir: Directory to save the updated ConPyro DataFrame CSV file with FBP fuel types.
     :param season: Season for fuel typing ('Growing' or 'Dormant').
-    :return: DataFrame with added columns for FBP fuel type and modifier.
+    :return: None. Writes an updated ConPyro CSV with an `_fbp` filename suffix.
     """
     # Columns to drop from the FBP preparation DataFrame
     fbp_drop_columns = [

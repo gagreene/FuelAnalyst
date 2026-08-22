@@ -1,5 +1,12 @@
 # Plan: Make FuelAnalyst pip-installable (G6)
 
+> **Historical implementation record:** This plan has been completed. The
+> current package metadata is `pyproject.toml`, imports use the installed
+> `fuel_analyst` package, BCWFT2018 is vendored, and `flame_components`,
+> ConPyro, and pyFOFEM are optional installed dependencies. Proposed snippets
+> below record the implementation process and are not the current source of
+> truth.
+
 ## Context
 
 Every top-level module injects `sys.path.insert(0, ...)` to reach both internal modules (`from src.fuel_analyst...`) and 4 git submodule dependencies (`from dependencies...`). This blocks `pip install` and forces running from the repo root. The goal is a standard pip-installable package with proper imports.

@@ -1,5 +1,10 @@
 # References
 
+`Appendix 1 Results Data Frames Field Names Description.xlsx` documents fields
+in the generated FuelAnalyst result tables. Because some outputs use
+model-required U.S. units while the core calculations are primarily metric,
+consult the workbook before downstream analysis.
+
 `rmrs_gtr190_Kean_and_Dickinson_2007.pdf` is the source publication for the production PhotoLoad workflow
 in [`models/photoload`](../../models/photoload/README.md):
 

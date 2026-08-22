@@ -112,7 +112,8 @@ def merge_weather_data(
         (must include wx_merge_col_name)
     :param wx_merge_col_name: Name of the unique ID column in the weather data CSV used for merging,
         or None to merge all weather data with each plot row
-    :param wx_merge_vars: List of weather variable column names to include in the merge
+    :param wx_merge_vars: Weather columns to merge, or None to use every non-ID
+        weather column
     :param out_path: Path to save the merged CSV file
     :param add_season: Whether to add a 'season' column based on 'wx_date' (default: True)
     :param refine_fbp_seasonally: Whether to refine FBP fuel types based on season
@@ -121,7 +122,7 @@ def merge_weather_data(
         Required if add_season or refine_fbp_seasonally is True
     :param fall_start: Integer representing the month and day (MMDD) when fall starts (default: 915 for September 15)
         Required if add_season or refine_fbp_seasonally is True
-    :return: None
+    :return: None. Writes the merged table to out_path.
     """
     # Check if required parameters are provided when adding season or refining FBP fuel types
     if (add_season or refine_fbp_seasonally) and (summer_start is None or fall_start is None):

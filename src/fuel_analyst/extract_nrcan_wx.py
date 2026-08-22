@@ -434,10 +434,10 @@ def extract_weather_data(
     :param wx_data_dir: Path to parent directory containing NRCAN gridded weather data directories for each variable
     :param out_dir: Directory to save output files
     :param out_file_name: Base name for output files (without extension)
-    :param plot_pts_path: Path to the plot locations CSV file (optional, if not using shapefile)
-    :param plot_id_col_name: Name of the unique ID column in the plots file (default "unique_id")
-    :param lat_col_name: Name of the latitude column in the CSV (required if using CSV)
-    :param lon_col_name: Name of the longitude column in the CSV (required if using CSV)
+    :param plot_pts_path: Path to a CSV or spatial file containing plot locations
+    :param plot_id_col_name: Name of the unique ID column in the plots file
+    :param lat_col_name: Name of the latitude column used when loading a CSV
+    :param lon_col_name: Name of the longitude column used when loading a CSV
     :param wx_var_list: List of weather variables to sample (e.g. ["fwi", "isi"])
     :param start_year: First year to include (inclusive)
     :param end_year: Last year to include (inclusive)
@@ -448,7 +448,7 @@ def extract_weather_data(
     :param calculate_percentiles: Whether to calculate percentiles for specified variables (default False)
     :param percentile_var_list: List of variables to calculate percentiles for
         (required if calculate_percentiles is True)
-    :return: None
+    :return: None. Writes CSV, shapefile, and `<out_file_name>_errors.csv` outputs.
     """
     # Create output directory if it doesn't exist
     os.makedirs(out_dir, exist_ok=True)
