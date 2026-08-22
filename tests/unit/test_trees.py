@@ -24,6 +24,7 @@ from fuel_analyst.components.trees import (
     _merge_saplings_to_trees,
     _normalize_sapling_inputs,
     _normalize_tree_inputs,
+    _print_tree_density_summary,
     _round_plot_data,
     _round_tree_data,
 )
@@ -146,6 +147,19 @@ def test_normalize_sapling_inputs_validates_counts_before_dbh_helpers():
     assert result.loc[1, '_sapling_live_dbh_warning'] == 'sapling_dbh_zero_normalized'
     assert result.loc[2, ['sapling_live_count', 'sapling_dead_count']].tolist() == [0, 0]
     assert result.loc[2, '_sapling_live_count_issue'] == ''
+
+
+def test_print_tree_density_summary_labels_unresolved_ids_without_counting_them_as_plots(capsys):
+    _print_tree_density_summary([
+        ('plot-1', 'missing plot radius; affected density assigned zero'),
+        (pd.NA, 'orphan tree record; affected density assigned zero'),
+    ])
+
+    output = capsys.readouterr().out
+    assert 'partial for 1 plot(s)' in output
+    assert 'records with unresolved plot IDs' in output
+    assert 'General Error: orphan tree record' in output
+    assert '<NA>' not in output
 
 
 def test_rounding_helpers_apply_documented_precision():

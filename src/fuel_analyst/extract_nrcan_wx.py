@@ -410,6 +410,7 @@ def _select_wx_directories(
     return {v: dir_map[v] for v in wx_var_list}
 
 
+@error_handling.run_guard
 def extract_weather_data(
         wx_data_dir: str,
         out_dir: str,
@@ -451,8 +452,6 @@ def extract_weather_data(
     """
     # Create output directory if it doesn't exist
     os.makedirs(out_dir, exist_ok=True)
-    error_handling.start_run()
-
     # Get weather variable directories
     wx_directories = _get_wx_directories(wx_data_dir)
 

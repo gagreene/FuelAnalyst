@@ -20,8 +20,8 @@ gathers everything raised during a run; and `write_report()` pivots it into
 one CSV — `fuelanalyst_errors.csv` — with one row per plot that has ≥1
 issue, one column per form, and a reserved `General Error` row for issues not
 tied to any specific plot. Console output is fully preserved (and in one
-place, improved) via a dedicated console handler attached alongside the
-collector.
+place, improved) via a fallback console handler when the host application has
+not already configured logging.
 
 Three entry points now write this report: `fuel_analyst()`,
 `extract_weather_data()`, and `run_conpyro()`.
@@ -58,14 +58,20 @@ not just re-plumbed:
 
 ### New module
 - `src/fuel_analyst/components/error_handling.py` — `get_logger(form)`,
-  `start_run()`, `write_report(out_path, plot_df=None)`, a
+  `start_run()`, `write_report(out_path, plot_df=None)`, a run-guard decorator, a
   `_CollectingHandler`, and a `_ConsoleFormatter` that appends `(plot: <id>)`
   to console lines that carry a `unique_id`, so per-plot detail survives on
   console even though the underlying handler has no formatter of its own by
-  default. `start_run()` also attaches its own console `StreamHandler`
-  because attaching any handler to a logger namespace suppresses Python's
-  `logging.lastResort` fallback — without it, every migrated `logger.*()`
-  call would go silent on console for the duration of the run.
+  default. `start_run()` attaches its own console `StreamHandler` only when
+  the `fuel_analyst` logger and its propagation ancestors have no non-null
+  handler. This preserves standalone console output after the collector
+  suppresses Python's `logging.lastResort`, while respecting an embedding
+  application's root/package handlers and avoiding duplicate messages. A
+  lone `NullHandler` does not count as an output configuration.
+  The run guard now guarantees that both handlers and the prior logger level
+  are restored when an entry point raises before writing its report. Report
+  row ordering is also type-safe when callers supply a mixture of numeric and
+  string identifiers.
 - `src/fuel_analyst/components/__init__.py` — registered `error_handling` in
   `__all__`.
 
@@ -73,7 +79,9 @@ not just re-plumbed:
 truly a duplicate; preserved where it wasn't)
 - `fuel_analyst.py` — writes `fuelanalyst_errors.csv` unconditionally at
   the end of every completed run; logs per-plot warnings for a missing
-  selected-form folder and for ID mismatches in both directions.
+  selected-form folder and for ID mismatches in both directions. ID mismatch
+  detection now uses set-backed membership checks while preserving first-seen
+  warning order and suppressing duplicate warnings.
 - `plants_regen.py` — `_calc_pc_flammable()`'s fallback logging replaces the
   removed `pc_flammable_note` column.
 - `woody_debris.py` — `_resolve_spp_comp_type()`'s fallback logging replaces
@@ -83,7 +91,9 @@ truly a duplicate; preserved where it wasn't)
   `tree_processing_issues.csv` system entirely; messages now include the
   specific failing radius class when relevant (e.g. `lgtree_plot_radius` vs.
   `smtree_plot_radius`) so two distinct failures on the same plot don't
-  produce identical, undiagnosable report lines.
+  produce identical, undiagnosable report lines. Console summaries use the
+  same `General Error` label as the CSV for unresolved plot IDs and do not
+  count that group as a real plot.
 - `extract_nrcan_wx.py` — logs missing lat/long (closing a gap from PR #9)
   and missing fire-season dates per plot; writes its own
   `<out_file_name>_errors.csv` alongside `wx_data.csv`.
@@ -97,7 +107,9 @@ truly a duplicate; preserved where it wasn't)
 ### Tests
 - `tests/unit/test_error_handling.py` — core module coverage: identity
   columns, `General Error` row ordering and cell numbering, console output
-  during an active run, console plot-ID formatting.
+  during an active run, console plot-ID formatting, exception-safe run
+  cleanup, missing-ID normalization, mixed-type identifier ordering, and
+  conditional console behavior for root, package, and null handlers.
 - `tests/regression/test_error_handling_duplicate_plot_ids.py` — the
   duplicate-`unique_id` crash fix.
 - `tests/regression/test_trees_density_issue_logging.py` — the original
@@ -149,8 +161,8 @@ truly a duplicate; preserved where it wasn't)
 ## Test plan
 
 - [x] Full suite: `tests/unit`, `tests/integration`, `tests/regression` —
-      157 passed, 0 failures (baseline 129 before this branch; +2
-      pc_flammable-fix tests already on master, +26 net from this branch)
+      165 passed, 0 failures (baseline 129 before this branch; +2
+      pc_flammable-fix tests already on master, +34 net from this branch)
 - [x] Ran the real pipeline against the checked-in
       `examples/data/Survey123_Data` fixture and inspected
       `fuelanalyst_errors.csv` directly to confirm real ID-mismatch and

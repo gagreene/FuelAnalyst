@@ -448,6 +448,22 @@ default_fofem_consume_dict = {
 }
 
 
+def _find_id_mismatches(plot_ids, form_ids) -> tuple[list, list]:
+    """Return ordered, deduplicated IDs missing from either side of a form merge."""
+    plot_ids = list(plot_ids)
+    form_ids = list(form_ids)
+    plot_id_set = set(plot_ids)
+    form_id_set = set(form_ids)
+    missing_from_form = list(dict.fromkeys(
+        unique_id for unique_id in plot_ids if unique_id not in form_id_set
+    ))
+    extra_in_form = list(dict.fromkeys(
+        unique_id for unique_id in form_ids if unique_id not in plot_id_set
+    ))
+    return missing_from_form, extra_in_form
+
+
+@error_handling.run_guard
 def fuel_analyst(
         in_dir: str,
         out_dir: str,
@@ -475,8 +491,6 @@ def fuel_analyst(
     :param gen_fofem_consume_df: Boolean indicating whether to generate the FOFEM consumption DataFrame.
     :return: None
     """
-    error_handling.start_run()
-
     # Create the list of forms to process
     form_select_list = ['plants', 'trees', 'cover', 'woody']
 
@@ -591,8 +605,9 @@ def fuel_analyst(
             keep_columns.extend(add_columns)
 
             # Verify that all IDs in id_list are present in the form_df, and vice versa
-            missing_from_form = [id for id in id_list if id not in form_df['unique_id'].values]
-            extra_in_form = [id for id in form_df['unique_id'].values if id not in id_list]
+            missing_from_form, extra_in_form = _find_id_mismatches(
+                id_list, form_df['unique_id'].values
+            )
             if missing_from_form or extra_in_form:
                 print(f'\tWarning:')
                 for missing_id in missing_from_form:

@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 import itertools
 
-from . import helper
+from . import error_handling, helper
 
 
 # GENERAL LIST OF CONIFER SPECIES IN BC
@@ -1754,6 +1754,26 @@ def _normalize_tree_inputs(tree_df: pd.DataFrame) -> pd.DataFrame:
     return tree_df
 
 
+def _print_tree_density_summary(partial_log: list[tuple]) -> None:
+    """Print partial-density results with unresolved IDs labelled consistently."""
+    if not partial_log:
+        return
+
+    by_plot = {}
+    for unique_id, message in partial_log:
+        row_key = error_handling.normalize_unique_id(unique_id)
+        by_plot.setdefault(row_key, []).append(message)
+
+    resolved_plot_count = len(by_plot) - int(error_handling.GENERAL_ERROR_ROW in by_plot)
+    if resolved_plot_count:
+        print(f'\tWARNING: Tree-density results are partial for {resolved_plot_count} plot(s).')
+    if error_handling.GENERAL_ERROR_ROW in by_plot:
+        print('\tWARNING: Tree-density results are partial for records with unresolved plot IDs.')
+    for plot_label, messages in by_plot.items():
+        print(f'\t  {plot_label}: {"; ".join(messages)}')
+    print('\tSee the run-level error report (fuelanalyst_errors.csv) for full details.')
+
+
 def _round_plot_data(df: pd.DataFrame) -> pd.DataFrame:
     """
     Rounds plot data columns to appropriate decimal places.
@@ -1893,14 +1913,7 @@ def process_trees(in_folder: str,
     helper.export_csv(export_sapling_df, os.path.join(out_folder, 'sapling_1.csv'))
     helper.export_csv(export_tree_df, os.path.join(out_folder, 'tree_plot_2.csv'))
 
-    if partial_log:
-        by_plot = {}
-        for unique_id, message in partial_log:
-            by_plot.setdefault(unique_id, []).append(message)
-        print(f'\tWARNING: Tree-density results are partial for {len(by_plot)} plot(s).')
-        for plot_label, messages in by_plot.items():
-            print(f'\t  {plot_label}: {"; ".join(messages)}')
-        print('\tSee the run-level error report (fuelanalyst_errors.csv) for full details.')
+    _print_tree_density_summary(partial_log)
 
     df = export_df
 

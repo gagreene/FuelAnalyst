@@ -3,39 +3,30 @@ import logging
 import pandas as pd
 import pytest
 
-from fuel_analyst.fuel_analyst import fuel_analyst
+from fuel_analyst.fuel_analyst import _find_id_mismatches, fuel_analyst
+
+
+def test_find_id_mismatches_is_ordered_deduplicated_and_bidirectional():
+    missing_from_form, extra_in_form = _find_id_mismatches(
+        ['plot-b', 'plot-a', 'plot-b'],
+        ['plot-a', 'plot-c', 'plot-c'],
+    )
+
+    assert missing_from_form == ['plot-b']
+    assert extra_in_form == ['plot-c']
 
 
 def test_fuel_analyst_requires_all_forms_for_conpyro(tmp_path):
+    root_logger = logging.getLogger('fuel_analyst')
+    original_handlers = list(root_logger.handlers)
+    original_level = root_logger.level
     (tmp_path / 'input').mkdir()
     with pytest.raises(FileNotFoundError, match='All Survey123 forms'):
         fuel_analyst(
             str(tmp_path / 'input'), str(tmp_path / 'output'), 'Byram', gen_conpyro_df=True
         )
-
-
-def test_missing_form_folder_logs_per_plot_warning(tmp_path, caplog):
-    # Build a minimal in_dir with only Plot Attributes present, one plot selecting 'woody'.
-    plot_dir = tmp_path / 'in' / '1_Plot_Attributes'
-    plot_dir.mkdir(parents=True)
-    pd.DataFrame({
-        'GlobalID': ['g1'], 'ParentGlobalID': [None],
-        'treatment_area': ['A'], 'treatment_unit': ['U'], 'treatment_type': ['Pre'],
-        'plot_id': [1], '_date': ['01/01/2025 10:00'], 'form_select': ['woody'],
-        'plot_slope_units': ['percent'], 'plot_slope': [10.0],
-    }).to_csv(plot_dir / 'survey_0.csv', index=False)
-
-    with caplog.at_level(logging.WARNING, logger='fuel_analyst.components.woody_debris'):
-        fuel_analyst(
-            in_dir=str(tmp_path / 'in'),
-            out_dir=str(tmp_path / 'out'),
-            surface_fire_intensity_model='Byram',
-        )
-
-    assert any(
-        'no Woody Debris data' in record.message and record.unique_id == 'A_U_Pre_1_2025'
-        for record in caplog.records
-    )
+    assert root_logger.handlers == original_handlers
+    assert root_logger.level == original_level
 
 
 def test_id_mismatch_logs_orphan_form_id_even_when_forward_direction_is_clean(tmp_path, caplog):
@@ -76,3 +67,27 @@ def test_id_mismatch_logs_orphan_form_id_even_when_forward_direction_is_clean(tm
     matching = [r for r in caplog.records if getattr(r, 'unique_id', None) == 'A_U_Pre_99_2025']
     assert len(matching) == 1
     assert matching[0].issue_code == 'id_extra_in_form'
+
+
+def test_missing_form_folder_logs_per_plot_warning(tmp_path, caplog):
+    # Build a minimal in_dir with only Plot Attributes present, one plot selecting 'woody'.
+    plot_dir = tmp_path / 'in' / '1_Plot_Attributes'
+    plot_dir.mkdir(parents=True)
+    pd.DataFrame({
+        'GlobalID': ['g1'], 'ParentGlobalID': [None],
+        'treatment_area': ['A'], 'treatment_unit': ['U'], 'treatment_type': ['Pre'],
+        'plot_id': [1], '_date': ['01/01/2025 10:00'], 'form_select': ['woody'],
+        'plot_slope_units': ['percent'], 'plot_slope': [10.0],
+    }).to_csv(plot_dir / 'survey_0.csv', index=False)
+
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.components.woody_debris'):
+        fuel_analyst(
+            in_dir=str(tmp_path / 'in'),
+            out_dir=str(tmp_path / 'out'),
+            surface_fire_intensity_model='Byram',
+        )
+
+    assert any(
+        'no Woody Debris data' in record.message and record.unique_id == 'A_U_Pre_1_2025'
+        for record in caplog.records
+    )

@@ -597,6 +597,7 @@ def _model_fofem_mortality(
     return df
 
 
+@error_handling.run_guard
 def run_conpyro(
         out_dir: str,
         in_conpyro_csv_path: str,
@@ -621,8 +622,6 @@ def run_conpyro(
     """
     # Ensure the output directory exists
     os.makedirs(out_dir, exist_ok=True)
-    error_handling.start_run()
-
     # Set default fire modelling parameters if not provided
     if fire_modelling_params is None:
         fire_modelling_params = default_fire_modelling_dict
