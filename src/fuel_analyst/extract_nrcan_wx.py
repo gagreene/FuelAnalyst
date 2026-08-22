@@ -17,7 +17,7 @@ from pyproj import CRS
 from datetime import datetime
 from typing import Optional
 from functools import reduce
-from .components import helper
+from .components import error_handling, helper
 
 logger = logging.getLogger(__name__)
 
@@ -451,6 +451,7 @@ def extract_weather_data(
     """
     # Create output directory if it doesn't exist
     os.makedirs(out_dir, exist_ok=True)
+    error_handling.start_run()
 
     # Get weather variable directories
     wx_directories = _get_wx_directories(wx_data_dir)
@@ -509,6 +510,10 @@ def extract_weather_data(
     )
     out_shp  = os.path.join(out_dir, f'{out_file_name}.shp')
     gdf_all.to_file(out_shp, driver='ESRI Shapefile')
+
+    error_report_path = os.path.join(out_dir, f'{out_file_name}_errors.csv')
+    print(f'Saving the Error Report to: {error_report_path}')
+    error_handling.write_report(error_report_path, plot_df=plots)
 
     return
 
