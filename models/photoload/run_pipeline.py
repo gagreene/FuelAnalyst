@@ -19,7 +19,11 @@ DEFAULT_PDF = (
 
 
 def main() -> None:
-    """Parse command-line arguments and run the production workflow."""
+    """
+    Parse command-line arguments and run the production workflow.
+
+    :return: None. Runs the production workflow with the parsed paths.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output-dir",

@@ -49,7 +49,12 @@ SOURCE_LABELS = {
 
 
 def _calculate_metrics(frame: pd.DataFrame) -> dict[str, float | int]:
-    """Summarize agreement with analyst cover as a comparison guide."""
+    """
+    Summarize agreement with analyst cover as a comparison guide.
+
+    :param frame: DataFrame containing values to summarize.
+    :return: Error and agreement metrics calculated from the supplied records.
+    """
     error = frame["objective_pct_cover"] - frame["analyst_pct_cover"]
     reference = frame["analyst_pct_cover"].to_numpy(dtype=float)
     estimate = frame["objective_pct_cover"].to_numpy(dtype=float)
@@ -72,7 +77,15 @@ def _create_panel(
         output_path: Path,
         title: str,
 ) -> None:
-    """Create one low-to-high biomass source-mask comparison panel."""
+    """
+    Create one low-to-high biomass source-mask comparison panel.
+
+    :param records: Image and mask records to render.
+    :param methods: Mask method keys and display labels.
+    :param output_path: Path for the generated output file.
+    :param title: Title displayed on the generated panel.
+    :return: None. Writes the comparison panel to output_path.
+    """
     records.sort(key=lambda record: float(record["kg_m2"]))
     column_count = len(methods) + 1
     figure, axes = plt.subplots(
@@ -116,7 +129,13 @@ def _image_records(
         folder_data: pd.DataFrame,
         raw_root: Path,
 ) -> tuple[list[dict[str, object]], float]:
-    """Load one species series and its lowest-image CIELAB threshold."""
+    """
+    Load one species series and its lowest-image CIELAB threshold.
+
+    :param folder_data: Calibration records for one species folder.
+    :param raw_root: Directory containing extracted PhotoLoad images.
+    :return: Image, mask, and calibration records for the selected folder.
+    """
     folder = str(folder_data.iloc[0]["folder"])
     records: list[dict[str, object]] = []
     for row in folder_data.sort_values("kg_m2").itertuples(index=False):
@@ -137,13 +156,26 @@ def _image_records(
 
 
 def _isolate_plant(rgb: np.ndarray, mask: np.ndarray) -> np.ndarray:
-    """Blend selected original pixels with a white background."""
+    """
+    Blend selected original pixels with a white background.
+
+    :param rgb: Source image as an RGB array.
+    :param mask: Selection mask applied to the image.
+    :return: RGB image with unselected pixels blended to white.
+    """
     weight = np.asarray(mask, dtype=np.float64)[:, :, np.newaxis]
     return np.rint(rgb * weight + 255 * (1 - weight)).astype(np.uint8)
 
 
 def _run_range_bounds(data: pd.DataFrame, raw_root: Path, output_dir: Path) -> dict[str, object]:
-    """Measure seeded-mask stabilization and eligible ridge-response maxima."""
+    """
+    Measure seeded-mask stabilization and eligible ridge-response maxima.
+
+    :param data: PhotoLoad calibration or result records.
+    :param raw_root: Directory containing extracted PhotoLoad images.
+    :param output_dir: Directory in which generated outputs are written.
+    :return: Quantitative upper-bound results for each production mask family.
+    """
     pixel_rows: list[dict[str, object]] = []
     ridge_rows: list[dict[str, object]] = []
     for folder, folder_data in data.groupby("folder", sort=False):
@@ -229,7 +261,14 @@ def _run_source_comparison(
         raw_root: Path,
         output_dir: Path,
 ) -> pd.DataFrame:
-    """Generate Step 1 panels containing the three retained source variations."""
+    """
+    Generate Step 1 panels containing the three retained source variations.
+
+    :param data: PhotoLoad calibration or result records.
+    :param raw_root: Directory containing extracted PhotoLoad images.
+    :param output_dir: Directory in which generated outputs are written.
+    :return: Source-mask comparison records and their calculated metrics.
+    """
     rows: list[dict[str, object]] = []
     methods = list(SOURCE_LABELS.items())
     for folder, folder_data in data.groupby("folder", sort=False):
@@ -263,7 +302,14 @@ def _write_results(
         source_results: pd.DataFrame,
         output_dir: Path,
 ) -> None:
-    """Write source-mask summaries, bound evidence, and the run manifest."""
+    """
+    Write source-mask summaries, bound evidence, and the run manifest.
+
+    :param bounds: Calculated parameter-range bounds.
+    :param source_results: Source-mask comparison results.
+    :param output_dir: Directory in which generated outputs are written.
+    :return: None. Writes range-bound and source-comparison results to output_dir.
+    """
     source_dir = output_dir / "01_source_mask_evaluation"
     source_results.to_csv(source_dir / "source_mask_cover_by_image.csv", index=False)
     summaries = [
@@ -289,7 +335,11 @@ def _write_results(
 
 
 def main() -> None:
-    """Parse command-line arguments and run the retained experiment."""
+    """
+    Parse command-line arguments and run the retained experiment.
+
+    :return: None. Runs the retained experiment with the parsed paths.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--pdf", type=Path, default=DEFAULT_PDF)
@@ -298,7 +348,13 @@ def main() -> None:
 
 
 def run_experiments(pdf_path: Path, output_dir: Path) -> None:
-    """Extract images and generate source-mask and range-bound evidence."""
+    """
+    Extract images and generate source-mask and range-bound evidence.
+
+    :param pdf_path: Path to the PhotoLoad source PDF.
+    :param output_dir: Directory in which generated outputs are written.
+    :return: None. Writes the retained experiment outputs to output_dir.
+    """
     output_dir = output_dir.resolve()
     data = pd.read_csv(CALIBRATION_CSV)
     biomass_by_folder = {

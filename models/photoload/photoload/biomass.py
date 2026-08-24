@@ -28,7 +28,13 @@ SPECIES_ORDER = (
 
 
 def _equation(model: str, parameters: np.ndarray) -> str:
-    """Format one equation, where x is cover and y is biomass."""
+    """
+    Format one equation, where x is cover and y is biomass.
+
+    :param model: Model identifier.
+    :param parameters: Fitted model parameters.
+    :return: Human-readable fitted-model equation.
+    """
     if model == "linear_origin":
         return f"y = {parameters[0]:.6g}x"
     if model == "power":
@@ -43,28 +49,58 @@ def _equation(model: str, parameters: np.ndarray) -> str:
 
 
 def _guess_linear_origin(x: np.ndarray, y: np.ndarray) -> list[float]:
-    """Return a least-squares slope through the origin."""
+    """
+    Return a least-squares slope through the origin.
+
+    :param x: Independent-variable values.
+    :param y: Observed response values.
+    :return: A least-squares slope through the origin.
+    """
     return [float(np.sum(x * y) / np.sum(x ** 2))]
 
 
 def _guess_power(x: np.ndarray, y: np.ndarray) -> list[float]:
-    """Return a log-linear starting value for the power model."""
+    """
+    Return a log-linear starting value for the power model.
+
+    :param x: Independent-variable values.
+    :param y: Observed response values.
+    :return: A log-linear starting value for the power model.
+    """
     slope, intercept = np.polyfit(np.log(x), np.log(np.clip(y, 1e-6, None)), 1)
     return [float(np.exp(intercept)), float(slope)]
 
 
 def _guess_quadratic_origin(x: np.ndarray, y: np.ndarray) -> list[float]:
-    """Start the quadratic at the through-origin linear solution."""
+    """
+    Start the quadratic at the through-origin linear solution.
+
+    :param x: Independent-variable values.
+    :param y: Observed response values.
+    :return: Initial linear and quadratic coefficients for model fitting.
+    """
     return [float(np.sum(x * y) / np.sum(x ** 2)), 0.0]
 
 
 def _guess_saturating(x: np.ndarray, y: np.ndarray) -> list[float]:
-    """Return stable starting values for the saturating model."""
+    """
+    Return stable starting values for the saturating model.
+
+    :param x: Independent-variable values.
+    :param y: Observed response values.
+    :return: Stable starting values for the saturating model.
+    """
     return [float(np.max(y)) * 1.2, 0.05]
 
 
 def _guess_shifted_exponential(x: np.ndarray, y: np.ndarray) -> list[float]:
-    """Return starting values for the shifted exponential model."""
+    """
+    Return starting values for the shifted exponential model.
+
+    :param x: Independent-variable values.
+    :param y: Observed response values.
+    :return: Starting values for the shifted exponential model.
+    """
     exponent = 0.02
     basis = np.expm1(exponent * x)
     scale = np.sum(basis * y) / np.sum(basis ** 2)
@@ -72,12 +108,25 @@ def _guess_shifted_exponential(x: np.ndarray, y: np.ndarray) -> list[float]:
 
 
 def _linear_origin(x: np.ndarray, scale: float) -> np.ndarray:
-    """Return a linear-through-origin prediction."""
+    """
+    Return a linear-through-origin prediction.
+
+    :param x: Independent-variable values.
+    :param scale: Model scale coefficient.
+    :return: A linear-through-origin prediction.
+    """
     return scale * x
 
 
 def _loocv_rmse(model: str, x: np.ndarray, y: np.ndarray) -> tuple[float, int]:
-    """Return leave-one-out prediction RMSE and failed-fold count."""
+    """
+    Return leave-one-out prediction RMSE and failed-fold count.
+
+    :param model: Model identifier.
+    :param x: Independent-variable values.
+    :param y: Observed response values.
+    :return: Leave-one-out prediction RMSE and failed-fold count.
+    """
     function, _, guess, requires_positive_x = MODELS[model]
     if requires_positive_x and np.any(x <= 0):
         return np.nan, 0
@@ -110,34 +159,73 @@ def _loocv_rmse(model: str, x: np.ndarray, y: np.ndarray) -> tuple[float, int]:
 
 
 def _parameters(value: str) -> np.ndarray:
-    """Parse semicolon-delimited fitted parameters."""
+    """
+    Parse semicolon-delimited fitted parameters.
+
+    :param value: Serialized parameter value.
+    :return: Fitted parameters parsed as a numeric array.
+    """
     return np.asarray([float(item) for item in value.split(";")], dtype=float)
 
 
 def _power(x: np.ndarray, scale: float, exponent: float) -> np.ndarray:
-    """Return an origin-constrained power prediction."""
+    """
+    Return an origin-constrained power prediction.
+
+    :param x: Independent-variable values.
+    :param scale: Model scale coefficient.
+    :param exponent: Power-model exponent.
+    :return: An origin-constrained power prediction.
+    """
     return scale * np.power(x, exponent)
 
 
 def _quadratic_origin(x: np.ndarray, linear: float, quadratic: float) -> np.ndarray:
-    """Return a no-intercept quadratic prediction."""
+    """
+    Return a no-intercept quadratic prediction.
+
+    :param x: Independent-variable values.
+    :param linear: Linear coefficient.
+    :param quadratic: Quadratic coefficient.
+    :return: A no-intercept quadratic prediction.
+    """
     return linear * x + quadratic * x ** 2
 
 
 def _r_squared(y: np.ndarray, prediction: np.ndarray) -> float:
-    """Return the coefficient of determination."""
+    """
+    Return the coefficient of determination.
+
+    :param y: Observed response values.
+    :param prediction: Model-predicted response values.
+    :return: The coefficient of determination.
+    """
     return float(
         1 - np.sum(np.square(y - prediction)) / np.sum(np.square(y - y.mean()))
     )
 
 
 def _saturating(x: np.ndarray, asymptote: float, rate: float) -> np.ndarray:
-    """Return an origin-constrained asymptotic prediction."""
+    """
+    Return an origin-constrained asymptotic prediction.
+
+    :param x: Independent-variable values.
+    :param asymptote: Saturating-model asymptote.
+    :param rate: Model rate coefficient.
+    :return: An origin-constrained asymptotic prediction.
+    """
     return asymptote * (1 - np.exp(-rate * x))
 
 
 def _score_fit(rss: float, n: int, parameter_count: int) -> tuple[float, float, float]:
-    """Return AIC, small-sample AICc, and BIC."""
+    """
+    Return AIC, small-sample AICc, and BIC.
+
+    :param rss: Residual sum of squares.
+    :param n: Number of observations.
+    :param parameter_count: Number of fitted model parameters.
+    :return: AIC, small-sample AICc, and BIC.
+    """
     effective_parameters = parameter_count + 1
     rss = max(rss, 1e-12)
     aic = n * np.log(rss / n) + 2 * effective_parameters
@@ -156,7 +244,14 @@ def _score_fit(rss: float, n: int, parameter_count: int) -> tuple[float, float, 
 
 
 def _shifted_exponential(x: np.ndarray, scale: float, rate: float) -> np.ndarray:
-    """Return an exponential shifted to cross the origin."""
+    """
+    Return an exponential shifted to cross the origin.
+
+    :param x: Independent-variable values.
+    :param scale: Model scale coefficient.
+    :param rate: Model rate coefficient.
+    :return: An exponential shifted to cross the origin.
+    """
     return scale * np.expm1(rate * x)
 
 
@@ -262,7 +357,13 @@ DOCUMENTED_SELECTIONS = {
 
 
 def _write_model_results(data: pd.DataFrame, output_dir: Path) -> pd.DataFrame:
-    """Fit candidates, apply explicit selections, and write final reports."""
+    """
+    Fit candidates, apply explicit selections, and write final reports.
+
+    :param data: PhotoLoad calibration or result records.
+    :param output_dir: Directory in which generated outputs are written.
+    :return: Model-fit results for every species and candidate model.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
     all_results: list[dict[str, object]] = []
     for species in SPECIES_ORDER:
@@ -323,7 +424,14 @@ def _write_model_results(data: pd.DataFrame, output_dir: Path) -> pd.DataFrame:
 
 
 def _write_overview(data: pd.DataFrame, selected: pd.DataFrame, output_dir: Path) -> None:
-    """Write the nine-species final-model overview."""
+    """
+    Write the nine-species final-model overview.
+
+    :param data: PhotoLoad calibration or result records.
+    :param selected: Selected production-model records.
+    :param output_dir: Directory in which generated outputs are written.
+    :return: None. Writes the selected-model overview to output_dir.
+    """
     figure, axes = plt.subplots(3, 3, figsize=(14, 12))
     for axis, species in zip(axes.flat, SPECIES_ORDER):
         species_data = data.loc[data["species"] == species]
@@ -357,7 +465,13 @@ def _write_overview(data: pd.DataFrame, selected: pd.DataFrame, output_dir: Path
 
 
 def _write_readme(selected: pd.DataFrame, output_dir: Path) -> None:
-    """Write the explicit multi-criteria rationale for all nine species."""
+    """
+    Write the explicit multi-criteria rationale for all nine species.
+
+    :param selected: Selected production-model records.
+    :param output_dir: Directory in which generated outputs are written.
+    :return: None. Writes the generated model-selection README to output_dir.
+    """
     lines = [
         "# Final PhotoLoad biomass models",
         "",
@@ -386,5 +500,11 @@ def _write_readme(selected: pd.DataFrame, output_dir: Path) -> None:
 
 
 def fit_models(data: pd.DataFrame, output_dir: Path) -> pd.DataFrame:
-    """Fit candidates, apply explicit selections, and write final reports."""
+    """
+    Fit candidates, apply explicit selections, and write final reports.
+
+    :param data: PhotoLoad calibration or result records.
+    :param output_dir: Directory in which generated outputs are written.
+    :return: Selected production-model results for each species.
+    """
     return _write_model_results(data, output_dir)

@@ -151,6 +151,12 @@ def _get_season(df: pd.DataFrame, season_start_dict: dict = None) -> pd.DataFram
     }
 
     def determine_season(wx_date):
+        """
+        Determine the configured season for one YYYYMMDD weather date.
+
+        :param wx_date: Weather date formatted as YYYYMMDD.
+        :return: Season name containing the weather date.
+        """
         date_str = str(int(wx_date))
         month_day = int(date_str[4:8])
         if season_starts['Spring'] <= month_day < season_starts['Summer']:

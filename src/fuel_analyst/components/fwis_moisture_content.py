@@ -8,6 +8,7 @@ def ffmc_mc(ffmc: Union[float, np.ndarray], use_precise_values: bool = True) -> 
     using the method described in Van Wagner (1987).
 
     :param ffmc: The fine fuel moisture code (ffmc) value(s).
+    :param use_precise_values: Whether to use the higher-precision Wang et al. coefficient.
     :return: The moisture content (m) corresponding to the input ffmc value(s).
     """
     # Percentage of Moisture Content (m)

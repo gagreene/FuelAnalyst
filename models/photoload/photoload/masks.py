@@ -33,7 +33,13 @@ def _dense_mat_components(
         source: np.ndarray,
         rgb: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Return the shared dense-mat cleanup components and ridge response."""
+    """
+    Return the shared dense-mat cleanup components and ridge response.
+
+    :param source: Boolean source mask.
+    :param rgb: Source image as an RGB array.
+    :return: The shared dense-mat cleanup components and ridge response.
+    """
     lab = rgb2lab(rgb)
     lightness = lab[:, :, 0]
     yellow_blue = lab[:, :, 2]
@@ -61,7 +67,15 @@ def _distance_from_board(
         value: np.ndarray,
         body: np.ndarray,
 ) -> tuple[np.ndarray, float]:
-    """Estimate color distance from pale board pixels."""
+    """
+    Estimate color distance from pale board pixels.
+
+    :param lab: Image values in CIELAB color space.
+    :param saturation: Per-pixel saturation values.
+    :param value: Serialized parameter value.
+    :param body: Boolean mask identifying the plant body.
+    :return: Per-pixel board color distances and the minimum accepted distance.
+    """
     board_seed = (saturation < 0.12) & (value > 0.75) & ~body
     if board_seed.sum() < 100:
         board_seed = ~body
@@ -75,7 +89,13 @@ def _distance_from_board(
 
 
 def _edge_artifact_mask(chroma: np.ndarray, threshold: float) -> np.ndarray:
-    """Identify neutral cross-hatching close to image edges."""
+    """
+    Identify neutral cross-hatching close to image edges.
+
+    :param chroma: Per-pixel chroma values.
+    :param threshold: Threshold applied to the calculated response.
+    :return: Boolean mask identifying neutral edge artifacts.
+    """
     height, width = chroma.shape
     rows, columns = np.indices((height, width))
     edge_distance = np.minimum.reduce(
@@ -87,7 +107,14 @@ def _edge_artifact_mask(chroma: np.ndarray, threshold: float) -> np.ndarray:
 
 
 def _ensemble_mask(species_code: str, source: np.ndarray, rgb: np.ndarray) -> np.ndarray:
-    """Return the morphology-group ensemble selection frequency."""
+    """
+    Return the morphology-group ensemble selection frequency.
+
+    :param species_code: PhotoLoad species code.
+    :param source: Boolean source mask.
+    :param rgb: Source image as an RGB array.
+    :return: The morphology-group ensemble selection frequency.
+    """
     if species_code in BROADLEAF_SPECIES:
         return color_support_ensemble(source, rgb)
     if species_code in DENSE_MAT_SPECIES:
@@ -103,7 +130,15 @@ def _selected_ridges(
         delta_e: np.ndarray,
         delta_e_gate: float,
 ) -> np.ndarray:
-    """Retain plant-colored ridge pixels grown from an existing body."""
+    """
+    Retain plant-colored ridge pixels grown from an existing body.
+
+    :param ridge_mask: Boolean mask of candidate ridge pixels.
+    :param body: Boolean mask identifying the plant body.
+    :param delta_e: Per-pixel color distance from the board.
+    :param delta_e_gate: Minimum color distance required for ridge rescue.
+    :return: Boolean mask of ridge pixels eligible for plant recovery.
+    """
     candidate = ridge_mask & ~body & (delta_e > delta_e_gate)
     candidate = remove_small_objects(candidate, min_size=RIDGE_MINIMUM_SIZE)
     connection_zone = ndimage.binary_dilation(
@@ -119,7 +154,13 @@ def _source_masks(
         rgb: np.ndarray,
         chroma_threshold: float,
 ) -> dict[str, np.ndarray]:
-    """Return the three retained source-mask variations."""
+    """
+    Return the three retained source-mask variations.
+
+    :param rgb: Source image as an RGB array.
+    :param chroma_threshold: Chroma threshold used to initialize the source mask.
+    :return: The three retained source-mask variations.
+    """
     lab = rgb2lab(rgb)
     chroma = np.hypot(lab[:, :, 1], lab[:, :, 2])
     hsv = np.asarray(Image.fromarray(rgb).convert("HSV"), dtype=float)
@@ -165,7 +206,14 @@ def color_support_ensemble(
         rgb: np.ndarray,
         steps: tuple[int, ...] = PIXEL_STEPS,
 ) -> np.ndarray:
-    """Average seeded color-support masks across the full growth range."""
+    """
+    Average seeded color-support masks across the full growth range.
+
+    :param source: Boolean source mask.
+    :param rgb: Source image as an RGB array.
+    :param steps: Growth steps included in the calculation.
+    :return: Per-pixel selection frequency across the requested growth steps.
+    """
     if not steps or min(steps) < 1 or tuple(sorted(set(steps))) != steps:
         raise ValueError("Color-support ensemble steps must be unique increasing positives")
     lab = rgb2lab(rgb)
@@ -185,7 +233,13 @@ def color_support_ensemble(
 
 
 def color_support_stabilization_step(source: np.ndarray, rgb: np.ndarray) -> int:
-    """Return the final seeded-growth step that changes the selected mask."""
+    """
+    Return the final seeded-growth step that changes the selected mask.
+
+    :param source: Boolean source mask.
+    :param rgb: Source image as an RGB array.
+    :return: The final seeded-growth step that changes the selected mask.
+    """
     lab = rgb2lab(rgb)
     selected = source & (
             (lab[:, :, 0] < 70) | (lab[:, :, 1] < 0) | (lab[:, :, 2] > 25)
@@ -203,7 +257,14 @@ def color_support_sweep(
         rgb: np.ndarray,
         steps: tuple[int, ...] = PIXEL_STEPS,
 ) -> dict[int, np.ndarray]:
-    """Return seeded color-support masks while growing the seeds only once."""
+    """
+    Return seeded color-support masks while growing the seeds only once.
+
+    :param source: Boolean source mask.
+    :param rgb: Source image as an RGB array.
+    :param steps: Growth steps included in the calculation.
+    :return: Seeded color-support masks while growing the seeds only once.
+    """
     if not steps or min(steps) < 1 or tuple(sorted(set(steps))) != steps:
         raise ValueError("Color-support sweep steps must be unique increasing positives")
     lab = rgb2lab(rgb)
@@ -228,7 +289,15 @@ def generate_masks(
         frequency_root: Path,
         biomass_by_folder: dict[str, list[float]],
 ) -> list[dict[str, object]]:
-    """Write source/ensemble masks and return objective cover records."""
+    """
+    Write source/ensemble masks and return objective cover records.
+
+    :param raw_root: Directory containing extracted PhotoLoad images.
+    :param source_root: Directory containing source-mask images.
+    :param frequency_root: Directory containing ensemble selection-frequency images.
+    :param biomass_by_folder: Biomass values keyed by PhotoLoad species folder.
+    :return: Objective-cover records for the generated species masks.
+    """
     records: list[dict[str, object]] = []
     for folder, biomass_values in biomass_by_folder.items():
         species_dir = raw_root / folder
@@ -276,7 +345,14 @@ def grow_color_support(
         rgb: np.ndarray,
         steps: int,
 ) -> np.ndarray:
-    """Grow strong plant-color seeds through a source mask for N pixels."""
+    """
+    Grow strong plant-color seeds through a source mask for N pixels.
+
+    :param source: Boolean source mask.
+    :param rgb: Source image as an RGB array.
+    :param steps: Growth steps included in the calculation.
+    :return: Boolean color-support mask after the requested growth steps.
+    """
     if steps < 0:
         raise ValueError("Color-support growth steps cannot be negative")
     lab = rgb2lab(rgb)
@@ -289,7 +365,13 @@ def grow_color_support(
 
 
 def maximum_eligible_ridge_response(source: np.ndarray, rgb: np.ndarray) -> float:
-    """Return the largest ridge response among pixels eligible for rescue."""
+    """
+    Return the largest ridge response among pixels eligible for rescue.
+
+    :param source: Boolean source mask.
+    :param rgb: Source image as an RGB array.
+    :return: The largest ridge response among pixels eligible for rescue.
+    """
     _, neutral_removed, ridge, eligible = _dense_mat_components(source, rgb)
     responses = ridge[neutral_removed & eligible]
     return float(responses.max()) if responses.size else 0.0
@@ -300,7 +382,14 @@ def ridge_rescue_ensemble(
         rgb: np.ndarray,
         thresholds: tuple[float, ...] = RIDGE_THRESHOLDS,
 ) -> np.ndarray:
-    """Average dense-mat masks across the full ridge-response range."""
+    """
+    Average dense-mat masks across the full ridge-response range.
+
+    :param source: Boolean source mask.
+    :param rgb: Source image as an RGB array.
+    :param thresholds: Response thresholds included in the calculation.
+    :return: Per-pixel selection frequency across the ridge thresholds.
+    """
     if not thresholds or min(thresholds) < 0 or tuple(sorted(set(thresholds))) != thresholds:
         raise ValueError("Ridge thresholds must be unique increasing nonnegative values")
     cleaned, neutral_removed, ridge, eligible = _dense_mat_components(source, rgb)
@@ -316,7 +405,14 @@ def ridge_rescue_mask(
         rgb: np.ndarray,
         threshold: float,
 ) -> np.ndarray:
-    """Return dense-mat cleanup with neutral blade pixels rescued by ridges."""
+    """
+    Return dense-mat cleanup with neutral blade pixels rescued by ridges.
+
+    :param source: Boolean source mask.
+    :param rgb: Source image as an RGB array.
+    :param threshold: Threshold applied to the calculated response.
+    :return: Dense-mat cleanup with neutral blade pixels rescued by ridges.
+    """
     cleaned, neutral_removed, ridge, eligible = _dense_mat_components(source, rgb)
     blade_rescue = neutral_removed & (ridge > threshold) & eligible
     return cleaned | blade_rescue
@@ -327,7 +423,14 @@ def ridge_rescue_sweep(
         rgb: np.ndarray,
         thresholds: tuple[float, ...] = RIDGE_THRESHOLDS,
 ) -> dict[float, np.ndarray]:
-    """Return ridge-rescue masks from one calculation of shared components."""
+    """
+    Return ridge-rescue masks from one calculation of shared components.
+
+    :param source: Boolean source mask.
+    :param rgb: Source image as an RGB array.
+    :param thresholds: Response thresholds included in the calculation.
+    :return: Ridge-rescue masks from one calculation of shared components.
+    """
     if not thresholds or min(thresholds) < 0 or tuple(sorted(set(thresholds))) != thresholds:
         raise ValueError("Ridge thresholds must be unique increasing nonnegative values")
     cleaned, neutral_removed, ridge, eligible = _dense_mat_components(source, rgb)
@@ -342,5 +445,11 @@ def source_mask_variations(
         rgb: np.ndarray,
         chroma_threshold: float,
 ) -> dict[str, np.ndarray]:
-    """Return CIELAB, refined+saturation, and refined+saturation+dark masks."""
+    """
+    Return CIELAB, refined+saturation, and refined+saturation+dark masks.
+
+    :param rgb: Source image as an RGB array.
+    :param chroma_threshold: Chroma threshold used to initialize the source mask.
+    :return: CIELAB, refined+saturation, and refined+saturation+dark masks.
+    """
     return _source_masks(rgb, chroma_threshold)

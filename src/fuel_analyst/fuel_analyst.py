@@ -449,7 +449,13 @@ default_fofem_consume_dict = {
 
 
 def _find_id_mismatches(plot_ids, form_ids) -> tuple[list, list]:
-    """Return ordered, deduplicated IDs missing from either side of a form merge."""
+    """
+    Return ordered, deduplicated IDs missing from either side of a form merge.
+
+    :param plot_ids: Plot Attribute identifiers in first-seen order.
+    :param form_ids: Component-form identifiers in first-seen order.
+    :return: IDs missing from the form and IDs missing from Plot Attributes.
+    """
     plot_ids = list(plot_ids)
     form_ids = list(form_ids)
     plot_id_set = set(plot_ids)

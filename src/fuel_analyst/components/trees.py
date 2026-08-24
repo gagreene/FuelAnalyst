@@ -308,269 +308,278 @@ def _calc_sapling_tree_type(sapling_df: pd.DataFrame, tree_params_df: pd.DataFra
     return sapling_df
 
 
-def _calc_stand_attributes(df: pd.DataFrame,
-                           tree_df: pd.DataFrame,
-                           stand_summary_params: dict) -> tuple[pd.DataFrame, list]:
+def _calc_stand_attributes(
+        df: pd.DataFrame,
+        tree_df: pd.DataFrame,
+        stand_summary_params: dict
+) -> tuple[pd.DataFrame, list]:
+    """
+    Calculates stand-level attributes for requested parameters and attributes.
+    Adds columns to the plot-level DataFrame for each attribute.
+
+    :param df: DataFrame containing plot-level data.
+    :param tree_df: DataFrame containing individual tree data.
+    :param stand_summary_params: Dictionary containing stand summary parameters.
+    :return: Updated plot-level DataFrame with stand density columns.
+    """
+    # Helper: get all permutations of summary types
+    def get_permutations(_summary_list: list, _summary_permutation: str) -> list:
         """
-        Calculates stand-level attributes for requested parameters and attributes.
-        Adds columns to the plot-level DataFrame for each attribute.
+        Generate valid permutations of summary types based on rules and permutation mode.
 
-        :param df: DataFrame containing plot-level data.
-        :param tree_df: DataFrame containing individual tree data.
-        :param stand_summary_params: Dictionary containing stand summary parameters.
-        :return: Updated plot-level DataFrame with stand density columns.
+        :param _summary_list: List of summary types to permute.
+        :param _summary_permutation: 'all', 'exact', or 'combined'.
+        :return: List of valid summary permutations.
         """
-        # Helper: get all permutations of summary types
-        def get_permutations(_summary_list: list, _summary_permutation: str) -> list:
+        priority_order = {val: i for i, val in enumerate(_summary_list)}
+
+        if _summary_permutation == 'exact':
+            # Only return the exact order as a single permutation
+            return _summary_list
+        elif _summary_permutation == 'combined':
+            # Only return a single permutation that combines all variables (sorted by priority)
+            sorted_list = sorted(_summary_list, key=lambda x: priority_order[x])
+            return ['_'.join(sorted_list)]
+        else:
+            # Default: all valid permutations as before
+            valid_permutations = set()
+            for r in range(1, 4):
+                for combo in itertools.combinations(_summary_list, r):
+                    # Rule: total only allowed as a single-element
+                    if 'total' in combo and len(combo) > 1:
+                        continue
+                    # Rule: must follow priority order
+                    if list(combo) != sorted(combo, key=lambda x: priority_order[x]):
+                        continue
+                    # Rule: no live + dead
+                    if 'live' in combo and 'dead' in combo:
+                        continue
+                    # Rule: no conifer + broadleaf
+                    if 'conifer' in combo and 'broadleaf' in combo:
+                        continue
+                    # Passed all filters
+                    valid_permutations.add('_'.join(combo))
+
+            def sort_key(_combo: str):
                 """
-                Generate valid permutations of summary types based on rules and permutation mode.
+                Build the priority key for one summary permutation.
 
-                :param _summary_list: List of summary types to permute.
-                :param _summary_permutation: 'all', 'exact', or 'combined'.
-                :return: List of valid summary permutations.
+                :param _combo: Underscore-delimited summary permutation.
+                :return: Component count and configured component priorities.
                 """
-                priority_order = {val: i for i, val in enumerate(_summary_list)}
+                parts = _combo.split('_')
+                return (len(parts), [priority_order.get(p, len(priority_order)) for p in parts])
 
-                if _summary_permutation == 'exact':
-                    # Only return the exact order as a single permutation
-                    return _summary_list
-                elif _summary_permutation == 'combined':
-                    # Only return a single permutation that combines all variables (sorted by priority)
-                    sorted_list = sorted(_summary_list, key=lambda x: priority_order[x])
-                    return ['_'.join(sorted_list)]
-                else:
-                    # Default: all valid permutations as before
-                    valid_permutations = set()
-                    for r in range(1, 4):
-                        for combo in itertools.combinations(_summary_list, r):
-                            # Rule: total only allowed as a single-element
-                            if 'total' in combo and len(combo) > 1:
-                                continue
-                            # Rule: must follow priority order
-                            if list(combo) != sorted(combo, key=lambda x: priority_order[x]):
-                                continue
-                            # Rule: no live + dead
-                            if 'live' in combo and 'dead' in combo:
-                                continue
-                            # Rule: no conifer + broadleaf
-                            if 'conifer' in combo and 'broadleaf' in combo:
-                                continue
-                            # Passed all filters
-                            valid_permutations.add('_'.join(combo))
+            return sorted(valid_permutations, key=sort_key)
 
-                    def sort_key(_combo: str):
-                        parts = _combo.split('_')
-                        return (len(parts), [priority_order.get(p, len(priority_order)) for p in parts])
+    def get_summary_mask(_tree_df: pd.DataFrame, _summary: str) -> pd.Series:
+        """
+        Return a boolean mask for the given summary string, which may include:
+        - 'total' (alone)
+        - 'live', 'dead'
+        - 'conifer', 'broadleaf'
+        - combinations like 'live_conifer', 'dead_broadleaf', etc.
 
-                    return sorted(valid_permutations, key=sort_key)
+        :param _tree_df: DataFrame containing tree data.
+        :param _summary: Summary string to parse.
+        :return: Boolean mask Series for the summary condition.
+        """
+        parts = _summary.split('_')
 
-        def get_summary_mask(_tree_df: pd.DataFrame, _summary: str) -> pd.Series:
-            """
-            Return a boolean mask for the given summary string, which may include:
-            - 'total' (alone)
-            - 'live', 'dead'
-            - 'conifer', 'broadleaf'
-            - combinations like 'live_conifer', 'dead_broadleaf', etc.
-            :param _tree_df: DataFrame containing tree data.
-            :param _summary: Summary string to parse.
-            :return: Boolean mask Series for the summary condition.
-            """
-            parts = _summary.split('_')
+        # 'total' is only valid by itself
+        if parts == ['total']:
+            return pd.Series([True] * len(_tree_df), index=_tree_df.index)
 
-            # 'total' is only valid by itself
-            if parts == ['total']:
-                return pd.Series([True] * len(_tree_df), index=_tree_df.index)
+        # Start with all True mask and apply each condition
+        _mask = pd.Series([True] * len(_tree_df), index=_tree_df.index)
 
-            # Start with all True mask and apply each condition
-            _mask = pd.Series([True] * len(_tree_df), index=_tree_df.index)
-
-            for part in parts:
-                if part == 'live':
-                    _mask &= _tree_df['tree_status'] == 'L'
-                elif part == 'dead':
-                    _mask &= _tree_df['tree_status'] == 'D'
-                elif part == 'conifer':
-                    _mask &= _tree_df['tree_type'] == 'conifer'
-                elif part == 'broadleaf':
-                    _mask &= _tree_df['tree_type'] == 'broadleaf'
-                else:
-                    # Unknown part — return all False
-                    return pd.Series([False] * len(_tree_df), index=_tree_df.index)
-
-            return _mask
-
-        # Helper: get mask for class range
-        def get_class_mask(_tree_df, _class_var, _lower, _upper):
-            """
-            Returns a boolean mask for the given class variable and its range.
-
-            :param _tree_df: DataFrame containing tree data.
-            :param _class_var: Class variable to filter on (e.g., 'dbh', 'ht').
-            :param _lower: Lower bound for the class range.
-            :param _upper: Upper bound for the class range (None for open-ended).
-            :return: Boolean mask Series for the class condition.
-            """
-            if _upper is None:
-                return _tree_df[f'tree_{_class_var}'] >= _lower
+        for part in parts:
+            if part == 'live':
+                _mask &= _tree_df['tree_status'] == 'L'
+            elif part == 'dead':
+                _mask &= _tree_df['tree_status'] == 'D'
+            elif part == 'conifer':
+                _mask &= _tree_df['tree_type'] == 'conifer'
+            elif part == 'broadleaf':
+                _mask &= _tree_df['tree_type'] == 'broadleaf'
             else:
-                return (_tree_df[f'tree_{_class_var}'] >= _lower) & (_tree_df[f'tree_{_class_var}'] < _upper)
+                # Unknown part — return all False
+                return pd.Series([False] * len(_tree_df), index=_tree_df.index)
 
-        def unweight_value(_att, _value, _tree_df) -> pd.Series:
-            """
-            Unweights the value based on the attribute type.
+        return _mask
 
-            :param _att: Attribute type (e.g., 'dens', 'ba', 'cfl', etc.).
-            :param _value: Series of values to unweight.
-            :param _tree_df: DataFrame containing tree data.
-            :return: Unweighted Series of values.
-            """
-            if _att in attribute_weighting_dict.keys():
-                field_name = f"tree_{attribute_weighting_dict.get(_att, 'dens')}_ha"
-                denom = _tree_df.groupby('ParentGlobalID')[field_name].sum()
-            elif _att == 'cbd':
-                field_name = f'tree_{attribute_weighting_dict['crwn_dpth']}_ha'
-                denom = (_tree_df.groupby('ParentGlobalID')['tree_crwn_dpth_wtd'].sum() /
-                         _tree_df.groupby('ParentGlobalID')[field_name].sum())
-            else:
-                denom = 1
-            return _value / denom
+    # Helper: get mask for class range
+    def get_class_mask(_tree_df, _class_var, _lower, _upper):
+        """
+        Returns a boolean mask for the given class variable and its range.
 
-        # Initialize a list of keep columns for the final master DataFrame
-        keep_columns = []
+        :param _tree_df: DataFrame containing tree data.
+        :param _class_var: Class variable to filter on (e.g., 'dbh', 'ht').
+        :param _lower: Lower bound for the class range.
+        :param _upper: Upper bound for the class range (None for open-ended).
+        :return: Boolean mask Series for the class condition.
+        """
+        if _upper is None:
+            return _tree_df[f'tree_{_class_var}'] >= _lower
+        else:
+            return (_tree_df[f'tree_{_class_var}'] >= _lower) & (_tree_df[f'tree_{_class_var}'] < _upper)
 
-        for att_name, att_dict in stand_summary_params.items():
-            att = att_dict.get('att_source', att_name)
-            override_field_name = att_dict.get('override_field_name', False)
-            summary_list = att_dict.get('summary', [])
-            summary_permutation = att_dict.get('summary_permutation', 'all')
-            metrics = att_dict.get('metrics', [])
-            units = att_dict.get('units', '')
-            if units:
-                units = f'_{units}'
-            classes = att_dict.get('classes', {})
+    def unweight_value(_att, _value, _tree_df) -> pd.Series:
+        """
+        Unweights the value based on the attribute type.
 
-            # Get the column name extension based on the attribute type
-            if att in ['dens', 'ba']:
-                ext = '_ha'
-            elif att in ['cfl', 'foliage', 'branches', 'wood', 'bark']:
-                ext = '_cnbe_ha'
-            elif att in attribute_weighting_dict.keys():
-                ext = '_wtd'
-            else:
-                ext = ''
+        :param _att: Attribute type (e.g., 'dens', 'ba', 'cfl', etc.).
+        :param _value: Series of values to unweight.
+        :param _tree_df: DataFrame containing tree data.
+        :return: Unweighted Series of values.
+        """
+        if _att in attribute_weighting_dict.keys():
+            field_name = f"tree_{attribute_weighting_dict.get(_att, 'dens')}_ha"
+            denom = _tree_df.groupby('ParentGlobalID')[field_name].sum()
+        elif _att == 'cbd':
+            field_name = f'tree_{attribute_weighting_dict['crwn_dpth']}_ha'
+            denom = (_tree_df.groupby('ParentGlobalID')['tree_crwn_dpth_wtd'].sum() /
+                     _tree_df.groupby('ParentGlobalID')[field_name].sum())
+        else:
+            denom = 1
+        return _value / denom
 
-            new_columns = {}
+    # Initialize a list of keep columns for the final master DataFrame
+    keep_columns = []
 
-            # Process all summary permutations
-            summary_permutations = get_permutations(summary_list, summary_permutation)
-            for summary in summary_permutations:
-                summary_mask = get_summary_mask(tree_df, summary)
-                if att != 'cbd':
-                    for metric in metrics:
-                        unweight = False
-                        if metric == 'sum':
-                            value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].sum()
-                        elif metric == 'min':
-                            if att in attribute_weighting_dict.keys():
-                                value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_{att}'].min()
-                            else:
-                                value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].min()
-                        elif metric == 'max':
-                            if att in attribute_weighting_dict.keys():
-                                value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_{att}'].max()
-                            else:
-                                value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].max()
-                        elif metric == 'mean':
-                            value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].sum()
-                            unweight = True
+    for att_name, att_dict in stand_summary_params.items():
+        att = att_dict.get('att_source', att_name)
+        override_field_name = att_dict.get('override_field_name', False)
+        summary_list = att_dict.get('summary', [])
+        summary_permutation = att_dict.get('summary_permutation', 'all')
+        metrics = att_dict.get('metrics', [])
+        units = att_dict.get('units', '')
+        if units:
+            units = f'_{units}'
+        classes = att_dict.get('classes', {})
+
+        # Get the column name extension based on the attribute type
+        if att in ['dens', 'ba']:
+            ext = '_ha'
+        elif att in ['cfl', 'foliage', 'branches', 'wood', 'bark']:
+            ext = '_cnbe_ha'
+        elif att in attribute_weighting_dict.keys():
+            ext = '_wtd'
+        else:
+            ext = ''
+
+        new_columns = {}
+
+        # Process all summary permutations
+        summary_permutations = get_permutations(summary_list, summary_permutation)
+        for summary in summary_permutations:
+            summary_mask = get_summary_mask(tree_df, summary)
+            if att != 'cbd':
+                for metric in metrics:
+                    unweight = False
+                    if metric == 'sum':
+                        value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].sum()
+                    elif metric == 'min':
+                        if att in attribute_weighting_dict.keys():
+                            value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_{att}'].min()
                         else:
-                            continue
-
-                        if unweight:
-                            # Unweight values
-                            value = unweight_value(att, value, tree_df[summary_mask])
-
-                        # Assign data to new column
-                        if override_field_name:
-                            colname = att_name
+                            value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].min()
+                    elif metric == 'max':
+                        if att in attribute_weighting_dict.keys():
+                            value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_{att}'].max()
                         else:
-                            colname = f'stand_{att_name}{units}_{summary}_{metric}'.replace('_total', '')
-                        new_columns[colname] = df.GlobalID.map(value)
-                else:
-                    # Get sum of cfl values by plot
-                    value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum()
+                            value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].max()
+                    elif metric == 'mean':
+                        value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].sum()
+                        unweight = True
+                    else:
+                        continue
 
-                    # Unweight values
-                    value = unweight_value(att, value, tree_df[summary_mask])
+                    if unweight:
+                        # Unweight values
+                        value = unweight_value(att, value, tree_df[summary_mask])
 
                     # Assign data to new column
                     if override_field_name:
                         colname = att_name
                     else:
-                        colname = f'stand_{att_name}{units}_{summary}'.replace('_total', '')
+                        colname = f'stand_{att_name}{units}_{summary}_{metric}'.replace('_total', '')
                     new_columns[colname] = df.GlobalID.map(value)
+            else:
+                # Get sum of cfl values by plot
+                value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum()
 
-                # Process class cutoffs if present
-                for class_var, cutoffs in classes.items():
-                    # Bounds start at first value in cutoffs
-                    bounds = cutoffs
-                    for i in range(len(bounds)):
-                        lower = bounds[i]
-                        upper = bounds[i + 1] if i + 1 < len(bounds) else None
-                        if upper is None:
-                            break
-                        class_label = f'{class_var}{lower}plus' if np.isinf(upper) else f'{class_var}{lower}-{upper}'
-                        class_mask = get_class_mask(tree_df, class_var, lower, upper)
-                        mask = summary_mask & class_mask
-                        if att != 'cbd':
-                            for metric in metrics:
-                                unweight = False
-                                if metric == 'sum':
-                                    value = tree_df[mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].sum()
-                                elif metric == 'min':
-                                    if att in attribute_weighting_dict.keys():
-                                        value = tree_df[mask].groupby('ParentGlobalID')[f'tree_{att}'].min()
-                                    else:
-                                        value = tree_df[mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].min()
-                                elif metric == 'max':
-                                    if att in attribute_weighting_dict.keys():
-                                        value = tree_df[mask].groupby('ParentGlobalID')[f'tree_{att}'].max()
-                                    else:
-                                        value = tree_df[mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].max()
-                                elif metric == 'mean':
-                                    value = tree_df[mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].sum()
-                                    unweight = True
+                # Unweight values
+                value = unweight_value(att, value, tree_df[summary_mask])
+
+                # Assign data to new column
+                if override_field_name:
+                    colname = att_name
+                else:
+                    colname = f'stand_{att_name}{units}_{summary}'.replace('_total', '')
+                new_columns[colname] = df.GlobalID.map(value)
+
+            # Process class cutoffs if present
+            for class_var, cutoffs in classes.items():
+                # Bounds start at first value in cutoffs
+                bounds = cutoffs
+                for i in range(len(bounds)):
+                    lower = bounds[i]
+                    upper = bounds[i + 1] if i + 1 < len(bounds) else None
+                    if upper is None:
+                        break
+                    class_label = f'{class_var}{lower}plus' if np.isinf(upper) else f'{class_var}{lower}-{upper}'
+                    class_mask = get_class_mask(tree_df, class_var, lower, upper)
+                    mask = summary_mask & class_mask
+                    if att != 'cbd':
+                        for metric in metrics:
+                            unweight = False
+                            if metric == 'sum':
+                                value = tree_df[mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].sum()
+                            elif metric == 'min':
+                                if att in attribute_weighting_dict.keys():
+                                    value = tree_df[mask].groupby('ParentGlobalID')[f'tree_{att}'].min()
                                 else:
-                                    continue
-
-                                if unweight:
-                                    # Unweight values
-                                    value = unweight_value(att, value, tree_df[mask])
-
-                                # Assign data to new column
-                                if override_field_name:
-                                    colname = att_name
+                                    value = tree_df[mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].min()
+                            elif metric == 'max':
+                                if att in attribute_weighting_dict.keys():
+                                    value = tree_df[mask].groupby('ParentGlobalID')[f'tree_{att}'].max()
                                 else:
-                                    colname = f'stand_{att_name}{units}_{summary}_{class_label}_{metric}'.replace('_total', '')
-                                new_columns[colname] = df.GlobalID.map(value)
-                        else:
-                            value = tree_df[mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum()
-                            # Unweight values
-                            value = unweight_value(att, value, tree_df[mask])
+                                    value = tree_df[mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].max()
+                            elif metric == 'mean':
+                                value = tree_df[mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].sum()
+                                unweight = True
+                            else:
+                                continue
+
+                            if unweight:
+                                # Unweight values
+                                value = unweight_value(att, value, tree_df[mask])
 
                             # Assign data to new column
                             if override_field_name:
                                 colname = att_name
                             else:
-                                colname = f'stand_{att_name}{units}_{summary}_{class_label}'.replace('_total', '')
+                                colname = f'stand_{att_name}{units}_{summary}_{class_label}_{metric}'.replace('_total', '')
                             new_columns[colname] = df.GlobalID.map(value)
+                    else:
+                        value = tree_df[mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum()
+                        # Unweight values
+                        value = unweight_value(att, value, tree_df[mask])
 
-            if new_columns:
-                df = pd.concat([df, pd.DataFrame(new_columns, index=df.index)], axis=1)
-                # Add the stand summary columns to the keep list
-                keep_columns.extend(new_columns.keys())
+                        # Assign data to new column
+                        if override_field_name:
+                            colname = att_name
+                        else:
+                            colname = f'stand_{att_name}{units}_{summary}_{class_label}'.replace('_total', '')
+                        new_columns[colname] = df.GlobalID.map(value)
 
-        return df, keep_columns
+        if new_columns:
+            df = pd.concat([df, pd.DataFrame(new_columns, index=df.index)], axis=1)
+            # Add the stand summary columns to the keep list
+            keep_columns.extend(new_columns.keys())
+
+    return df, keep_columns
 
 
 def _calc_stand_composition(
@@ -588,6 +597,7 @@ def _calc_stand_composition(
 
     :param df: DataFrame containing plot-level data, including 'GlobalID' and 'unique_id'.
     :param tree_df: DataFrame containing individual tree data, including 'tree_status', 'tree_ba_ha', and 'ParentGlobalID'.
+    :param gen_conpyro_df: Whether to include ConPyro-specific composition fields.
     :return: Tuple of (updated plot-level DataFrame, list of new column names).
     """
     print('\tCalculating stand composition metrics')
@@ -696,6 +706,12 @@ def _calc_stand_composition(
         # Create a summary string column for each stand (live or woody)
         merged = pd.merge(spp_code_df, spp_pct_df, on='unique_id', how='outer')
         def spp_tuple_str(row):
+            """
+            Format one row of species codes and percentages.
+
+            :param row: Stand-composition row containing species code and percentage fields.
+            :return: Comma-delimited species composition, or None when no species are present.
+            """
             # Build a string like "SP1:40.0, SP2:30.0, ..."
             pairs = [
                 f"{row.get(f'SPECIES_CD_{i}')}:{row.get(f'SPECIES_PCT_{i}')}"
@@ -1310,6 +1326,12 @@ def _calc_tree_missing_heights(tree_df: pd.DataFrame, tree_params_df: pd.DataFra
     print('\tCalculating missing tree heignts')
     # Function to model height using Temesgen Model 2 for a given row
     def model_height(row):
+        """
+        Model tree height for one record when species parameters are available.
+
+        :param row: Tree record containing species and DBH values.
+        :return: Modeled tree height in metres, or NaN for an unsupported species.
+        """
         if row['tree_species'] in spp_set:
             return _get_temesgen_tree_height(2, tree_params_df, row['tree_species'], row['tree_dbh'])
         return np.nan
@@ -1400,7 +1422,15 @@ def _calc_tree_weighted_attributes(tree_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _classify_numeric_input(raw: pd.Series, numeric: pd.Series, prefix: str, allow_zero: bool) -> pd.Series:
-    """Return a stable validation code for each numeric source value."""
+    """
+    Return a stable validation code for each numeric source value.
+
+    :param raw: Original uncoerced values.
+    :param numeric: Values after numeric coercion.
+    :param prefix: Field-specific suffix used in validation issue codes.
+    :param allow_zero: Whether zero is accepted as a valid numeric value.
+    :return: Validation issue code for each input row, or an empty string when valid.
+    """
     raw_text = raw.astype('string').str.strip()
     missing = raw.isna() | raw_text.eq('').fillna(True)
     issue = pd.Series('', index=raw.index, dtype='object')
@@ -1469,13 +1499,15 @@ def _gen_master_tree_df(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame
     return temp_df.reset_index(drop=True)
 
 
-def _get_temesgen_tree_height(model: int,
-                              param_df: pd.DataFrame,
-                              spp: str,
-                              dbh: float,
-                              bal: float = None,
-                              sph=None,
-                              ba=None):
+def _get_temesgen_tree_height(
+        model: int,
+        param_df: pd.DataFrame,
+        spp: str,
+        dbh: float,
+        bal: float = None,
+        sph=None,
+        ba=None
+):
     """
     Calculates tree height using the Temesgen height model (Model 2 or 7).
 
@@ -1515,6 +1547,9 @@ def _log_tree_density_issues(
     """
     Report tree-density input failures through the centralized error_handling logger.
 
+    :param df: Plot-level DataFrame containing plot identity and radius validation fields.
+    :param sapling_df: Sapling records containing parent identity and count validation fields.
+    :param tree_df: Tree records containing parent identity and density validation fields.
     :return: List of (unique_id, message) pairs for every issue logged at ERROR
         severity (results_partial=True), for the caller's console summary.
     """
@@ -1529,11 +1564,26 @@ def _log_tree_density_issues(
     partial_log = []
 
     def resolve_unique_id(parent_id):
+        """
+        Resolve an unambiguous plot identifier from a parent record ID.
+
+        :param parent_id: Survey123 parent record identifier.
+        :return: Plot unique ID, or pd.NA when the parent cannot be resolved safely.
+        """
         if pd.isna(parent_id) or parent_id in duplicate_ids or parent_id not in parent_by_id.index:
             return pd.NA
         return parent_by_id.loc[parent_id].get('unique_id')
 
     def log_issue(parent_id, issue_code, results_partial, detail=None):
+        """
+        Log one tree-density issue and retain partial-result errors for the summary.
+
+        :param parent_id: Survey123 parent record identifier.
+        :param issue_code: Stable machine-readable issue code.
+        :param results_partial: Whether the issue caused density to be assigned zero.
+        :param detail: Optional human-readable issue detail.
+        :return: None.
+        """
         unique_id = resolve_unique_id(parent_id)
         message = issue_code.replace('_', ' ')
         if detail:
@@ -1696,7 +1746,12 @@ def _merge_saplings_to_trees(tree_df: pd.DataFrame, sapling_df: pd.DataFrame) ->
 
 
 def _normalize_sapling_inputs(sapling_df: pd.DataFrame) -> pd.DataFrame:
-    """Normalize sapling counts and DBH before comparisons or height modelling."""
+    """
+    Normalize sapling counts and DBH before comparisons or height modelling.
+
+    :param sapling_df: Raw sapling records.
+    :return: Sapling records with normalized numeric values and validation fields.
+    """
     sapling_df = sapling_df.copy()
     no_saplings = sapling_df['sapling_species'].eq('NO_SAPLINGS')
 
@@ -1737,7 +1792,12 @@ def _normalize_sapling_inputs(sapling_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _normalize_tree_inputs(tree_df: pd.DataFrame) -> pd.DataFrame:
-    """Normalize direct-tree DBH before rounding and density classification."""
+    """
+    Normalize direct-tree DBH before rounding and density classification.
+
+    :param tree_df: Raw direct-tree records.
+    :return: Tree records with normalized DBH values and validation fields.
+    """
     tree_df = tree_df.copy()
     raw_dbh = tree_df['tree_dbh'].copy()
     dbh = pd.to_numeric(raw_dbh, errors='coerce')
@@ -1755,7 +1815,12 @@ def _normalize_tree_inputs(tree_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _print_tree_density_summary(partial_log: list[tuple]) -> None:
-    """Print partial-density results with unresolved IDs labelled consistently."""
+    """
+    Print partial-density results with unresolved IDs labelled consistently.
+
+    :param partial_log: Plot identifiers and messages for density results assigned zero.
+    :return: None.
+    """
     if not partial_log:
         return
 
@@ -1811,11 +1876,13 @@ def _round_tree_data(tree_df: pd.DataFrame) -> pd.DataFrame:
     return tree_df
 
 
-def process_trees(in_folder: str,
-                  out_folder: str,
-                  surface_fire_intensity_model: str,
-                  stand_summary_params: dict,
-                  gen_conpyro_df: bool) -> tuple[pd.DataFrame, list, pd.DataFrame]:
+def process_trees(
+        in_folder: str,
+        out_folder: str,
+        surface_fire_intensity_model: str,
+        stand_summary_params: dict,
+        gen_conpyro_df: bool
+) -> tuple[pd.DataFrame, list, pd.DataFrame]:
     """
     Get the tree data from CSV files.
 

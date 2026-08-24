@@ -141,7 +141,15 @@ def get_repo_root(start_dir: str) -> str:
         current_dir = parent_dir
 
 
-def get_unique_id(df: pd.DataFrame) -> pd.DataFrame:
+def get_unique_id(
+        df: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Build canonical plot identifiers and retain the latest duplicate survey record.
+
+    :param df: Survey123 parent-form DataFrame containing identity and date fields.
+    :return: DataFrame with parsed dates, canonical unique IDs, and duplicate records removed.
+    """
     # Parse _date to datetime; try both known formats
     parsed = pd.to_datetime(df['_date'], format='%m/%d/%Y %H:%M', errors='coerce')
     mask = parsed.isna()
@@ -177,6 +185,12 @@ def sort_list(lst: list) -> list:
     :return: Sorted list in alphanumeric order.
     """
     def alphanum_key(key):
+        """
+        Split one string into lowercase text and integer sort components.
+
+        :param key: String value to convert into a natural-sort key.
+        :return: Text and integer components used for alphanumeric sorting.
+        """
         return [int(text) if text.isdigit() else text.lower()
                 for text in re.split(r'(\d+)', key)]
 

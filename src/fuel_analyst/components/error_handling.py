@@ -57,10 +57,21 @@ class _CollectingHandler(logging.Handler):
     """Collects LogRecords for fuel_analyst.* loggers without affecting other handlers."""
 
     def __init__(self):
+        """
+        Initialize an INFO-level in-memory record collector.
+
+        :return: None.
+        """
         super().__init__(level=logging.INFO)
         self.records: list[logging.LogRecord] = []
 
     def emit(self, record: logging.LogRecord) -> None:
+        """
+        Append one logging record to the active collection.
+
+        :param record: Logging record emitted within the FuelAnalyst namespace.
+        :return: None.
+        """
         self.records.append(record)
 
 
@@ -68,6 +79,12 @@ class _ConsoleFormatter(logging.Formatter):
     """Appends the affected plot ID to console output when a record carries one."""
 
     def format(self, record: logging.LogRecord) -> str:
+        """
+        Format a console record and append its usable plot identifier.
+
+        :param record: Logging record to format for console output.
+        :return: Formatted console message.
+        """
         message = super().format(record)
         unique_id = getattr(record, 'unique_id', None)
         if unique_id is not None and not pd.isna(unique_id) and unique_id != GENERAL_ERROR_ROW:
@@ -76,7 +93,11 @@ class _ConsoleFormatter(logging.Formatter):
 
 
 def _detach_handlers() -> None:
-    """Detach run-scoped handlers and restore the previous logger level."""
+    """
+    Detach run-scoped handlers and restore the previous logger level.
+
+    :return: None.
+    """
     global _active_handler, _console_handler, _previous_level
     root_logger = logging.getLogger(_LOGGER_NAME_ROOT)
     if _active_handler is not None:
@@ -91,6 +112,12 @@ def _detach_handlers() -> None:
 
 
 def _form_for_record(record: logging.LogRecord) -> str:
+    """
+    Resolve the stable report-column label for a logging record.
+
+    :param record: Logging record collected during the active run.
+    :return: Friendly known-source label or fully qualified logger name.
+    """
     for logger_name, display_name in _LOGGER_DISPLAY_NAMES.items():
         if record.name == logger_name or record.name.startswith(logger_name + '.'):
             return display_name
@@ -98,7 +125,12 @@ def _form_for_record(record: logging.LogRecord) -> str:
 
 
 def _has_output_handler(logger: logging.Logger) -> bool:
-    """Return whether this logger's propagation chain has a non-null handler."""
+    """
+    Return whether this logger's propagation chain has a non-null handler.
+
+    :param logger: Logger at which to begin inspecting the propagation chain.
+    :return: True when an active non-null output handler is available.
+    """
     current = logger
     while current is not None:
         if any(
@@ -113,19 +145,41 @@ def _has_output_handler(logger: logging.Logger) -> bool:
 
 
 def get_logger(form: str) -> logging.Logger:
-    """Return the canonical logger for a given form key."""
+    """
+    Return the canonical logger for a given form key.
+
+    :param form: Survey123 form key.
+    :return: Canonical component logger for the form.
+    """
     return logging.getLogger(_FORM_LOGGER_NAMES[form])
 
 
 def normalize_unique_id(unique_id):
-    """Map a missing plot identifier to the report's reserved general-error row."""
+    """
+    Map a missing plot identifier to the report's reserved general-error row.
+
+    :param unique_id: Plot identifier supplied with a logging record.
+    :return: Original identifier or the reserved General Error label.
+    """
     return GENERAL_ERROR_ROW if pd.isna(unique_id) else unique_id
 
 
 def run_guard(function):
-    """Start a run and guarantee logger cleanup if the wrapped entry point exits early."""
+    """
+    Start a run and guarantee logger cleanup if the wrapped entry point exits early.
+
+    :param function: Pipeline entry point to wrap.
+    :return: Wrapped entry point with run-scoped logging lifecycle management.
+    """
     @wraps(function)
     def wrapped(*args, **kwargs):
+        """
+        Invoke the guarded entry point within a run-scoped logging lifecycle.
+
+        :param args: Positional arguments forwarded to the guarded function.
+        :param kwargs: Keyword arguments forwarded to the guarded function.
+        :return: Value returned by the guarded function.
+        """
         start_run()
         try:
             return function(*args, **kwargs)
@@ -137,7 +191,11 @@ def run_guard(function):
 
 
 def start_run() -> None:
-    """Attach a fresh collecting handler for the duration of one pipeline run."""
+    """
+    Attach a fresh collecting handler for the duration of one pipeline run.
+
+    :return: None.
+    """
     global _active_handler, _console_handler, _previous_level
     root_logger = logging.getLogger(_LOGGER_NAME_ROOT)
     _detach_handlers()
@@ -158,7 +216,13 @@ def start_run() -> None:
 
 
 def write_report(out_path: str, plot_df: Optional[pd.DataFrame] = None) -> None:
-    """Pivot everything collected since start_run() into one CSV; detach the handler."""
+    """
+    Pivot everything collected since start_run() into one CSV; detach the handler.
+
+    :param out_path: Path to the error-report CSV file.
+    :param plot_df: Optional plot DataFrame used to populate identity columns.
+    :return: None. Writes the collected error report to out_path.
+    """
     if _active_handler is None:
         raise RuntimeError('write_report() called without a matching start_run()')
     records = _active_handler.records

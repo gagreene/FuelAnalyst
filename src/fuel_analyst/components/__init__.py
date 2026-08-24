@@ -20,12 +20,22 @@ __all__ = [
 
 
 def __getattr__(name: str):
-	"""Load component modules on demand."""
-	if name not in __all__:
-		raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
-	return import_module(f'.{name}', __name__)
+    """
+    Load component modules on demand.
+
+    :param name: Component-module name to load.
+    :return: Imported component module.
+    """
+    if name not in __all__:
+        raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+    return import_module(f'.{name}', __name__)
 
 
 def __dir__() -> list[str]:
-	return sorted(__all__)
+    """
+    Return the sorted component-module names exposed by this package.
+
+    :return: Sorted list of component-module names.
+    """
+    return sorted(__all__)
 

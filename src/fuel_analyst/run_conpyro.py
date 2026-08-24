@@ -149,9 +149,11 @@ def _calc_flame_length_m(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _calc_flame_height(df: pd.DataFrame,
-                       fh_model: str = 'Nelson',
-                       recalc_crown_fire: bool = False) -> pd.DataFrame:
+def _calc_flame_height(
+        df: pd.DataFrame,
+        fh_model: str = 'Nelson',
+        recalc_crown_fire: bool = False
+) -> pd.DataFrame:
     """
     Calculate flame height using the Nelson model.
 
@@ -309,6 +311,12 @@ def _calc_flame_depth(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _single_run_fire_behavior(args):
+    """
+    Run one ConPyro fire-behavior calculation for a weather date and time.
+
+    :param args: Weather date, time, input subset, model parameters, and requested outputs.
+    :return: ConPyro results for the supplied date and time.
+    """
     wx_date, time, subset_df, input_params, conpyro_out_list = args
     cp = conpyro.ConPyro()
     cp.initialize(

@@ -30,7 +30,12 @@ SYAL_REORDER_FIX = {
 
 
 def _apply_syal_reorder(species_dir: Path) -> None:
-    """Apply the defined post-export SYAL sequence correction."""
+    """
+    Apply the defined post-export SYAL sequence correction.
+
+    :param species_dir: Directory containing one species image series.
+    :return: None. Rewrites the affected SYAL image filenames in species_dir.
+    """
     corrected: dict[float, Image.Image] = {}
     for old_biomass, new_biomass in SYAL_REORDER_FIX.items():
         source_path = species_dir / f"{old_biomass:.3f}_kgm2.jpg"
@@ -45,7 +50,14 @@ def _apply_syal_reorder(species_dir: Path) -> None:
 
 
 def _crop_line(gray_panel: np.ndarray, side: str, offset: int) -> np.ndarray:
-    """Return one line at an offset from a panel edge."""
+    """
+    Return one line at an offset from a panel edge.
+
+    :param gray_panel: Grayscale image panel.
+    :param side: Image edge to inspect.
+    :param offset: Pixel offset from the selected edge.
+    :return: One line at an offset from a panel edge.
+    """
     if side == "left":
         return gray_panel[:, offset]
     if side == "right":
@@ -56,23 +68,39 @@ def _crop_line(gray_panel: np.ndarray, side: str, offset: int) -> np.ndarray:
 
 
 def _detect_boundaries(
-    array: np.ndarray,
-    axis: int,
-    minimum_gap: int,
+        array: np.ndarray,
+        axis: int,
+        minimum_gap: int,
 ) -> list[tuple[int, int]]:
-    """Return sufficiently wide near-white gap runs along an axis."""
+    """
+    Return sufficiently wide near-white gap runs along an axis.
+
+    :param array: Array to inspect.
+    :param axis: Array axis along which to calculate the result.
+    :param minimum_gap: Minimum accepted width of a detected gap.
+    :return: Sufficiently wide near-white gap runs along an axis.
+    """
     gap_indices = np.where(array.mean(axis=axis) > 250)[0]
     return [run for run in _find_runs(gap_indices) if run[1] - run[0] >= minimum_gap]
 
 
 def _detect_board_edge_trim(
-    gray_panel: np.ndarray,
-    side: str,
-    search_window: int = 4,
-    lookahead: int = 4,
-    jump_threshold: float = 15,
+        gray_panel: np.ndarray,
+        side: str,
+        search_window: int = 4,
+        lookahead: int = 4,
+        jump_threshold: float = 15,
 ) -> int:
-    """Return pixels to remove from one physical board edge."""
+    """
+    Return pixels to remove from one physical board edge.
+
+    :param gray_panel: Grayscale image panel.
+    :param side: Image edge to inspect.
+    :param search_window: Number of edge lines searched for a board boundary.
+    :param lookahead: Number of subsequent pixels or lines used to confirm an edge.
+    :param jump_threshold: Minimum brightness jump identifying a board edge.
+    :return: Pixels to remove from one physical board edge.
+    """
     values = [
         _crop_line(gray_panel, side, offset).mean()
         for offset in range(search_window)
@@ -88,7 +116,12 @@ def _detect_board_edge_trim(
 
 
 def _find_runs(indices: np.ndarray) -> list[tuple[int, int]]:
-    """Group consecutive integer indices into inclusive runs."""
+    """
+    Group consecutive integer indices into inclusive runs.
+
+    :param indices: Integer indices to group into consecutive runs.
+    :return: Inclusive start and end indices for each consecutive run.
+    """
     if len(indices) == 0:
         return []
     runs: list[tuple[int, int]] = []
@@ -104,13 +137,22 @@ def _find_runs(indices: np.ndarray) -> list[tuple[int, int]]:
 
 
 def _find_square_box(
-    gray: np.ndarray,
-    row_top: int,
-    row_bottom: int,
-    column_left: int,
-    column_right: int,
+        gray: np.ndarray,
+        row_top: int,
+        row_bottom: int,
+        column_left: int,
+        column_right: int,
 ) -> tuple[int, int, int, int]:
-    """Locate the interior of the printed square surrounding one photograph."""
+    """
+    Locate the interior of the printed square surrounding one photograph.
+
+    :param gray: Grayscale source image.
+    :param row_top: Top row bound of the candidate panel.
+    :param row_bottom: Bottom row bound of the candidate panel.
+    :param column_left: Left column bound of the candidate panel.
+    :param column_right: Right column bound of the candidate panel.
+    :return: Left, top, right, and bottom coordinates of the photograph interior.
+    """
     block = gray[row_top:row_bottom, column_left:column_right]
     dark = block < 100
     height, width = block.shape
@@ -135,9 +177,14 @@ def _find_square_box(
 
 
 def _get_grid_bounds(
-    gray: np.ndarray,
+        gray: np.ndarray,
 ) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
-    """Return the three column and three row bounds on an appendix page."""
+    """
+    Return the three column and three row bounds on an appendix page.
+
+    :param gray: Grayscale source image.
+    :return: The three column and three row bounds on an appendix page.
+    """
     height, width = gray.shape
     column_gaps = _detect_boundaries(gray, axis=0, minimum_gap=10)
     row_gaps = _detect_boundaries(gray, axis=1, minimum_gap=10)
@@ -174,12 +221,20 @@ def _get_grid_bounds(
 
 
 def _line_mean(
-    gray: np.ndarray,
-    box: tuple[int, int, int, int],
-    side: str,
-    offset: int,
+        gray: np.ndarray,
+        box: tuple[int, int, int, int],
+        side: str,
+        offset: int,
 ) -> float:
-    """Return the mean of one line inside a rectangular box."""
+    """
+    Return the mean of one line inside a rectangular box.
+
+    :param gray: Grayscale source image.
+    :param box: Rectangular bounds as left, top, right, and bottom coordinates.
+    :param side: Image edge to inspect.
+    :param offset: Pixel offset from the selected edge.
+    :return: The mean of one line inside a rectangular box.
+    """
     left, top, right, bottom = box
     if side == "left":
         return float(gray[top:bottom, left + offset : left + offset + 1].mean())
@@ -191,7 +246,12 @@ def _line_mean(
 
 
 def _maximum_run(values: np.ndarray) -> int:
-    """Return the longest consecutive true run."""
+    """
+    Return the longest consecutive true run.
+
+    :param values: Boolean values to inspect.
+    :return: The longest consecutive true run.
+    """
     best = current = 0
     for value in values:
         current = current + 1 if value else 0
@@ -200,14 +260,24 @@ def _maximum_run(values: np.ndarray) -> int:
 
 
 def _trim_one_edge(
-    gray: np.ndarray,
-    box: tuple[int, int, int, int],
-    side: str,
-    maximum_trim: int = 8,
-    recovery_threshold: float = 200,
-    lookahead: int = 6,
+        gray: np.ndarray,
+        box: tuple[int, int, int, int],
+        side: str,
+        maximum_trim: int = 8,
+        recovery_threshold: float = 200,
+        lookahead: int = 6,
 ) -> int:
-    """Return the antialiased printed-border width on one edge."""
+    """
+    Return the antialiased printed-border width on one edge.
+
+    :param gray: Grayscale source image.
+    :param box: Rectangular bounds as left, top, right, and bottom coordinates.
+    :param side: Image edge to inspect.
+    :param maximum_trim: Maximum number of edge pixels that may be removed.
+    :param recovery_threshold: Brightness threshold indicating recovery from the printed border.
+    :param lookahead: Number of subsequent pixels or lines used to confirm an edge.
+    :return: The antialiased printed-border width on one edge.
+    """
     trim = 0
     for _ in range(maximum_trim):
         if _line_mean(gray, box, side, trim) >= recovery_threshold:
@@ -223,10 +293,16 @@ def _trim_one_edge(
 
 
 def _trim_to_content(
-    gray: np.ndarray,
-    box: tuple[int, int, int, int],
+        gray: np.ndarray,
+        box: tuple[int, int, int, int],
 ) -> tuple[int, int, int, int]:
-    """Remove residual printed-border antialiasing independently per edge."""
+    """
+    Remove residual printed-border antialiasing independently per edge.
+
+    :param gray: Grayscale source image.
+    :param box: Rectangular bounds as left, top, right, and bottom coordinates.
+    :return: Bounds with residual printed-border pixels removed.
+    """
     left, top, right, bottom = box
     left += _trim_one_edge(gray, (left, top, right, bottom), "left")
     right -= _trim_one_edge(gray, (left, top, right, bottom), "right")
@@ -236,7 +312,12 @@ def _trim_to_content(
 
 
 def _trimmed_board_image(image: Image.Image) -> Image.Image:
-    """Remove a locally contrasting physical board edge from each side."""
+    """
+    Remove a locally contrasting physical board edge from each side.
+
+    :param image: Source image to process.
+    :return: Cropped image with locally contrasting board edges removed.
+    """
     gray = np.asarray(image.convert("L"), dtype=float)
     left = _detect_board_edge_trim(gray, "left")
     right = _detect_board_edge_trim(gray, "right")
@@ -247,11 +328,18 @@ def _trimmed_board_image(image: Image.Image) -> Image.Image:
 
 
 def extract_images(
-    pdf_path: Path,
-    output_dir: Path,
-    biomass_by_folder: dict[str, list[float]],
+        pdf_path: Path,
+        output_dir: Path,
+        biomass_by_folder: dict[str, list[float]],
 ) -> None:
-    """Extract all nine species series from the source PhotoLoad PDF."""
+    """
+    Extract all nine species series from the source PhotoLoad PDF.
+
+    :param pdf_path: Path to the PhotoLoad source PDF.
+    :param output_dir: Directory in which generated outputs are written.
+    :param biomass_by_folder: Biomass values keyed by PhotoLoad species folder.
+    :return: None. Writes the extracted species photographs to output_dir.
+    """
     if not pdf_path.is_file():
         raise FileNotFoundError(f"PhotoLoad PDF not found: {pdf_path}")
     output_dir.mkdir(parents=True, exist_ok=True)

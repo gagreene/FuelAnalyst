@@ -17,7 +17,7 @@ def _calc_veg_fuel_loads(df: pd.DataFrame, veg_fuel_dict: dict) -> pd.DataFrame:
     Calculate surface vegetation fuel loads based on ConPyro parameters.
 
     :param df: DataFrame containing plot-level data.
-
+    :param veg_fuel_dict: Mapping of output fuel attributes to source fuel fields.
     :return: DataFrame with an added 'conpyro_shrub_fuel_load' column.
     """
     for fuel_att, fuel_fields in veg_fuel_dict.items():
@@ -82,6 +82,7 @@ def _calc_stand_density(df: pd.DataFrame, cc_field: str) -> pd.DataFrame:
             density = 'H'  # high density
 
     :param df: DataFrame containing tree counts and plot area.
+    :param cc_field: Name of the canopy-cover field used to classify stand density.
     :return: DataFrame with an added 'conpyro_density_class' column.
     """
     # Calculate stand density class from canopy cover

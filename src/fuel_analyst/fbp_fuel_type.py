@@ -15,6 +15,13 @@ from .components import helper
 from ._vendor import bcwft2018 as bcwft
 
 def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFrame:
+    """
+    Calculate CFFBPS fuel types with the BCWFT2018 fuel-typing algorithm.
+
+    :param df: DataFrame containing the fields required by BCWFT2018.
+    :param season: Season used for seasonal fuel-type assignments.
+    :return: DataFrame containing calculated fuel types and modifiers.
+    """
     print('Calculating CFFBPS Fuel Types using BCWFT2018 fuel typing algorithm')
     bc_fuel_type = bcwft.FuelTyping()
     field_list = bc_fuel_type.fldList
@@ -95,7 +102,8 @@ def process_fbp_fuel_type(
         fbp_prep_df_path: str,
         conpyro_df_path: str,
         out_dir: str,
-        season: str) -> None:
+        season: str
+) -> None:
     """
     Calculate the FBP fuel type for each plot in the DataFrame using the BCWFT2018 fuel typing system.
 

@@ -28,17 +28,27 @@ if TYPE_CHECKING:
 
 
 def __getattr__(name: str):
-	"""Lazily load public API callables on first access."""
-	if name not in _API_MAP:
-		raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+    """
+    Lazily load public API callables on first access.
 
-	module_name, attr_name = _API_MAP[name]
-	module = import_module(f'.{module_name}', __name__)
-	return getattr(module, attr_name)
+    :param name: Public attribute name to load.
+    :return: Requested public API callable.
+    """
+    if name not in _API_MAP:
+        raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+
+    module_name, attr_name = _API_MAP[name]
+    module = import_module(f'.{module_name}', __name__)
+    return getattr(module, attr_name)
 
 
 def __dir__() -> list[str]:
-	return sorted(__all__)
+    """
+    Return the sorted public API names exposed by this package.
+
+    :return: Sorted list of public API names.
+    """
+    return sorted(__all__)
 
 
 

@@ -26,9 +26,10 @@ def _calc_plot_ba_killed(
 ) -> pd.DataFrame:
     """
     Calculate live stand basal area killed based on mortality probability.
+
     :param plot_fire_df: DataFrame containing stand fire data with plot_id_col_name column.
-    :param tree_df: DataFrame containing tree data with fofem_tree_id_col_name column.
     :param plot_id_col_name: Name of the unique ID column in plot_fire_df (default 'unique_id').
+    :param tree_df: DataFrame containing tree data with fofem_tree_id_col_name column.
     :param fofem_tree_id_col_name: Name of the unique ID column in tree_df (default 'unique_id').
     :return: DataFrame with added basal area killed columns.
     """
@@ -47,6 +48,7 @@ def _calc_severity_class(plot_fire_df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate stand-level fire severity based on proportion of basal area killed.
     0-20% = low, 20-70% = moderate, 70-100% = high (Agee, 1994).
+
     :param plot_fire_df: DataFrame containing stand fire data with 'prop_dead_ba_crnsch' column.
     :return: DataFrame with added 'fire_severity' column.
     """
@@ -143,6 +145,12 @@ def process_mortality(
     # Calculate mortality for each tree-fire scenario combination
     print('\tProcessing Post-Fire Tree Mortality (via FOFEM CRNSCH model)...')
     def get_col(col):
+        """
+        Return a merged-tree column as an array when it is available.
+
+        :param col: Column name to retrieve.
+        :return: Column values as a NumPy array, or None when the column is absent.
+        """
         return merged_tree_df[col].to_numpy() if col in merged_tree_df.columns else None
     params = {
         'spp': get_col('spp'),
