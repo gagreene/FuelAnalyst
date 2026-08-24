@@ -362,7 +362,7 @@ def _write_model_results(data: pd.DataFrame, output_dir: Path) -> pd.DataFrame:
 
     :param data: PhotoLoad calibration or result records.
     :param output_dir: Directory in which generated outputs are written.
-    :return: Model-fit results for every species and candidate model.
+    :return: Selected production-model results for every species.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     all_results: list[dict[str, object]] = []

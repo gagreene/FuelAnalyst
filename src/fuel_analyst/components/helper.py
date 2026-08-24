@@ -141,14 +141,13 @@ def get_repo_root(start_dir: str) -> str:
         current_dir = parent_dir
 
 
-def get_unique_id(
-        df: pd.DataFrame
-) -> pd.DataFrame:
+def get_unique_id(df: pd.DataFrame) -> pd.DataFrame:
     """
     Build canonical plot identifiers and retain the latest duplicate survey record.
 
     :param df: Survey123 parent-form DataFrame containing identity and date fields.
-    :return: DataFrame with parsed dates, canonical unique IDs, and duplicate records removed.
+    :return: DataFrame with survey years, canonical unique IDs, and all but the
+        latest record for each duplicate ID removed.
     """
     # Parse _date to datetime; try both known formats
     parsed = pd.to_datetime(df['_date'], format='%m/%d/%Y %H:%M', errors='coerce')

@@ -72,7 +72,7 @@ def _distance_from_board(
 
     :param lab: Image values in CIELAB color space.
     :param saturation: Per-pixel saturation values.
-    :param value: Serialized parameter value.
+    :param value: Per-pixel brightness values from the HSV image.
     :param body: Boolean mask identifying the plant body.
     :return: Per-pixel board color distances and the minimum accepted distance.
     """

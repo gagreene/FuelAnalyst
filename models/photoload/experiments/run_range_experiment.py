@@ -134,7 +134,8 @@ def _image_records(
 
     :param folder_data: Calibration records for one species folder.
     :param raw_root: Directory containing extracted PhotoLoad images.
-    :return: Image, mask, and calibration records for the selected folder.
+    :return: Tuple containing image and calibration records for the selected
+        folder and the lowest-image CIELAB threshold.
     """
     folder = str(folder_data.iloc[0]["folder"])
     records: list[dict[str, object]] = []

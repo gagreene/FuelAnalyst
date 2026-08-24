@@ -320,7 +320,8 @@ def _calc_stand_attributes(
     :param df: DataFrame containing plot-level data.
     :param tree_df: DataFrame containing individual tree data.
     :param stand_summary_params: Dictionary containing stand summary parameters.
-    :return: Updated plot-level DataFrame with stand density columns.
+    :return: Tuple containing the updated plot-level DataFrame and the names of
+        its generated stand-summary columns.
     """
     # Helper: get all permutations of summary types
     def get_permutations(_summary_list: list, _summary_permutation: str) -> list:
