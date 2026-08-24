@@ -52,7 +52,12 @@ selected or final model.
 
 ## Run
 
-From the repository root:
+From the repository root, install the PhotoLoad dependencies if needed, then
+run the experiment:
+
+```powershell
+python -m pip install -e ".[photoload]"
+```
 
 ```powershell
 python models/photoload/experiments/run_range_experiment.py

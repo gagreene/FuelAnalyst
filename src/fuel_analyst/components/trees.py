@@ -6,12 +6,13 @@ Created on Tue May 27, 15:30:00 2025
 """
 __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
+import logging
 import os
 import pandas as pd
 import numpy as np
 import itertools
 
-from . import helper
+from . import error_handling, helper
 
 
 # GENERAL LIST OF CONIFER SPECIES IN BC
@@ -86,90 +87,7 @@ _PLOT_RADIUS_FIELDS = {
     'sapling': 'sapling_plot_radius',
 }
 
-_TREE_DENSITY_ISSUE_COLUMNS = [
-    'issue_id', 'unique_id', 'plot_global_id', 'treatment_area',
-    'treatment_unit', 'treatment_type', 'plot_id', 'severity',
-    'issue_code', 'primary_issue_code', 'source_table',
-    'source_record_id', 'radius_class', 'radius_field', 'original_value',
-    'normalized_value', 'affected_output', 'affected_records',
-    'affected_stems', 'action_taken', 'results_partial', 'message',
-]
-
-_TREE_DENSITY_QA_COLUMNS = [
-    'tree_density_complete', 'tree_density_issue_count',
-    'tree_density_failed_records', 'tree_density_failed_stems',
-    'tree_density_failed_classes', 'tree_density_issues',
-]
-
-
-def _add_tree_processing_status(
-        df: pd.DataFrame,
-        sapling_df: pd.DataFrame,
-        tree_df: pd.DataFrame,
-        issues: pd.DataFrame,
-) -> pd.DataFrame:
-    """Add plot-level tree-density completeness fields."""
-    df = df.copy()
-    df['tree_density_complete'] = pd.Series(True, index=df.index, dtype='boolean')
-    df['tree_density_issue_count'] = 0
-    df['tree_density_failed_records'] = 0
-    df['tree_density_failed_stems'] = 0.0
-    df['tree_density_failed_classes'] = ''
-    df['tree_density_issues'] = ''
-
-    ambiguous_marker = df.get(
-        '_parent_id_ambiguous', pd.Series(False, index=df.index)
-    ).fillna(False).astype(bool)
-    duplicate_ids = set(df.loc[df['GlobalID'].duplicated(keep=False), 'GlobalID'].dropna())
-    duplicate_ids.update(df.loc[ambiguous_marker, 'GlobalID'].dropna())
-    valid_id_map = df.loc[~df['GlobalID'].isin(duplicate_ids)].set_index('GlobalID')['unique_id'].to_dict()
-    affected = tree_df.loc[tree_df['tree_density_affected']].copy()
-    affected['unique_id'] = affected['ParentGlobalID'].map(valid_id_map)
-
-    invalid_count_rows = []
-    for _, sapling in sapling_df.iterrows():
-        if sapling.get('sapling_species') == 'NO_SAPLINGS':
-            continue
-        for status in ('live', 'dead'):
-            if sapling.get(f'_sapling_{status}_count_issue', ''):
-                invalid_count_rows.append({
-                    'unique_id': valid_id_map.get(sapling.get('ParentGlobalID')),
-                    'radius_class': 'sapling',
-                })
-
-    for idx, plot in df.iterrows():
-        unique_id = plot['unique_id']
-        plot_affected = affected[affected['unique_id'].eq(unique_id)]
-        source_invalid_counts = [row for row in invalid_count_rows if row['unique_id'] == unique_id]
-        ambiguous_affected = (
-            plot.get('GlobalID') in duplicate_ids
-            and tree_df['ParentGlobalID'].eq(plot.get('GlobalID')).any()
-        )
-        failed_records = len(plot_affected) + len(source_invalid_counts)
-        is_partial = failed_records > 0 or ambiguous_affected
-
-        issue_mask = (
-            issues['unique_id'].eq(unique_id)
-            | (
-                issues['unique_id'].isna()
-                & issues['plot_global_id'].eq(plot.get('GlobalID'))
-            )
-        ).fillna(False)
-        plot_issues = issues.loc[issue_mask]
-        classes = set(plot_affected['tree_density_radius_class'].dropna().astype(str))
-        classes.update(row['radius_class'] for row in source_invalid_counts)
-        messages = sorted(set(plot_issues['message'].dropna().astype(str)))
-
-        stems_unknown = bool(source_invalid_counts)
-        stems = plot_affected['tree_count'].sum(min_count=1) if not plot_affected.empty else 0.0
-        df.at[idx, 'tree_density_complete'] = not is_partial
-        df.at[idx, 'tree_density_issue_count'] = len(plot_issues)
-        df.at[idx, 'tree_density_failed_records'] = failed_records
-        df.at[idx, 'tree_density_failed_stems'] = np.nan if stems_unknown else stems
-        df.at[idx, 'tree_density_failed_classes'] = '|'.join(sorted(classes))
-        df.at[idx, 'tree_density_issues'] = '; '.join(messages)
-
-    return df
+logger = logging.getLogger(__name__)
 
 
 def _calc_plot_multipliers(df: pd.DataFrame) -> pd.DataFrame:
@@ -1226,7 +1144,10 @@ def _calc_tree_fire_attributes(tree_df: pd.DataFrame, surface_fire_intensity_mod
         # Use the Thomas (1963) flame length model to estimate fireline intensity (kW/m)
         surface_model = (tree_df['tree_flame_length'] / 0.026700) ** (3 / 2)
     else:
-        print('Invalid surface fireline intensity model specified. Using Byram (1959) as default.')
+        if surface_fire_intensity_model != 'Byram':
+            logger.warning(
+                'Invalid surface fireline intensity model specified. Using Byram (1959) as default.'
+            )
         # Use the Byram (1959) flame length model to estimate fireline intensity (kW/m)
         surface_model = (tree_df['tree_flame_length'] / 0.0775) ** (1 / 0.46)
 
@@ -1548,169 +1469,6 @@ def _gen_master_tree_df(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame
     return temp_df.reset_index(drop=True)
 
 
-def _gen_tree_processing_issues(
-        df: pd.DataFrame,
-        sapling_df: pd.DataFrame,
-        tree_df: pd.DataFrame,
-) -> pd.DataFrame:
-    """Build a deterministic issue report for tree-density input failures."""
-    rows = []
-    ambiguous_marker = df.get(
-        '_parent_id_ambiguous', pd.Series(False, index=df.index)
-    ).fillna(False).astype(bool)
-    duplicate_ids = set(df.loc[df['GlobalID'].duplicated(keep=False), 'GlobalID'].dropna())
-    duplicate_ids.update(df.loc[ambiguous_marker, 'GlobalID'].dropna())
-    valid_parents = df.loc[~df['GlobalID'].isin(duplicate_ids)].drop_duplicates('GlobalID')
-    parent_by_id = valid_parents.set_index('GlobalID')
-
-    def parent_metadata(parent_id):
-        if pd.isna(parent_id) or parent_id in duplicate_ids or parent_id not in parent_by_id.index:
-            return {
-                'unique_id': pd.NA, 'plot_global_id': parent_id,
-                'treatment_area': pd.NA, 'treatment_unit': pd.NA,
-                'treatment_type': pd.NA, 'plot_id': pd.NA,
-            }
-        parent = parent_by_id.loc[parent_id]
-        return {
-            'unique_id': parent.get('unique_id'), 'plot_global_id': parent_id,
-            'treatment_area': parent.get('treatment_area'),
-            'treatment_unit': parent.get('treatment_unit'),
-            'treatment_type': parent.get('treatment_type'),
-            'plot_id': parent.get('plot_id'),
-        }
-
-    def add_issue(
-            parent_id, issue_code, source_table, source_record_id,
-            original_value=pd.NA, normalized_value=pd.NA,
-            radius_class=pd.NA, radius_field=pd.NA,
-            affected_records=0, affected_stems=0, results_partial=False,
-            primary_issue_code='',
-    ):
-        metadata = parent_metadata(parent_id)
-        action = 'density_assigned_zero' if results_partial else 'reported_no_density_impact'
-        message = issue_code.replace('_', ' ')
-        if results_partial:
-            message = f'{message}; affected density assigned zero'
-        rows.append({
-            **metadata,
-            'severity': 'error' if results_partial else 'warning',
-            'issue_code': issue_code,
-            'primary_issue_code': primary_issue_code,
-            'source_table': source_table,
-            'source_record_id': source_record_id,
-            'radius_class': radius_class,
-            'radius_field': radius_field,
-            'original_value': original_value,
-            'normalized_value': normalized_value,
-            'affected_output': 'tree_dens_ha',
-            'affected_records': affected_records,
-            'affected_stems': affected_stems,
-            'action_taken': action,
-            'results_partial': bool(results_partial),
-            'message': message,
-        })
-
-    # Parent-level radius issues are retained even when no tree used the radius.
-    for _, plot in df.iterrows():
-        for radius_class, radius_field in _PLOT_RADIUS_FIELDS.items():
-            issue_code = plot.get(f'_plot_{radius_class}_radius_issue', '')
-            if not issue_code:
-                continue
-            affected = tree_df[
-                tree_df['ParentGlobalID'].eq(plot.get('GlobalID'))
-                & tree_df['tree_density_radius_class'].eq(radius_class)
-                & tree_df['tree_density_affected']
-            ]
-            affected_count = len(affected)
-            affected_stems = affected['tree_count'].sum(min_count=1) if affected_count else 0
-            add_issue(
-                plot.get('GlobalID'), issue_code, 'survey_0.csv', plot.get('GlobalID'),
-                original_value=plot.get(f'_{radius_field}_raw'),
-                normalized_value=plot.get(radius_field),
-                radius_class=radius_class, radius_field=radius_field,
-                affected_records=affected_count, affected_stems=affected_stems,
-                results_partial=affected_count > 0,
-                primary_issue_code=issue_code if affected_count else '',
-            )
-
-    radius_issue_codes = {
-        'missing_plot_radius', 'non_numeric_plot_radius',
-        'non_positive_plot_radius', 'non_finite_plot_radius',
-        'invalid_plot_area', 'invalid_plot_radius',
-    }
-    # Row-level issues include every independent cause except radius causes,
-    # which are represented by their parent survey source above.
-    for _, tree in tree_df.iterrows():
-        codes = [code for code in str(tree.get('tree_density_issue_codes', '')).split('|') if code]
-        for code in codes:
-            if code in radius_issue_codes:
-                continue
-            is_warning = code == 'sapling_dbh_zero_normalized'
-            partial = bool(tree.get('tree_density_affected', False)) and not is_warning
-            raw_value = tree.get('_tree_dbh_raw', tree.get('tree_dbh'))
-            if 'count' in code:
-                raw_value = tree.get('tree_count')
-            add_issue(
-                tree.get('ParentGlobalID'), code,
-                tree.get('tree_density_source_table', 'tree_plot_2.csv'),
-                tree.get('tree_density_source_record_id'),
-                original_value=raw_value,
-                normalized_value=tree.get('tree_dbh'),
-                radius_class=tree.get('tree_density_radius_class'),
-                radius_field=tree.get('tree_density_radius_field'),
-                affected_records=1 if partial else 0,
-                affected_stems=tree.get('tree_count') if partial else 0,
-                results_partial=partial,
-                primary_issue_code=tree.get('tree_density_primary_issue_code', '') if partial else '',
-            )
-
-    # Invalid sapling counts cannot be synthesized into tree rows, so report
-    # them directly from their source table. Parent linkage is also checked at
-    # source level so simultaneous causes are not lost.
-    known_parent_ids = set(df['GlobalID'].dropna())
-    for _, sapling in sapling_df.iterrows():
-        parent_id = sapling.get('ParentGlobalID')
-        source_id = sapling.get('GlobalID')
-        parent_code = ''
-        if pd.isna(parent_id) or not str(parent_id).strip():
-            parent_code = 'missing_parent_id'
-        elif parent_id in duplicate_ids:
-            parent_code = 'ambiguous_parent_id'
-        elif parent_id not in known_parent_ids:
-            parent_code = 'orphan_tree_record'
-        if parent_code:
-            add_issue(
-                parent_id, parent_code, 'sapling_1.csv', source_id,
-                affected_records=1, affected_stems=pd.NA,
-                results_partial=not sapling.get('sapling_species') == 'NO_SAPLINGS',
-                primary_issue_code=parent_code,
-            )
-
-        if sapling.get('sapling_species') == 'NO_SAPLINGS':
-            continue
-        for status in ('live', 'dead'):
-            count_col = f'sapling_{status}_count'
-            issue_code = sapling.get(f'_{count_col}_issue', '')
-            if issue_code:
-                add_issue(
-                    parent_id, issue_code, 'sapling_1.csv', source_id,
-                    original_value=sapling.get(f'_{count_col}_raw'),
-                    normalized_value=sapling.get(count_col),
-                    radius_class='sapling', radius_field='sapling_plot_radius',
-                    affected_records=1, affected_stems=pd.NA,
-                    results_partial=True, primary_issue_code=issue_code,
-                )
-
-    issues = pd.DataFrame(rows)
-    if issues.empty:
-        return pd.DataFrame(columns=_TREE_DENSITY_ISSUE_COLUMNS)
-
-    sort_cols = ['plot_global_id', 'source_table', 'source_record_id', 'issue_code', 'radius_class']
-    issues = issues.sort_values(sort_cols, na_position='last', kind='stable').reset_index(drop=True)
-    issues.insert(0, 'issue_id', [f'TREE-{number:05d}' for number in range(1, len(issues) + 1)])
-    return issues.reindex(columns=_TREE_DENSITY_ISSUE_COLUMNS)
-
-
 def _get_temesgen_tree_height(model: int,
                               param_df: pd.DataFrame,
                               spp: str,
@@ -1747,6 +1505,105 @@ def _get_temesgen_tree_height(model: int,
     else:
         # If incorrect model number entered, return np.nan
         return np.nan
+
+
+def _log_tree_density_issues(
+        df: pd.DataFrame,
+        sapling_df: pd.DataFrame,
+        tree_df: pd.DataFrame,
+) -> list[tuple]:
+    """
+    Report tree-density input failures through the centralized error_handling logger.
+
+    :return: List of (unique_id, message) pairs for every issue logged at ERROR
+        severity (results_partial=True), for the caller's console summary.
+    """
+    ambiguous_marker = df.get(
+        '_parent_id_ambiguous', pd.Series(False, index=df.index)
+    ).fillna(False).astype(bool)
+    duplicate_ids = set(df.loc[df['GlobalID'].duplicated(keep=False), 'GlobalID'].dropna())
+    duplicate_ids.update(df.loc[ambiguous_marker, 'GlobalID'].dropna())
+    valid_parents = df.loc[~df['GlobalID'].isin(duplicate_ids)].drop_duplicates('GlobalID')
+    parent_by_id = valid_parents.set_index('GlobalID')
+
+    partial_log = []
+
+    def resolve_unique_id(parent_id):
+        if pd.isna(parent_id) or parent_id in duplicate_ids or parent_id not in parent_by_id.index:
+            return pd.NA
+        return parent_by_id.loc[parent_id].get('unique_id')
+
+    def log_issue(parent_id, issue_code, results_partial, detail=None):
+        unique_id = resolve_unique_id(parent_id)
+        message = issue_code.replace('_', ' ')
+        if detail:
+            message = f'{message} ({detail})'
+        extra = {'unique_id': unique_id, 'issue_code': issue_code}
+        if results_partial:
+            full_message = f'{message}; affected density assigned zero'
+            logger.error(full_message, extra=extra)
+            partial_log.append((unique_id, full_message))
+        else:
+            logger.warning(message, extra=extra)
+
+    # Parent-level radius issues are reported even when no tree used the radius.
+    for _, plot in df.iterrows():
+        for radius_class in _PLOT_RADIUS_FIELDS:
+            issue_code = plot.get(f'_plot_{radius_class}_radius_issue', '')
+            if not issue_code:
+                continue
+            affected_count = len(tree_df[
+                tree_df['ParentGlobalID'].eq(plot.get('GlobalID'))
+                & tree_df['tree_density_radius_class'].eq(radius_class)
+                & tree_df['tree_density_affected']
+            ])
+            log_issue(plot.get('GlobalID'), issue_code, results_partial=affected_count > 0,
+                      detail=radius_class)
+
+    radius_issue_codes = {
+        'missing_plot_radius', 'non_numeric_plot_radius',
+        'non_positive_plot_radius', 'non_finite_plot_radius',
+        'invalid_plot_area', 'invalid_plot_radius',
+    }
+    # Row-level issues include every independent cause except radius causes,
+    # which are represented by their parent survey source above.
+    for _, tree in tree_df.iterrows():
+        codes = [code for code in str(tree.get('tree_density_issue_codes', '')).split('|') if code]
+        for code in codes:
+            if code in radius_issue_codes:
+                continue
+            is_warning = code == 'sapling_dbh_zero_normalized'
+            partial = bool(tree.get('tree_density_affected', False)) and not is_warning
+            log_issue(tree.get('ParentGlobalID'), code, results_partial=partial)
+
+    # Invalid sapling counts cannot be synthesized into tree rows, so report
+    # them directly from their source table. Parent linkage is also checked at
+    # source level so simultaneous causes are not lost.
+    known_parent_ids = set(df['GlobalID'].dropna())
+    for _, sapling in sapling_df.iterrows():
+        parent_id = sapling.get('ParentGlobalID')
+        parent_code = ''
+        if pd.isna(parent_id) or not str(parent_id).strip():
+            parent_code = 'missing_parent_id'
+        elif parent_id in duplicate_ids:
+            parent_code = 'ambiguous_parent_id'
+        elif parent_id not in known_parent_ids:
+            parent_code = 'orphan_tree_record'
+        if parent_code:
+            log_issue(
+                parent_id, parent_code,
+                results_partial=sapling.get('sapling_species') != 'NO_SAPLINGS',
+            )
+
+        if sapling.get('sapling_species') == 'NO_SAPLINGS':
+            continue
+        for status in ('live', 'dead'):
+            count_col = f'sapling_{status}_count'
+            issue_code = sapling.get(f'_{count_col}_issue', '')
+            if issue_code:
+                log_issue(parent_id, issue_code, results_partial=True)
+
+    return partial_log
 
 
 def _merge_saplings_to_trees(tree_df: pd.DataFrame, sapling_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -1897,6 +1754,26 @@ def _normalize_tree_inputs(tree_df: pd.DataFrame) -> pd.DataFrame:
     return tree_df
 
 
+def _print_tree_density_summary(partial_log: list[tuple]) -> None:
+    """Print partial-density results with unresolved IDs labelled consistently."""
+    if not partial_log:
+        return
+
+    by_plot = {}
+    for unique_id, message in partial_log:
+        row_key = error_handling.normalize_unique_id(unique_id)
+        by_plot.setdefault(row_key, []).append(message)
+
+    resolved_plot_count = len(by_plot) - int(error_handling.GENERAL_ERROR_ROW in by_plot)
+    if resolved_plot_count:
+        print(f'\tWARNING: Tree-density results are partial for {resolved_plot_count} plot(s).')
+    if error_handling.GENERAL_ERROR_ROW in by_plot:
+        print('\tWARNING: Tree-density results are partial for records with unresolved plot IDs.')
+    for plot_label, messages in by_plot.items():
+        print(f'\t  {plot_label}: {"; ".join(messages)}')
+    print('\tSee the run-level error report (fuelanalyst_errors.csv) for full details.')
+
+
 def _round_plot_data(df: pd.DataFrame) -> pd.DataFrame:
     """
     Rounds plot data columns to appropriate decimal places.
@@ -2000,8 +1877,7 @@ def process_trees(in_folder: str,
     tree_df = _calc_tree_decay_classes(tree_df)
     tree_df = _calc_tree_type(tree_df, tree_params_df)
     tree_df = _calc_tree_density(df, tree_df)
-    issues_df = _gen_tree_processing_issues(df, sapling_df, tree_df)
-    df = _add_tree_processing_status(df, sapling_df, tree_df, issues_df)
+    partial_log = _log_tree_density_issues(df, sapling_df, tree_df)
     tree_df = _calc_tree_basal_area(tree_df)
     tree_df = _calc_tree_missing_heights(tree_df, tree_params_df)
     tree_df = _calc_tree_cbh(tree_df)
@@ -2023,7 +1899,6 @@ def process_trees(in_folder: str,
     keep_columns.extend(add_columns)
     df, add_columns = _calc_stand_attributes(df, tree_df, stand_summary_params)
     keep_columns.extend(add_columns)
-    keep_columns.extend(_TREE_DENSITY_QA_COLUMNS)
 
     # ### SAVE DATASETS TO OUTPUT FOLDER
     os.makedirs(out_folder, exist_ok=True)
@@ -2037,16 +1912,8 @@ def process_trees(in_folder: str,
     helper.export_csv(export_df, os.path.join(out_folder, 'survey_0.csv'))
     helper.export_csv(export_sapling_df, os.path.join(out_folder, 'sapling_1.csv'))
     helper.export_csv(export_tree_df, os.path.join(out_folder, 'tree_plot_2.csv'))
-    issues_path = os.path.join(out_folder, 'tree_processing_issues.csv')
-    helper.export_csv(issues_df, issues_path)
 
-    partial_plots = export_df.loc[~export_df['tree_density_complete'].fillna(False)]
-    if not partial_plots.empty:
-        print(f'\tWARNING: Tree-density results are partial for {len(partial_plots)} plot(s).')
-        for _, plot in partial_plots.iterrows():
-            plot_label = plot.get('unique_id', plot.get('GlobalID', 'unknown plot'))
-            print(f'\t  {plot_label}: {plot.get("tree_density_issues", "unknown issue")}')
-        print(f'\tSee {issues_path} for details.')
+    _print_tree_density_summary(partial_log)
 
     df = export_df
 

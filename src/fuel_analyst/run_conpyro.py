@@ -11,6 +11,7 @@ from numpy import array, column_stack, full, nan
 import pandas as pd
 from typing import Optional
 
+from .components import error_handling
 from .components import helper
 from conpyro import conpyro
 import flame_components as fc
@@ -596,6 +597,7 @@ def _model_fofem_mortality(
     return df
 
 
+@error_handling.run_guard
 def run_conpyro(
         out_dir: str,
         in_conpyro_csv_path: str,
@@ -604,7 +606,7 @@ def run_conpyro(
         fire_modelling_params: Optional[dict] = None
 ) -> None:
     """
-    Run ConPyro with the test datasets.
+    Run configured ConPyro, FOFEM mortality, and FOFEM emissions workflows.
 
     :param out_dir: Directory to save output CSV files.
     :param in_conpyro_csv_path: Path to the input CSV file containing required columns for ConPyro.
@@ -616,11 +618,10 @@ def run_conpyro(
         FOFEM fuel consumption data for emissions modelling.
     :param fire_modelling_params: Optional dictionary containing fire modelling parameters for ConPyro,
         FOFEM mortality, and FOFEM emissions modelling.
-    :return: None
+    :return: None. Writes selected model outputs and run_conpyro_errors.csv.
     """
     # Ensure the output directory exists
     os.makedirs(out_dir, exist_ok=True)
-
     # Set default fire modelling parameters if not provided
     if fire_modelling_params is None:
         fire_modelling_params = default_fire_modelling_dict
@@ -742,6 +743,10 @@ def run_conpyro(
         df = df.sort_values(by=[conpyro_params['plot_id_col_name'], 'wx_date']).reset_index(drop=True)
         # Save final DataFrame to CSV
         helper.export_csv(df, out_csv_path)
+
+    error_report_path = os.path.join(out_dir, 'run_conpyro_errors.csv')
+    print(f'\nSaving the Error Report to: {error_report_path}')
+    error_handling.write_report(error_report_path, plot_df=df)
 
     return
 

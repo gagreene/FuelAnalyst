@@ -6,6 +6,7 @@ Created on Fri Apr 17, 2026
 """
 __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
+import logging
 import os
 import numpy as np
 import pandas as pd
@@ -14,6 +15,8 @@ from typing import Union
 from . import helper
 from . import fwis_moisture_content as mc
 from pyfofem import pyfofem as fofem
+
+logger = logging.getLogger(__name__)
 
 
 default_season_start_dict = {
@@ -194,7 +197,7 @@ def _prepare_soil_family(df: pd.DataFrame) -> Union[np.ndarray, None]:
     :return: Soil family object ndarray.
     """
     if 'SoilFamily' not in df.columns:
-        print('\tSoilFamily column is missing; disabling soil heating for this emissions run.')
+        logger.warning('SoilFamily column is missing; disabling soil heating for this emissions run.')
         return None
 
     soil = df['SoilFamily'].astype(str).str.strip()
@@ -301,6 +304,10 @@ def process_emissions(
         units='Imperial',
         soil_heating=model_soil_heating,
         soil_family=_prepare_soil_family(model_df) if model_soil_heating else None,
+        # num_workers fans this call out inside pyfofem. logging calls made from code that
+        # actually runs in a ProcessPoolExecutor/multiprocessing worker never reach
+        # error_handling's collecting handler in the parent process, so any future code moved
+        # into a worker must not rely on logger.warning() showing up in the error report.
         num_workers=max(1, int(num_workers)),
         show_progress=True,
     )

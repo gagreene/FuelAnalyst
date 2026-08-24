@@ -6,6 +6,7 @@ Created on Tues Feb 11, 13:25:00 2026
 """
 __author__ = ['Florencia Tiribelli, ftiribelli@forsite.ca']
 
+import logging
 import os
 import numpy as np
 import rasterio as rio
@@ -16,7 +17,9 @@ from pyproj import CRS
 from datetime import datetime
 from typing import Optional
 from functools import reduce
-from .components import helper
+from .components import error_handling, helper
+
+logger = logging.getLogger(__name__)
 
 
 # Define constants for ecodivision shapefile and BCWS fire season dates by ecodivision
@@ -158,6 +161,12 @@ def _extract_weather(
             if not missing_dates.empty:
                 print(f'Warning: {len(missing_dates)} plots have missing fire season dates due to missing or '
                       f'unrecognized ecodivision. These plots will be dropped from the analysis.')
+                for missing_id in missing_dates[plot_id_col_name]:
+                    logger.warning(
+                        'Plot has missing fire season dates due to missing or unrecognized '
+                        'ecodivision and will be dropped from the analysis.',
+                        extra={'unique_id': missing_id, 'issue_code': 'missing_fire_season_dates'},
+                    )
                 plots = plots.dropna(subset=['start_month_day', 'end_month_day'])
         else:
             plots['start_month_day'] = start_month_day
@@ -401,6 +410,7 @@ def _select_wx_directories(
     return {v: dir_map[v] for v in wx_var_list}
 
 
+@error_handling.run_guard
 def extract_weather_data(
         wx_data_dir: str,
         out_dir: str,
@@ -424,10 +434,10 @@ def extract_weather_data(
     :param wx_data_dir: Path to parent directory containing NRCAN gridded weather data directories for each variable
     :param out_dir: Directory to save output files
     :param out_file_name: Base name for output files (without extension)
-    :param plot_pts_path: Path to the plot locations CSV file (optional, if not using shapefile)
-    :param plot_id_col_name: Name of the unique ID column in the plots file (default "unique_id")
-    :param lat_col_name: Name of the latitude column in the CSV (required if using CSV)
-    :param lon_col_name: Name of the longitude column in the CSV (required if using CSV)
+    :param plot_pts_path: Path to a CSV or spatial file containing plot locations
+    :param plot_id_col_name: Name of the unique ID column in the plots file
+    :param lat_col_name: Name of the latitude column used when loading a CSV
+    :param lon_col_name: Name of the longitude column used when loading a CSV
     :param wx_var_list: List of weather variables to sample (e.g. ["fwi", "isi"])
     :param start_year: First year to include (inclusive)
     :param end_year: Last year to include (inclusive)
@@ -438,11 +448,10 @@ def extract_weather_data(
     :param calculate_percentiles: Whether to calculate percentiles for specified variables (default False)
     :param percentile_var_list: List of variables to calculate percentiles for
         (required if calculate_percentiles is True)
-    :return: None
+    :return: None. Writes CSV, shapefile, and `<out_file_name>_errors.csv` outputs.
     """
     # Create output directory if it doesn't exist
     os.makedirs(out_dir, exist_ok=True)
-
     # Get weather variable directories
     wx_directories = _get_wx_directories(wx_data_dir)
 
@@ -455,6 +464,11 @@ def extract_weather_data(
         missing_coords = plots[plots[lat_col_name].isna() | plots[lon_col_name].isna()]
         print(f'Warning: {len(missing_coords)} plots have missing lat or long data and will be skipped:')
         print(missing_coords[plot_id_col_name].to_list())
+        for missing_id in missing_coords[plot_id_col_name]:
+            logger.warning(
+                'Plot has missing lat or long data and will be skipped.',
+                extra={'unique_id': missing_id, 'issue_code': 'missing_lat_long'},
+            )
         plots = plots_sub
 
     # Sample weather data for all variables and merge results
@@ -495,6 +509,10 @@ def extract_weather_data(
     )
     out_shp  = os.path.join(out_dir, f'{out_file_name}.shp')
     gdf_all.to_file(out_shp, driver='ESRI Shapefile')
+
+    error_report_path = os.path.join(out_dir, f'{out_file_name}_errors.csv')
+    print(f'Saving the Error Report to: {error_report_path}')
+    error_handling.write_report(error_report_path, plot_df=plots)
 
     return
 

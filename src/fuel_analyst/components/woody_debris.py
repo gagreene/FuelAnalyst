@@ -6,6 +6,7 @@ Created on Tue May 29, 8:30:00 2025
 """
 __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
+import logging
 import os
 import pandas as pd
 import numpy as np
@@ -14,6 +15,8 @@ from scipy.stats import linregress
 import operator
 
 from . import helper
+
+logger = logging.getLogger(__name__)
 
 bulk_density_map = [
     # (output bd column, tree params column, duff/litter depth columm, output biomass column)
@@ -1027,7 +1030,17 @@ def _merge_spp_comp(
             
             # Filter to only rows with valid data before processing
             valid_rows = plot_df[valid_data].copy()
-            
+
+            for _, missing_row in plot_df.loc[~valid_data].iterrows():
+                logger.info(
+                    'No tree-derived species composition for this plot; falling back to '
+                    'another spp_comp_type source.',
+                    extra={
+                        'unique_id': missing_row.get('unique_id'),
+                        'issue_code': 'stand_spp_comp_woody_missing_for_plot',
+                    },
+                )
+
             # Split the string into tuples and create a DataFrame
             plot_spp_comp = (
                 valid_rows['stand_spp_comp_woody']
@@ -1050,10 +1063,12 @@ def _merge_spp_comp(
             # Concatenate with existing spp_comp_df
             spp_comp_df = _concat_spp_comp_frames(spp_comp_df, plot_spp_comp)
         else:
-            print('\t\tWarning: stand_spp_comp_woody column exists but contains no valid data')
+            logger.warning(
+                'stand_spp_comp_woody column exists but contains no valid data for any plot.'
+            )
             print('\t\tThis is normal if trees were not processed or plots have no trees')
     else:
-        print('\t\tNote: stand_spp_comp_woody column not found (trees may not have been processed)')
+        logger.warning('stand_spp_comp_woody column not found (trees may not have been processed).')
 
     # ### PROCESS TRANSECT SPECIES COMPOSITION DATA
     # All (plot, species) pairs in woody_merged_df with their summed percent
@@ -1083,9 +1098,9 @@ def _resolve_spp_comp_type(df: pd.DataFrame, spp_comp_df: pd.DataFrame) -> tuple
     :param df: DataFrame containing plot-level data with 'unique_id' and declared 'spp_comp_type'.
     :param spp_comp_df: DataFrame containing merged species composition data with 'unique_id'
         and 'spp_comp_type'.
-    :return: Updated df with 'spp_comp_type' overwritten to the resolved source, a new
-        'spp_comp_type_declared' column preserving the original value, and a new
-        'spp_comp_type_note' column recording any fallback, plus a list of columns to keep.
+    :return: Updated df with 'spp_comp_type' overwritten to the resolved source and a new
+        'spp_comp_type_declared' column preserving the original value, plus a list of columns
+        to keep.
     """
     print('\tResolving species composition source availability')
 
@@ -1098,20 +1113,21 @@ def _resolve_spp_comp_type(df: pd.DataFrame, spp_comp_df: pd.DataFrame) -> tuple
     def _resolve(row):
         declared = row['spp_comp_type']
         if row['unique_id'] in available.get(declared, set()):
-            return declared, ''
+            return declared
         for fallback in priority:
             if fallback != declared and row['unique_id'] in available.get(fallback, set()):
-                note = (f'[Fuel Analyst Note] Declared spp_comp_type \'{declared}\' had no matching '
-                        f'species composition data; used \'{fallback}\' instead; ')
-                return fallback, note
-        return declared, ''
+                logger.info(
+                    f"Declared spp_comp_type '{declared}' had no matching species composition "
+                    f"data; used '{fallback}' instead.",
+                    extra={'unique_id': row['unique_id'], 'issue_code': 'spp_comp_type_fallback'},
+                )
+                return fallback
+        return declared
 
-    resolved = df.apply(_resolve, axis=1, result_type='expand')
     df['spp_comp_type_declared'] = df['spp_comp_type']
-    df['spp_comp_type'] = resolved[0]
-    df['spp_comp_type_note'] = resolved[1]
+    df['spp_comp_type'] = df.apply(_resolve, axis=1)
 
-    return df, ['spp_comp_type_declared', 'spp_comp_type_note']
+    return df, ['spp_comp_type_declared']
 
 
 def process_woody_debris(

@@ -1,4 +1,5 @@
 import importlib
+import logging
 import sys
 import types
 
@@ -52,3 +53,42 @@ def test_mortality_basal_area_and_severity_boundaries():
     result = mortality._calc_severity_class(mortality._calc_plot_ba_killed(plots, 'id', trees, 'tree_id'))
     assert result['prop_dead_ba_crnsch'].tolist() == pytest.approx([0.2, 0.5, 0.7])
     assert result['fire_severity'].tolist() == ['low', 'mod', 'high']
+
+
+def test_dropna_logs_per_plot_warning_for_rows_with_missing_required_columns(caplog):
+    plot_fire_df = pd.DataFrame({
+        'unique_id': ['A', 'B'],
+        'instand_ws_mps': [1.0, np.nan],
+        'canopy_cover': [50.0, 50.0],
+        'ht_ovrstry_live': [20.0, 20.0],
+        'fsg': [1.0, 1.0], 'ws': [1.0, 1.0], 'hfi': [1.0, 1.0],
+        'fire_type': ['surface', 'surface'], 'temp': [20.0, 20.0],
+    })
+    required_cols = [
+        'instand_ws_mps', 'canopy_cover', 'ht_ovrstry_live', 'fsg', 'ws', 'hfi', 'fire_type', 'temp',
+    ]
+    filtered_required_cols = [c for c in required_cols if c in plot_fire_df.columns]
+
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.components.fofem_mortality'):
+        mortality._log_and_drop_incomplete_rows(plot_fire_df, filtered_required_cols, 'unique_id')
+
+    matching = [r for r in caplog.records if getattr(r, 'unique_id', None) == 'B']
+    assert len(matching) == 1
+    assert 'instand_ws_mps' in matching[0].message
+
+
+def test_no_required_columns_present_logs_general_error(caplog):
+    plot_fire_df = pd.DataFrame({'unique_id': ['A'], 'other_col': [1.0]})
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.components.fofem_mortality'):
+        mortality._log_and_drop_incomplete_rows(plot_fire_df, [], 'unique_id')
+    assert len(caplog.records) == 1
+    assert not hasattr(caplog.records[0], 'unique_id') or caplog.records[0].unique_id is None
+
+
+def test_prepare_soil_family_logs_general_error_when_column_missing(caplog):
+    df = pd.DataFrame({'other_col': [1]})
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.components.fofem_emissions'):
+        result = emissions._prepare_soil_family(df)
+    assert result is None
+    assert len(caplog.records) == 1
+    assert 'SoilFamily' in caplog.records[0].message

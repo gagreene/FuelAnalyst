@@ -10,6 +10,7 @@ import os
 import pandas as pd
 from typing import Optional
 
+from .components import error_handling
 from .components import helper
 from .components import plot_attributes as pa
 from .components import plants_regen as pr
@@ -447,6 +448,22 @@ default_fofem_consume_dict = {
 }
 
 
+def _find_id_mismatches(plot_ids, form_ids) -> tuple[list, list]:
+    """Return ordered, deduplicated IDs missing from either side of a form merge."""
+    plot_ids = list(plot_ids)
+    form_ids = list(form_ids)
+    plot_id_set = set(plot_ids)
+    form_id_set = set(form_ids)
+    missing_from_form = list(dict.fromkeys(
+        unique_id for unique_id in plot_ids if unique_id not in form_id_set
+    ))
+    extra_in_form = list(dict.fromkeys(
+        unique_id for unique_id in form_ids if unique_id not in plot_id_set
+    ))
+    return missing_from_form, extra_in_form
+
+
+@error_handling.run_guard
 def fuel_analyst(
         in_dir: str,
         out_dir: str,
@@ -460,7 +477,7 @@ def fuel_analyst(
         gen_fofem_consume_df: bool = False
 ) -> None:
     """
-    Main Fuel Analyst function to process the fuel attributes and save the results.
+    Process Survey123 fuel attributes and write the selected result tables.
 
     :param in_dir: Path to the input folder containing the survey data.
     :param out_dir: Path to the output folder where results will be saved.
@@ -472,7 +489,9 @@ def fuel_analyst(
     :param gen_conpyro_df: Boolean indicating whether to generate the ConPyro DataFrame.
     :param gen_fofem_tree_df: Boolean indicating whether to generate the FOFEM tree DataFrame.
     :param gen_fofem_consume_df: Boolean indicating whether to generate the FOFEM consumption DataFrame.
-    :return: None
+    :return: None. Every completed run writes master_fuel_df.csv and
+        fuelanalyst_errors.csv; model-preparation outputs depend on the generation
+        flags.
     """
     # Create the list of forms to process
     form_select_list = ['plants', 'trees', 'cover', 'woody']
@@ -560,9 +579,12 @@ def fuel_analyst(
         # Check if the input path exists
         if not os.path.exists(in_path):
             if mask.any():
-                print(f'Warning: Input folder for {form_dict[form]} is missing but '
-                      f'{mask.sum()} plot(s) selected this form. '
-                      f'These plots will have no {form_dict[form]} data: {id_list}')
+                for missing_id in id_list:
+                    error_handling.get_logger(form).warning(
+                        f'Input folder for {form_dict[form]} is missing but this plot '
+                        f'selected this form; it will have no {form_dict[form]} data.',
+                        extra={'unique_id': missing_id, 'issue_code': 'form_folder_missing'},
+                    )
             continue
 
         # Only process the form if there are IDs to process
@@ -584,15 +606,22 @@ def fuel_analyst(
             # Add the new columns to the keep_columns list
             keep_columns.extend(add_columns)
 
-            # Verify that all IDs in id_list are present in the form_df
-            if not all(id in form_df['unique_id'].values for id in id_list):
-                missing_ids = [id for id in id_list if id not in form_df['unique_id'].values]
+            # Verify that all IDs in id_list are present in the form_df, and vice versa
+            missing_from_form, extra_in_form = _find_id_mismatches(
+                id_list, form_df['unique_id'].values
+            )
+            if missing_from_form or extra_in_form:
                 print(f'\tWarning:')
-                print(f'\t\tThe following IDs are in the Plot Attributes dataset, '
-                      f'but not in {form_dict[form]}: {missing_ids}')
-                missing_ids = [id for id in form_df['unique_id'].values if id not in id_list]
-                print(f'\t\tThe following IDs are in the {form_dict[form]} dataset, '
-                      f'but not in Plot Attributes: {missing_ids}')
+                for missing_id in missing_from_form:
+                    error_handling.get_logger(form).warning(
+                        f'Plot is in the Plot Attributes dataset but not in {form_dict[form]}.',
+                        extra={'unique_id': missing_id, 'issue_code': 'id_missing_from_form'},
+                    )
+                for extra_id in extra_in_form:
+                    error_handling.get_logger(form).warning(
+                        f'Plot is in the {form_dict[form]} dataset but not in Plot Attributes.',
+                        extra={'unique_id': extra_id, 'issue_code': 'id_extra_in_form'},
+                    )
             else:
                 print(f'\tAll IDs from the Plot Attributes dataset are present in the {form} dataset. Merging data.')
 
@@ -624,6 +653,10 @@ def fuel_analyst(
         print(f'\n\nSaving the Master Fuel DataFrame to: {master_df_path}')
         plot_df = plot_df[keep_columns]  # Keep only the specified columns
         helper.export_csv(plot_df, master_df_path)
+
+    error_report_path = os.path.join(out_dir, 'fuelanalyst_errors.csv')
+    print(f'Saving the Error Report to: {error_report_path}')
+    error_handling.write_report(error_report_path, plot_df=plot_df)
 
     # Save the Master Tree DataFrame to the output folder if it exists
     if master_tree_df is not None:

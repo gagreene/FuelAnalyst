@@ -302,11 +302,12 @@ equation comparisons proportionally with height.
 The workflow is run from the repository root with:
 
 ```powershell
+python -m pip install -e ".[photoload]"
 python models/photoload/run_pipeline.py
 ```
 
 The default source is the bundled report and the default output is the ignored
-`../.work` directory. Both the PDF and output path may be
+`models/photoload/.work` directory. Both the PDF and output path may be
 overridden explicitly. The stored report has SHA-256 digest
 `14eaeb69784e3f26dee23a67686fad9c86e50099aaca60bcc079f687d1c313c2`.
 

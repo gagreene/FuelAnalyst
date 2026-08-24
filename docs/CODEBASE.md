@@ -1,215 +1,270 @@
-# FuelAnalyst Codebase Reference
+# FuelAnalyst codebase reference
 
-## What This Project Does
+This document describes the current package architecture and its important runtime
+contracts. For installation and user workflows, start with the
+[main README](../README.md) or [quick start](../QUICK_START.md).
 
-FuelAnalyst processes raw **Survey123 field data** from forest fuel inventory plots into structured outputs for fire behaviour modelling. Given a directory of Survey123 CSV exports, it produces:
+## Purpose
 
-- Plot-level stand structure metrics (density, basal area, height, composition)
-- Tree-level biomass via Canadian National Biomass Equations (CNBE)
-- Crown fuels (CFL, CBD) and Fuel Strata Gap (FSG)
-- Woody debris fuel loads (Brown's planar intercept method)
-- Canopy cover and vegetation fuel loads
-- Fire behaviour attributes per tree (flame length, fireline intensity)
-- Formatted inputs for **ConPyro** (crown fire model) and **FOFEM** (fire effects/mortality)
-- BC FBP fuel type classifications (BCWFT2018)
-- NRCAN weather data extraction (spatially-aware, ecodivision-based)
+FuelAnalyst converts related ArcGIS Survey123 forest-fuel inventories into
+analysis-ready plot, tree, fuel-load, and model-preparation tables. It also
+provides workflows for BC FBP fuel typing, NRCAN weather extraction and merging,
+and optional ConPyro and FOFEM execution.
 
----
+The core pipeline calculates:
 
-## Repository Layout
+- stable plot identities and plot attributes;
+- plant, regeneration, canopy-cover, tree, sapling, forest-floor, and woody-fuel
+  attributes;
+- tree density, basal area, biomass, crown fuels, fuel strata gap, and fire
+  attributes;
+- ConPyro, FBP, FOFEM mortality, and FOFEM consumption preparation tables; and
+- one centralized data-quality report for each completed pipeline run.
 
-```
+## Package and repository layout
+
+```text
 FuelAnalyst/
-├── src/fuel_analyst/           # Main package
-│   ├── __init__.py             # Public API (lazy imports)
-│   ├── fuel_analyst.py         # Core orchestrator + all default config dicts
-│   ├── extract_nrcan_wx.py     # Weather extraction from NRCAN rasters
-│   ├── fbp_fuel_type.py        # FBP fuel type classification
-│   ├── merge_wx_data.py        # Merge weather data into plot DataFrame
-│   ├── run_conpyro.py          # Run ConPyro fire model (parallel)
-│   ├── components/             # Processing sub-modules
-│   │   ├── helper.py
-│   │   ├── plot_attributes.py
-│   │   ├── plants_regen.py
-│   │   ├── trees.py
-│   │   ├── canopy_cover.py
-│   │   ├── woody_debris.py
-│   │   ├── conpyro_attributes.py
-│   │   ├── fofem_attributes.py
-│   │   ├── fofem_emissions.py
-│   │   ├── fofem_mortality.py
-│   │   ├── fofem_gui_emissions.py
-│   │   └── fwis_moisture_content.py
-│   └── supporting_data/
-│       ├── tree_parameters.csv                          # Species allometric params (CNBE, Temesgen, FOFEM, bark)
-│       ├── plant_photoload.csv                          # Plant photoload lookup
-│       └── WHSE_TERRESTRIAL_ECOLOGY_ERC_ECODIVISIONS_SP.json  # BC ecodivisions (for wx extraction)
-├── dependencies/               # Git submodules
-│   ├── conpyro/                # Crown fire behaviour model
-│   ├── pyfofem/                # Python FOFEM wrapper
-│   ├── flame_components/       # Flame geometry calculations
-│   └── BC_CFFBPS_FuelTyping_Tool/  # BC fuel type algorithm (bcwft2018)
-├── examples/
-│   ├── data/Survey123_Data/    # Example inputs (numbered form folders)
-│   └── results/                # Example outputs
-├── development/                # Experimental/in-progress scripts
-└── docs/
-    └── reference/              # Field name reference xlsx
+|-- pyproject.toml                 Package metadata, dependencies, and pytest config
+|-- src/fuel_analyst/
+|   |-- __init__.py                Lazily loaded public API
+|   |-- fuel_analyst.py            Survey123 orchestrator and preparation defaults
+|   |-- extract_nrcan_wx.py        NRCAN raster extraction
+|   |-- fbp_fuel_type.py           BC FBP fuel typing
+|   |-- merge_wx_data.py           Plot/weather merge
+|   |-- run_conpyro.py             ConPyro and FOFEM orchestration
+|   |-- _vendor/                   Vendored BCWFT2018 implementation
+|   |-- components/
+|   |   |-- error_handling.py      Run-scoped logging and CSV reports
+|   |   |-- plot_attributes.py
+|   |   |-- plants_regen.py
+|   |   |-- trees.py
+|   |   |-- canopy_cover.py
+|   |   |-- woody_debris.py
+|   |   |-- conpyro_attributes.py
+|   |   |-- fofem_attributes.py
+|   |   |-- fofem_emissions.py
+|   |   |-- fofem_mortality.py
+|   |   |-- fofem_gui_emissions.py
+|   |   |-- fwis_moisture_content.py
+|   |   `-- helper.py
+|   `-- supporting_data/           Packaged CSV and ecodivision data
+|-- models/photoload/              Reproducible PhotoLoad model-development workflow
+|-- dependencies/                  Optional dependency checkouts/submodules
+|-- examples/                      Checked-in inputs and ignored generated outputs
+|-- tests/                         Unit, integration, regression, and test data
+`-- docs/                          Architecture, references, designs, and plans
 ```
 
----
+FuelAnalyst uses a standard `src` package layout and is installable with
+`python -m pip install -e .`. Optional dependency groups are declared in
+`pyproject.toml`: `conpyro`, `fofem`, `photoload`, `test`, `dev`, and `all`.
 
-## Key Files and Responsibilities
+## Public API
+
+`fuel_analyst.__init__` lazily exposes five callables:
+
+| Function | Responsibility |
+| --- | --- |
+| `fuel_analyst()` | Process Survey123 forms and write master/model-preparation tables |
+| `process_fbp_fuel_type()` | Assign BCWFT2018 fuel types to a ConPyro table |
+| `extract_weather_data()` | Extract NRCAN raster values for plot locations |
+| `merge_weather_data()` | Join plot-specific weather or apply shared weather scenarios |
+| `run_conpyro()` | Run configured ConPyro, FOFEM mortality, and emissions workflows |
+
+The `if __name__ == '__main__'` blocks are repository examples, not installed
+console-script entry points.
+
+## Core modules
 
 ### `fuel_analyst.py`
-**The orchestrator.** Contains the main `fuel_analyst()` function and all five default configuration dicts (`default_stand_summary_dict`, `default_woody_debris_dict`, `default_conpyro_dict`, `default_fofem_mortality_dict`, `default_fofem_consume_dict`). Dispatches to each component, merges results into a single `plot_df`, and writes all output CSVs. Also the `__main__` entry point for script execution.
+
+The main orchestrator owns the default stand-summary, woody-debris, ConPyro,
+FOFEM-mortality, and FOFEM-consumption dictionaries. It processes Plot
+Attributes first, processes the four selected component forms, checks form IDs
+in both directions, left-merges component results, and writes the requested
+tables. Model-specific stand and woody settings are added to per-run copies of
+the defaults so one invocation does not pollute later runs.
 
 ### `components/trees.py`
-**The most complex module.** Processes three CSVs (`survey_0.csv`, `sapling_1.csv`, `tree_plot_2.csv`) through a 15-step calculation chain. Handles density expansion factors, decay-adjusted biomass via CNBE allometrics, height imputation via Temesgen Model 2, crown fuels, FSG, fire attributes, BA-weighted stand means, and stand composition. Returns `(plot_df, keep_columns, master_tree_df)`.
+
+Processes `survey_0.csv`, `sapling_1.csv`, and `tree_plot_2.csv`. It calculates
+density expansion factors, CNBE biomass, modeled heights, crown fuels, fuel
+strata gap, tree fire attributes, basal-area-weighted stand summaries, and
+species composition. It returns the processed plot table, its output-column
+list, and `master_tree_df`.
 
 ### `components/woody_debris.py`
-Processes Brown's planar intercept transect data into biomass per diameter class. Supports three concurrent protocols: Canadian (7 classes), US (4 classes, FOFEM-compatible), and Modified (8 classes). Also calculates forest floor (duff/litter) bulk density and depth from species-specific parameters.
+
+Processes the Survey123 woody transects with configurable Canadian, U.S.,
+modified, ConPyro, and FOFEM diameter schemes. It also calculates forest-floor
+duff/litter attributes and logs species-composition fallbacks through the
+central error handler.
 
 ### `components/conpyro_attributes.py`
-Assembles the ConPyro input DataFrame from the merged `plot_df`. Uses fixed output column names (all prefixed `conpyro_`) required by the ConPyro model. Calculates stand type (conifer/broadleaf/mixed), vegetation fuel loads, and selects canopy cover attribute.
+
+Builds `conpyro_df` and `fbp_prep_df` from the merged plot data. Source columns
+may use `conpyro_` names internally, while the emitted ConPyro table uses the
+schema expected by the downstream model, such as `stand_type`, `stand_density`,
+and canopy/fuel attributes.
 
 ### `components/fofem_attributes.py`
-Produces two formatted DataFrames:
-- `fofem_tree_df` — tree mortality inputs (US units: acres, inches, feet; FOFEM species codes)
-- `fofem_consumption_df` — consumption/emissions inputs (tons/acre; FOFEM cover groups, moisture regimes)
+
+Builds `fofem_tree_df` for mortality and `fofem_consume_df` for consumption and
+emissions. These schemas use FOFEM-required U.S. units rather than FuelAnalyst's
+primarily metric internal units.
+
+### `components/error_handling.py`
+
+Provides `get_logger()`, `start_run()`, `write_report()`, and the `run_guard`
+decorator. The three pipeline entry points—`fuel_analyst()`,
+`extract_weather_data()`, and `run_conpyro()`—start a run-scoped collector and
+guarantee cleanup if execution raises. Completed runs write a wide CSV with one
+row per affected plot, dynamic reporting-source columns, and a reserved
+`General Error` row for records without a usable plot ID. Known sources use
+stable display names such as `Trees`, `FOFEM Mortality`, and `NRCAN Weather`;
+unknown sources use their full logger name so similarly named modules cannot
+collide in one report column.
+
+The collector respects logging already configured by an embedding application.
+It installs a fallback console handler only when the package logger and its
+propagation ancestors have no non-null output handler; a lone `NullHandler`
+does not suppress fallback output.
 
 ### `extract_nrcan_wx.py`
-Authored by Florencia Tiribelli. Spatially extracts weather variables from NRCAN raster datasets using plot locations. BC-ecodivision-aware: uses the `WHSE_TERRESTRIAL_ECOLOGY_ERC_ECODIVISIONS_SP.json` to determine fire season date ranges per plot. Parallelised via `concurrent.futures`.
+
+Loads CSV or spatial plot locations, samples locally available NRCAN raster
+archives, optionally uses BC Wildfire Service ecodivision season dates, and can
+calculate per-plot percentiles. It writes `<out_file_name>.csv`, shapefile
+sidecars, and `<out_file_name>_errors.csv`.
 
 ### `run_conpyro.py`
-Calls the `conpyro` submodule per-plot in parallel (`ProcessPoolExecutor`, `cpu_count - 1` workers). Pre-processes in-stand wind speed using `flame_components.getMidFlameWS()` (Albini & Baughman 1979). Handles two FOFEM emissions backends: `pyfofem` (Python) or `fof_gui` (USFS GUI executable batch mode).
+
+Runs ConPyro per row with a configurable worker count, calculates flame
+components, and optionally runs FOFEM mortality and emissions using `pyfofem`
+or the Windows FOFEM GUI backend. A completed run writes
+`run_conpyro_errors.csv` in addition to its selected model outputs.
 
 ### `components/fwis_moisture_content.py`
-Pure functions converting FWI system codes (FFMC, DMC, DC, BUI, ISI, FWI) to moisture content percentages using Van Wagner (1987) equations. Stateless — no DataFrame handling.
+
+Contains stateless conversions from FWI-system codes to moisture-content
+percentages using the documented Van Wagner equations.
 
 ### `components/helper.py`
-Shared utilities: CSV I/O, `unique_id` generation, repo root discovery (walks up from any `__file__` until it finds `src/fuel_analyst/` + `requirements.txt`), alphanumeric list sorting.
 
----
+Contains CSV utilities, missing-column checks, alphanumeric sorting, repository
+example lookup, and `unique_id` generation. Repository example lookup is for
+the development `__main__` routines; normal installed API calls do not depend
+on the repository layout.
 
-## Data Flow
+## Data flow and outputs
 
 ```mermaid
 flowchart TD
-    subgraph INPUT["Input (Survey123 CSV exports)"]
-        P1["1_Plot_Attributes/survey_0.csv"]
-        P2["2_Plants_Regeneration/"]
-        P3["3_Trees/survey_0.csv\nsapling_1.csv\ntree_plot_2.csv"]
-        P4["4_Canopy_Cover/"]
-        P5["5_Woody_Debris/"]
-    end
+    P[Plot Attributes] --> M[Merged plot data]
+    PR[Plants and Regeneration] --> M
+    T[Trees and Saplings] --> M
+    C[Canopy Cover] --> M
+    W[Woody Debris] --> M
 
-    subgraph COMPONENTS["Component Processing"]
-        PA["plot_attributes\n→ plot_df + keep_cols"]
-        PR["plants_regen\n→ fuel loads, FCCS/FOFEM shrub attrs"]
-        TR["trees\n→ stand metrics, master_tree_df"]
-        CC["canopy_cover\n→ cc, cc_cnfr, cc_brdlf"]
-        WD["woody_debris\n→ biomass by size class (Can/US/Mod)"]
-    end
+    M --> MF[master_fuel_df.csv]
+    T --> MT[master_tree_df.csv]
+    M --> CP[conpyro_df.csv]
+    M --> FP[fbp_prep_df.csv]
+    M --> FT[fofem_tree_df.csv]
+    M --> FC[fofem_consume_df.csv]
+    M --> ER[fuelanalyst_errors.csv]
 
-    subgraph MERGE["Left-merge all forms → plot_df"]
-        MSTR["master plot_df\n(unique_id as key)"]
-    end
-
-    subgraph MODELPREP["Optional: Model Input Prep"]
-        CA["conpyro_attributes\n→ conpyro_df, fbp_prep_df"]
-        FA["fofem_attributes\n→ fofem_tree_df\n→ fofem_consume_df"]
-    end
-
-    subgraph OUTPUT["CSV Outputs (out_dir)"]
-        O1["master_fuel_df.csv"]
-        O2["master_tree_df.csv"]
-        O3["conpyro_df.csv"]
-        O4["fbp_prep_df.csv"]
-        O5["fofem_tree_df.csv"]
-        O6["fofem_consume_df.csv"]
-    end
-
-    subgraph DOWNSTREAM["Downstream (separate functions)"]
-        WX["extract_nrcan_wx\n(NRCAN rasters + ecodivisions)"]
-        FBP["fbp_fuel_type\n(BCWFT2018 algorithm)"]
-        MWX["merge_wx_data\n(attach wx to plots)"]
-        RC["run_conpyro\n(parallel ProcessPoolExecutor)"]
-    end
-
-    P1 --> PA
-    P2 --> PR
-    P3 --> TR
-    P4 --> CC
-    P5 --> WD
-
-    PA --> MSTR
-    PR --> MSTR
-    TR --> MSTR
-    CC --> MSTR
-    WD --> MSTR
-
-    MSTR --> CA
-    MSTR --> FA
-    TR -->|master_tree_df| FA
-
-    MSTR --> O1
-    TR -->|master_tree_df| O2
-    CA --> O3
-    CA --> O4
-    FA --> O5
-    FA --> O6
-
-    O3 --> RC
-    WX --> MWX
-    MWX --> RC
-    O3 --> FBP
+    CP --> FBP[process_fbp_fuel_type]
+    WX[extract_weather_data] --> MW[merge_weather_data]
+    FBP --> MW
+    MW --> RC[run_conpyro]
+    RC --> RER[run_conpyro_errors.csv]
 ```
 
----
+`master_fuel_df.csv` and `fuelanalyst_errors.csv` are written by every completed
+`fuel_analyst()` run. Other core outputs are conditional:
 
-## Implicit Assumptions and Gotchas
+- `master_tree_df.csv` requires processed tree data;
+- `conpyro_df.csv` and `fbp_prep_df.csv` require `gen_conpyro_df=True`;
+- `fofem_tree_df.csv` requires `gen_fofem_tree_df=True`; and
+- `fofem_consume_df.csv` requires `gen_fofem_consume_df=True`.
 
-### Input format
-- Survey123 exports **must** use the exact folder names `1_Plot_Attributes`, `2_Plants_Regeneration`, `3_Trees`, `4_Canopy_Cover`, `5_Woody_Debris`. These are hardcoded in `dir_dict` in `fuel_analyst.py`.
-- Inside `3_Trees/`, the three CSVs must be named exactly `survey_0.csv`, `sapling_1.csv`, `tree_plot_2.csv`. These filenames reflect Survey123's default repeat-form naming.
-- The `_date` field must be parseable as either `'%m/%d/%Y %H:%M'` or `'%m/%d/%Y %H:%M:%S %p'`. Any other format silently produces no `unique_id` and no error is raised.
+The centralized report omits plots with no collected issues. Form columns and
+identity columns are dynamic. Multiple messages in one cell are numbered and
+include their logging severity.
 
-### `unique_id` collisions
-`unique_id` = `treatment_area_treatment_unit_treatment_type_plot_id_year`. If the same plot is re-surveyed within the same year, only the **most recent** entry is kept (sort by `_date`, keep last). This deduplication happens per-form independently — there is no check that the same logic is applied consistently across all forms.
+## Runtime contracts and gotchas
 
-### Form processing is optional per-plot, not per-run
-The orchestrator checks `plot_df['form_select'].str.contains(form)` to decide which forms to process for each plot. But the form loop still runs even if no plots selected a given form, and each component will error if its input folder doesn't exist. The `if not os.path.exists(in_path): continue` guard prevents the crash but silently skips forms even when data may exist.
+### Input names and identities
 
-### `keep_columns` is additive and order-dependent
-Each component appends to `keep_columns`. If a component is skipped (folder missing), its columns are simply absent from `master_fuel_df.csv` with no warning. ConPyro and FOFEM columns are injected into `stand_summary_params` via `dict.update()` **before** tree processing — so the ConPyro/FOFEM stand attributes are calculated inside `trees.py` even though they're configured in `fuel_analyst.py`.
+- Parent/repeat folder and CSV names follow the exact Survey123 layout shown in
+  the README and checked-in example data.
+- `_date` accepts `MM/DD/YYYY HH:MM` or `MM/DD/YYYY HH:MM:SS AM/PM`.
+  Unparseable dates raise `ValueError` with representative bad values.
+- `unique_id` is
+  `treatment_area_treatment_unit_treatment_type_plot_id_year`.
+- Within each parent form, duplicate annual identities retain the record with
+  the latest parsed timestamp. Parent forms are deduplicated independently.
+- The orchestrator detects IDs missing from either side of a form merge. Its
+  set-backed check is linear in the combined input size, preserves first-seen
+  order, and logs each repeated ID once.
 
-### ConPyro requires all four forms
-If `gen_conpyro_df=True`, the code verifies all four form folders exist and raises `FileNotFoundError` if any are missing. This is the only hard failure in the pipeline.
+### Optional forms and model preparation
 
-### `sys.path` injection
-Every top-level module (and `fuel_analyst.py`) injects `../../` into `sys.path` at import time to enable `from src.fuel_analyst...` absolute imports. This means the package is **not installable** via pip in its current state — it assumes execution from the repo root or that the path injection succeeds.
+Missing component folders are skipped. If any plot selected the missing form,
+FuelAnalyst logs a warning for each affected plot; a missing unselected form is
+silent. `gen_conpyro_df=True` is stricter and raises `FileNotFoundError` unless
+all four component-form folders are present.
 
-### Basal-area weighting, not simple means
-Height, CBH, DCBH, FSG, crown depth, flame length, and fire intensity are **basal-area weighted means**, not arithmetic means. Values are stored as `tree_{att}_wtd = value × BA/ha`, then the stand mean is recovered by dividing by total BA/ha. Calling these "means" without understanding the weighting will give wrong results if you try to replicate calculations manually.
+`keep_columns` remains additive: skipped or unselected components do not add
+their result columns to `master_fuel_df.csv`.
 
-### `cbd` is a special case throughout
-CBD is computed from CFL / crown depth — it has no simple `_ha` column. Every place that handles other attributes via `metrics` has a parallel `att != 'cbd'` branch that recalculates it from `cfl_cnbe_ha` and `tree_crwn_dpth`. If you add CBD handling anywhere new, check both branches.
+### Tree calculations
 
-### Decay class asymmetry
-Conifer decay classes go 1–9; broadleaf go 1–6. The threshold for "use modeled height" is **≥6 for conifers, ≥5 for broadleaves**. This appears in three separate places (`_calc_tree_missing_heights`, `_calc_tree_biomass`, the mask in `_calc_tree_fofem_attributes`). They must stay in sync.
+- Many height, crown, flame, and fire-intensity means are basal-area weighted,
+  not arithmetic means.
+- CBD is derived from crown fuel load and crown depth and therefore follows a
+  separate aggregation path from attributes with direct per-hectare columns.
+- The conifer and broadleaf dead-decay thresholds are 6 and 5 respectively and
+  are centralized as module constants used by height and biomass logic.
+- Dead sapling CBH is missing by design; live-only crown/FSG aggregations exclude
+  those records.
+- Survey value `tree_bark_char_high == 444` means full-height char. The code
+  replaces it with tree height before deriving flame length and crown-fire
+  intensity, so `444` is not treated as a physical height.
 
-### FOFEM outputs are in US units
-`fofem_tree_df` uses acres (density ÷ 2.47105), inches (DBH ÷ 2.54), and feet (height ÷ 3.28084). `fofem_consumption_df` uses tons/acre (× 4.46089561). All other internal calculations use SI. The conversion happens only at the point of building FOFEM DataFrames.
+### Units
 
-### Sapling CBH for dead saplings
-Dead saplings merged from `sapling_df` into `tree_df` have `tree_cbh = np.nan` (line ~1378 in `trees.py`). Live saplings carry `sapling_live_cbh`. If CBH-dependent calculations (FSG, crown depth) are run on saplings, dead sapling results will always be NaN.
+FuelAnalyst calculations are primarily SI. FOFEM preparation is the major
+exception: tree density is converted from per hectare to per acre, DBH and duff
+depth from centimetres to inches, height from metres to feet (`× 3.28084`), and
+fuel load from kilograms per square metre to tons per acre.
 
-### Bark char height sentinel value
-`tree_bark_char_high == 444` is a sentinel meaning "full-height char" — triggers the Butler crown fire intensity model instead of the surface fire model. This is not documented anywhere in code comments other than the single inline comment. Any post-processing of fire intensity columns needs to be aware of this.
+### Weather and downstream models
 
-### `run_conpyro.py` expects pre-merged weather
-`run_conpyro` requires weather columns in the input DataFrame. These come from `extract_nrcan_wx` → `merge_wx_data`. The pipeline for `run_conpyro` is therefore: `fuel_analyst` → `extract_nrcan_wx` → `merge_wx_data` → `run_conpyro`. There is no enforced ordering — if weather is missing, ConPyro will fail at runtime with column-not-found errors.
+`run_conpyro()` expects weather to have been supplied or merged already. It
+validates the always-required `ws`, `wd`, `ffmc`, `dmc`, and `bui` columns,
+requires `temp` and `rh` for CFIS (`cfo_model == 10`), and validates fields whose
+configuration value is `"use_csv"`. Missing requirements raise a descriptive
+`ValueError` before model execution.
 
-### Two authors, different conventions
-`extract_nrcan_wx.py` (Florencia Tiribelli) uses `rasterio`, `geopandas`, and `concurrent.futures` with a slightly different style (more functional, less class-based) than the rest of the codebase. The `BCWS_FIRE_SEASON_DICT` uses `[start_MMDD, end_MMDD, abbreviation]` tuples as values — this structure is unique to that module.
+The default fire-model configuration enables ConPyro, FOFEM mortality, and
+pyFOFEM emissions. Consequently, the default call also requires tree and FOFEM
+consumption input paths plus the `conpyro` and `fofem` optional dependencies.
+
+### Run-scoped reporting
+
+The run guard restores FuelAnalyst logger handlers and the previous logging
+level on both success and failure. An exception raised before `write_report()`
+means no completed-run error CSV is produced, but it does not leave a collector
+or fallback handler attached for the next invocation.
+
+## Tests and historical documents
+
+The active suite is split across `tests/unit`, `tests/integration`, and
+`tests/regression`; see [the test guide](../tests/README.md). Files under
+`docs/superpowers/plans`, `docs/superpowers/specs`, and `development` document
+the intent and sequence of earlier changes. Treat embedded code snippets and
+planned filenames in those historical records as snapshots; this file, the
+README, tests, and production code define the current behavior.

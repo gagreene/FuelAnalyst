@@ -52,3 +52,89 @@ def test_flame_residence_time_and_depth_use_fuelanalyst_units():
 def test_flame_helpers_reject_missing_required_columns(function):
     with pytest.raises(ValueError, match='Required columns'):
         function(pd.DataFrame({'wrong': [1]}))
+
+
+def test_run_conpyro_writes_error_report_with_fofem_mortality_warning(tmp_path, monkeypatch):
+    conpyro_csv_path = tmp_path / 'conpyro_results.csv'
+    pd.DataFrame({'unique_id': ['A'], 'wx_date': [20250101]}).to_csv(conpyro_csv_path, index=False)
+
+    def fake_model_fofem_mortality(df, fire_csv_path, in_tree_csv_path, out_dir,
+                                    fofem_mortality_params, conpyro_params):
+        from fuel_analyst.components import error_handling
+        error_handling.get_logger('trees').warning(
+            'Plot dropped from FOFEM mortality processing; missing required column(s): ws.',
+            extra={'unique_id': 'A', 'issue_code': 'fofem_mortality_missing_required_column'},
+        )
+        return df
+
+    monkeypatch.setattr(module, '_model_fofem_mortality', fake_model_fofem_mortality)
+
+    params = {
+        'num_workers': 1,
+        'conpyro': {
+            'run_model': False, 'plot_id_col_name': 'unique_id',
+            'input_params': {}, 'output_params': {'out_request': [], 'flame_comp_out_list': []},
+        },
+        'fofem_mortality': {
+            'run_model': True, 'plot_id_col_name': 'unique_id', 'fofem_tree_id_col_name': 'unique_id',
+        },
+        'fofem_emissions': {'run_model': False},
+    }
+
+    module.run_conpyro(
+        out_dir=str(tmp_path),
+        in_conpyro_csv_path=str(conpyro_csv_path),
+        in_tree_csv_path='unused_tree.csv',
+        fire_modelling_params=params,
+    )
+
+    error_report_path = tmp_path / 'run_conpyro_errors.csv'
+    assert error_report_path.is_file()
+    report = pd.read_csv(error_report_path, keep_default_na=False)
+    assert (report['unique_id'] == 'A').any()
+
+
+def test_run_conpyro_writes_error_report_with_multiple_weather_dates(tmp_path, monkeypatch):
+    """Regression: run_conpyro() passes its own multi-date DataFrame (one row per plot
+    per wx_date) to write_report(), which used to raise
+    'DataFrame index must be unique for orient=index' and write no report at all."""
+    conpyro_csv_path = tmp_path / 'conpyro_results.csv'
+    pd.DataFrame({
+        'unique_id': ['A', 'A'],
+        'wx_date': [20250101, 20250102],
+    }).to_csv(conpyro_csv_path, index=False)
+
+    def fake_model_fofem_mortality(df, fire_csv_path, in_tree_csv_path, out_dir,
+                                    fofem_mortality_params, conpyro_params):
+        from fuel_analyst.components import error_handling
+        error_handling.get_logger('trees').warning(
+            'Plot dropped from FOFEM mortality processing; missing required column(s): ws.',
+            extra={'unique_id': 'A', 'issue_code': 'fofem_mortality_missing_required_column'},
+        )
+        return df
+
+    monkeypatch.setattr(module, '_model_fofem_mortality', fake_model_fofem_mortality)
+
+    params = {
+        'num_workers': 1,
+        'conpyro': {
+            'run_model': False, 'plot_id_col_name': 'unique_id',
+            'input_params': {}, 'output_params': {'out_request': [], 'flame_comp_out_list': []},
+        },
+        'fofem_mortality': {
+            'run_model': True, 'plot_id_col_name': 'unique_id', 'fofem_tree_id_col_name': 'unique_id',
+        },
+        'fofem_emissions': {'run_model': False},
+    }
+
+    module.run_conpyro(
+        out_dir=str(tmp_path),
+        in_conpyro_csv_path=str(conpyro_csv_path),
+        in_tree_csv_path='unused_tree.csv',
+        fire_modelling_params=params,
+    )
+
+    error_report_path = tmp_path / 'run_conpyro_errors.csv'
+    assert error_report_path.is_file()
+    report = pd.read_csv(error_report_path, keep_default_na=False)
+    assert (report['unique_id'] == 'A').sum() == 1

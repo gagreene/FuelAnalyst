@@ -1,6 +1,6 @@
 # FuelAnalyst tests
 
-The test suite follows the same tiered structure used by PyroCell:
+The test suite uses three behavioral tiers:
 
 ```text
 tests/
@@ -23,6 +23,9 @@ Run the complete suite:
 ```shell
 python -m pytest -vv
 ```
+
+GitHub Actions runs this command on Python 3.12 after installing the `test` and
+`photoload` extras.
 
 Run one tier or omit slow tests:
 

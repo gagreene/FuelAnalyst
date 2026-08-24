@@ -24,7 +24,13 @@ values. A production run fails if regenerated cover differs from the fixture.
 
 ## Run
 
-Install the package with the PhotoLoad dependencies, then run:
+From the repository root, install the package with the PhotoLoad dependencies:
+
+```powershell
+python -m pip install -e ".[photoload]"
+```
+
+Then run:
 
 ```powershell
 python models/photoload/run_pipeline.py

@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -12,44 +14,58 @@ from fuel_analyst.components.plants_regen import (
 
 
 def test_calc_pc_flammable_computes_survey123_formula():
-    df = pd.DataFrame({'pc_rock': [10.0], 'pc_mineral_soil': [20.0]})
+    df = pd.DataFrame({'unique_id': ['A'], 'pc_rock': [10.0], 'pc_mineral_soil': [20.0]})
     result, keep = _calc_pc_flammable(df)
     assert result.loc[0, 'pc_nonflammable'] == 30.0
     assert result.loc[0, 'pc_flammable'] == 70.0
-    assert result.loc[0, 'pc_flammable_note'] == ''
-    assert keep == ['pc_nonflammable', 'pc_flammable', 'pc_flammable_note']
+    assert keep == ['pc_nonflammable', 'pc_flammable']
 
 
-def test_calc_pc_flammable_treats_one_missing_value_as_zero():
-    df = pd.DataFrame({'pc_rock': [5.0], 'pc_mineral_soil': [np.nan]})
-    result, _ = _calc_pc_flammable(df)
+def test_calc_pc_flammable_treats_one_missing_value_as_zero(caplog):
+    df = pd.DataFrame({'unique_id': ['A'], 'pc_rock': [5.0], 'pc_mineral_soil': [np.nan]})
+    with caplog.at_level(logging.INFO, logger='fuel_analyst.components.plants_regen'):
+        result, _ = _calc_pc_flammable(df)
     assert result.loc[0, 'pc_nonflammable'] == 5.0
     assert result.loc[0, 'pc_flammable'] == 95.0
-    assert result.loc[0, 'pc_flammable_note'] == ''
+    assert caplog.records == []
 
 
-def test_calc_pc_flammable_defaults_to_fully_flammable_when_no_data_provided():
+def test_calc_pc_flammable_defaults_to_fully_flammable_when_no_data_provided(caplog):
+    df = pd.DataFrame({'unique_id': ['A'], 'pc_rock': [np.nan], 'pc_mineral_soil': [np.nan]})
+    with caplog.at_level(logging.INFO, logger='fuel_analyst.components.plants_regen'):
+        result, _ = _calc_pc_flammable(df)
+    assert result.loc[0, 'pc_nonflammable'] == 0.0
+    assert result.loc[0, 'pc_flammable'] == 100.0
+    assert len(caplog.records) == 1
+    assert 'No pc_rock or pc_mineral_soil cover provided' in caplog.records[0].message
+    assert caplog.records[0].unique_id == 'A'
+
+
+def test_calc_pc_flammable_defaults_to_fully_flammable_when_columns_are_missing(caplog):
+    df = pd.DataFrame({'unique_id': ['A'], 'other_col': [1]})
+    with caplog.at_level(logging.INFO, logger='fuel_analyst.components.plants_regen'):
+        result, _ = _calc_pc_flammable(df)
+    assert result.loc[0, 'pc_nonflammable'] == 0.0
+    assert result.loc[0, 'pc_flammable'] == 100.0
+    assert 'No pc_rock or pc_mineral_soil cover provided' in caplog.records[0].message
+
+
+def test_calc_pc_flammable_defaults_to_fully_flammable_when_result_out_of_range(caplog):
+    df = pd.DataFrame({'unique_id': ['A'], 'pc_rock': [60.0], 'pc_mineral_soil': [60.0]})
+    with caplog.at_level(logging.INFO, logger='fuel_analyst.components.plants_regen'):
+        result, _ = _calc_pc_flammable(df)
+    assert result.loc[0, 'pc_nonflammable'] == 0.0
+    assert result.loc[0, 'pc_flammable'] == 100.0
+    assert 'outside the valid 0-100 range' in caplog.records[0].message
+
+
+def test_calc_pc_flammable_handles_missing_unique_id_column(caplog):
     df = pd.DataFrame({'pc_rock': [np.nan], 'pc_mineral_soil': [np.nan]})
-    result, _ = _calc_pc_flammable(df)
-    assert result.loc[0, 'pc_nonflammable'] == 0.0
+    with caplog.at_level(logging.INFO, logger='fuel_analyst.components.plants_regen'):
+        result, _ = _calc_pc_flammable(df)
     assert result.loc[0, 'pc_flammable'] == 100.0
-    assert 'No pc_rock or pc_mineral_soil cover provided' in result.loc[0, 'pc_flammable_note']
-
-
-def test_calc_pc_flammable_defaults_to_fully_flammable_when_columns_are_missing():
-    df = pd.DataFrame({'other_col': [1]})
-    result, _ = _calc_pc_flammable(df)
-    assert result.loc[0, 'pc_nonflammable'] == 0.0
-    assert result.loc[0, 'pc_flammable'] == 100.0
-    assert 'No pc_rock or pc_mineral_soil cover provided' in result.loc[0, 'pc_flammable_note']
-
-
-def test_calc_pc_flammable_defaults_to_fully_flammable_when_result_out_of_range():
-    df = pd.DataFrame({'pc_rock': [60.0], 'pc_mineral_soil': [60.0]})
-    result, _ = _calc_pc_flammable(df)
-    assert result.loc[0, 'pc_nonflammable'] == 0.0
-    assert result.loc[0, 'pc_flammable'] == 100.0
-    assert 'outside the valid 0-100 range' in result.loc[0, 'pc_flammable_note']
+    assert len(caplog.records) == 1
+    assert caplog.records[0].unique_id == 0
 
 
 @pytest.mark.parametrize(
