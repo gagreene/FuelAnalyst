@@ -39,7 +39,15 @@ def _create_parameter_panel(
         output_path: Path,
         title: str,
 ) -> None:
-    """Render one page of complete-range production masks."""
+    """
+    Render one page of complete-range production masks.
+
+    :param records: Image and mask records to render.
+    :param methods: Mask method keys and display labels.
+    :param output_path: Path for the generated output file.
+    :param title: Title displayed on the generated panel.
+    :return: None. Writes the rendered panel to output_path.
+    """
     column_count = len(methods) + 1
     figure, axes = plt.subplots(
         len(records),
@@ -83,7 +91,16 @@ def _create_parameter_panel_pages(
         output_path: Path,
         title: str,
 ) -> None:
-    """Paginate every parameter-specific mask in the production range."""
+    """
+    Paginate every parameter-specific mask in the production range.
+
+    :param records: Image and mask records to render.
+    :param fixed_methods: Mask methods included on every panel page.
+    :param swept_methods: Parameter-specific mask methods to paginate.
+    :param output_path: Path for the generated output file.
+    :param title: Title displayed on the generated panel.
+    :return: None. Writes paginated parameter panels beside output_path.
+    """
     page_count = int(np.ceil(len(swept_methods) / PANEL_PAGE_SIZE))
     for page_index in range(page_count):
         start = page_index * PANEL_PAGE_SIZE
@@ -106,7 +123,16 @@ def _create_parameter_panels(
         source_root: Path,
         output_dir: Path,
 ) -> None:
-    """Write complete production-range panels for all nine species."""
+    """
+    Write complete production-range panels for all nine species.
+
+    :param data: PhotoLoad calibration or result records.
+    :param frequency_root: Directory containing ensemble selection-frequency images.
+    :param raw_root: Directory containing extracted PhotoLoad images.
+    :param source_root: Directory containing source-mask images.
+    :param output_dir: Directory in which generated outputs are written.
+    :return: None. Writes complete-range parameter panels to output_dir.
+    """
     for folder, folder_data in data.groupby("folder", sort=False):
         species_code = folder.split("_", 1)[0]
         records: list[dict[str, object]] = []
@@ -161,7 +187,15 @@ def _create_species_panels(
         raw_root: Path,
         output_dir: Path,
 ) -> None:
-    """Write original-versus-final panels for all nine species."""
+    """
+    Write original-versus-final panels for all nine species.
+
+    :param data: PhotoLoad calibration or result records.
+    :param frequency_root: Directory containing ensemble selection-frequency images.
+    :param raw_root: Directory containing extracted PhotoLoad images.
+    :param output_dir: Directory in which generated outputs are written.
+    :return: None. Writes original-versus-final species panels to output_dir.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
     for folder, folder_data in data.groupby("folder", sort=False):
         ordered = folder_data.sort_values("kg_m2")
@@ -204,13 +238,23 @@ def _create_species_panels(
 
 
 def _isolate_plant(rgb: np.ndarray, mask: np.ndarray) -> np.ndarray:
-    """Blend selected original pixels with a white background."""
+    """
+    Blend selected original pixels with a white background.
+
+    :param rgb: Source image as an RGB array.
+    :param mask: Selection mask applied to the image.
+    :return: RGB image with unselected pixels blended to white.
+    """
     weight = np.asarray(mask, dtype=np.float64)[:, :, np.newaxis]
     return np.rint(rgb * weight + 255 * (1 - weight)).astype(np.uint8)
 
 
 def _load_calibration() -> pd.DataFrame:
-    """Load and validate the versioned reference calibration table."""
+    """
+    Load and validate the versioned reference calibration table.
+
+    :return: Validated PhotoLoad calibration table.
+    """
     data = pd.read_csv(CALIBRATION_CSV)
     required = {
         "species",
@@ -230,7 +274,12 @@ def _load_calibration() -> pd.DataFrame:
 
 
 def _sha256(path: Path) -> str:
-    """Return a file's SHA-256 digest."""
+    """
+    Return a file's SHA-256 digest.
+
+    :param path: Path to the file to inspect.
+    :return: A file's SHA-256 digest.
+    """
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
@@ -239,7 +288,12 @@ def _sha256(path: Path) -> str:
 
 
 def _validate_source_pdf(pdf_path: Path) -> str:
-    """Return the digest when the source PDF matches the versioned reference."""
+    """
+    Return the digest when the source PDF matches the versioned reference.
+
+    :param pdf_path: Path to the PhotoLoad source PDF.
+    :return: The digest when the source PDF matches the versioned reference.
+    """
     if not pdf_path.is_file():
         raise FileNotFoundError(f"PhotoLoad PDF not found: {pdf_path}")
     actual_digest = _sha256(pdf_path)
@@ -252,7 +306,13 @@ def _validate_source_pdf(pdf_path: Path) -> str:
 
 
 def run_workflow(pdf_path: Path, output_dir: Path) -> None:
-    """Run extraction, final masking, model fitting, and paper-output checks."""
+    """
+    Run extraction, final masking, model fitting, and paper-output checks.
+
+    :param pdf_path: Path to the PhotoLoad source PDF.
+    :param output_dir: Directory in which generated outputs are written.
+    :return: None. Writes all production workflow outputs to output_dir.
+    """
     pdf_path = pdf_path.resolve()
     output_dir = output_dir.resolve()
     source_pdf_sha256 = _validate_source_pdf(pdf_path)

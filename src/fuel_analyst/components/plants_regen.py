@@ -83,6 +83,14 @@ def _calc_plants_fccs_fofem_attributes(df: pd.DataFrame) -> tuple[pd.DataFrame, 
     """
 
     def _fccs_fofem_species(row, shrub_only=False, fofem_shrub_group=False):
+        """
+        Summarize row-level plant composition for FCCS or FOFEM output.
+
+        :param row: Plant-composition record containing species codes and cover values.
+        :param shrub_only: Whether to exclude non-shrub species.
+        :param fofem_shrub_group: Whether to aggregate FOFEM shrub functional groups.
+        :return: Formatted relative species composition or FOFEM shrub group.
+        """
         # Collect species codes and percent cover for up to five species
         species = []
         total_pct = 0
@@ -186,11 +194,17 @@ def _get_dom_substrate(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
 
 
 def _get_photoload_biomass(photoload_code: str, pct_cover: float, height: float):
-    """Estimate plant biomass from the final objective-cover PhotoLoad models.
+    """
+    Estimate plant biomass from the final objective-cover PhotoLoad models.
 
     The fitted cover-to-biomass equations are constrained through the origin.
     Biomass is then scaled by the observed plant height relative to the
     reference height used for the corresponding PhotoLoad series.
+
+    :param photoload_code: PhotoLoad species or functional-group code.
+    :param pct_cover: Observed plant cover as a percentage.
+    :param height: Observed plant height in centimetres.
+    :return: Estimated biomass in kilograms per square metre, or NaN for an unknown code.
     """
     photoload_dict = {
         'AMAL': (height / 35.56) * 0.0690181 * (np.exp(0.0240242 * pct_cover) - 1),

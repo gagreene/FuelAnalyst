@@ -148,6 +148,12 @@ def _extract_weather(
 
             # Assign start and end dates to new columns based on the ecodivision for each plot
             def _assign_dates(ecodivision):
+                """
+                Resolve configured fire-season month/day bounds for one ecodivision.
+
+                :param ecodivision: Ecodivision name assigned to a plot location.
+                :return: Fire-season start and end month/day values, or NaN values when unresolved.
+                """
                 if pd.isna(ecodivision):
                     return (np.nan, np.nan)
                 for eco, (start_md, end_md, code) in BCWS_FIRE_SEASON_DICT.items():

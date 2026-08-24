@@ -71,6 +71,7 @@ def _create_burnup_in_file(
     :param intensity: Heat per unit area (kJ/m^2).
     :param ig_time: Ignition (flame residence) time (seconds).
     :param instand_ws: In-stand/mid-flame wind speed (m/s).
+    :param depth: Flame depth (m).
     :param amb_temp: Ambient temperature (°C).
     :return: Path to worker-specific Burnup-In directory.
     """
@@ -252,6 +253,12 @@ def _get_season(df: pd.DataFrame, season_start_dict: dict = None) -> pd.DataFram
     }
 
     def determine_season(row):
+        """
+        Determine the configured season for one weather-data row.
+
+        :param row: Weather-data row containing a YYYYMMDD wx_date value.
+        :return: Season name containing the weather date.
+        """
         # Get dates from wx_date column in df (formatted as YYYYMMDD)
         date_str = str(row['wx_date'])
         month_day = int(date_str[4:8])  # Extract MMDD as integer

@@ -81,9 +81,11 @@ def _assign_spp_comp_id_col(df: pd.DataFrame, spp_comp_df: pd.DataFrame) -> pd.D
     return spp_comp_df
 
 
-def _calc_plot_duff_litter_biomass(plot_df: pd.DataFrame,
-                                   df: pd.DataFrame,
-                                   spp_comp_df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
+def _calc_plot_duff_litter_biomass(
+        plot_df: pd.DataFrame,
+        df: pd.DataFrame,
+        spp_comp_df: pd.DataFrame
+) -> tuple[pd.DataFrame, list]:
     """
     Calculate plot-level duff and litter biomass (kg/m^2) for each plot, using species composition
     and bulk density data. Biomass is scaled by the proportion of flammable ground cover.
@@ -162,7 +164,7 @@ def _calc_plot_duff_litter_depths(df: pd.DataFrame) -> tuple[pd.DataFrame, list]
 def _calc_plot_specific_gravity(
         df: pd.DataFrame,
         spp_comp_df: pd.DataFrame
-    ) -> tuple[pd.DataFrame, list]:
+) -> tuple[pd.DataFrame, list]:
     """
     Calculate plot-level specific gravity values for woody debris fuel size classes.
 
@@ -289,7 +291,7 @@ def _calc_plot_woody_debris(
         df: pd.DataFrame,
         woody_merged_df: pd.DataFrame,
         woody_debris_params: dict
-    ) -> tuple[pd.DataFrame, list]:
+) -> tuple[pd.DataFrame, list]:
     """
     Calculate plot-level woody debris biomass (kg/m^2) for each requested output class.
 
@@ -389,7 +391,7 @@ def _calc_plot_woody_debris(
 def _calc_spp_comp_duff_litter_bulk_density(
         spp_comp_df: pd.DataFrame,
         tree_params: pd.DataFrame
-    ) -> pd.DataFrame:
+) -> pd.DataFrame:
     """
     Calculate duff and litter bulk density for each species in the species composition DataFrame.
 
@@ -421,8 +423,10 @@ def _calc_spp_comp_duff_litter_bulk_density(
     return spp_comp_df
 
 
-def _calc_spp_comp_specific_gravity(spp_comp_df: pd.DataFrame,
-                                    tree_params: pd.DataFrame) -> pd.DataFrame:
+def _calc_spp_comp_specific_gravity(
+        spp_comp_df: pd.DataFrame,
+        tree_params: pd.DataFrame
+) -> pd.DataFrame:
     """
     Calculate specific gravity for each species in the spp_comp_df DataFrame.
 
@@ -798,7 +802,12 @@ def _calc_woody_weight(woody_merged_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _concat_spp_comp_frames(*frames: pd.DataFrame) -> pd.DataFrame:
-    """Concatenate species-composition frames without all-NA dtype inference."""
+    """
+    Concatenate species-composition frames without all-NA dtype inference.
+
+    :param frames: Species-composition DataFrames to concatenate.
+    :return: Combined DataFrame retaining schema-only columns and stable dtypes.
+    """
     all_columns = pd.Index([])
     populated_frames = []
 
@@ -853,10 +862,10 @@ def _get_merged_woody_df(in_folder: str) -> pd.DataFrame:
 
 
 def _get_van_wagner_qmd(
-    df: pd.DataFrame,
-    extension: str,
-    diam_classes: list[float],
-    trans_lengths: list[float]
+        df: pd.DataFrame,
+        extension: str,
+        diam_classes: list[float],
+        trans_lengths: list[float]
 ) -> pd.DataFrame:
     """
     Calculate the quadratic mean diameter (QMD) for woody debris fuel size classes using the Van Wagner method.
@@ -1111,6 +1120,12 @@ def _resolve_spp_comp_type(df: pd.DataFrame, spp_comp_df: pd.DataFrame) -> tuple
     }
 
     def _resolve(row):
+        """
+        Resolve the best available species-composition source for one plot.
+
+        :param row: Plot row containing unique_id and declared spp_comp_type.
+        :return: Declared source when available, otherwise the first usable fallback source.
+        """
         declared = row['spp_comp_type']
         if row['unique_id'] in available.get(declared, set()):
             return declared
