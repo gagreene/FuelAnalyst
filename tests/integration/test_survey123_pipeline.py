@@ -1,3 +1,4 @@
+import warnings
 from pathlib import Path
 
 import pandas as pd
@@ -13,14 +14,16 @@ def test_complete_survey123_pipeline_generates_owned_output_contracts(tmp_path):
     input_dir = project_root / 'examples' / 'data' / 'Survey123_Data'
     output_dir = tmp_path / 'fuel_analyst'
 
-    fuel_analyst(
-        in_dir=str(input_dir),
-        out_dir=str(output_dir),
-        surface_fire_intensity_model='Byram',
-        gen_conpyro_df=True,
-        gen_fofem_tree_df=True,
-        gen_fofem_consume_df=True,
-    )
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', pd.errors.PerformanceWarning)
+        fuel_analyst(
+            in_dir=str(input_dir),
+            out_dir=str(output_dir),
+            surface_fire_intensity_model='Byram',
+            gen_conpyro_df=True,
+            gen_fofem_tree_df=True,
+            gen_fofem_consume_df=True,
+        )
 
     expected_outputs = [
         'master_fuel_df.csv', 'fuelanalyst_errors.csv', 'master_tree_df.csv',

@@ -1,3 +1,5 @@
+import warnings
+
 import pandas as pd
 import pytest
 
@@ -7,6 +9,56 @@ from fuel_analyst.components.conpyro_attributes import (
     _calc_veg_fuel_loads,
     _prep_fbp_df,
 )
+
+
+def test_calc_stand_density_assigns_boundaries():
+    df = pd.DataFrame({'cc': [0, 45, 45.1, 60, 60.1, 100, 101, None]})
+    result = _calc_stand_density(df, 'cc')
+    assert result['conpyro_density_class'].tolist() == ['L', 'L', 'M', 'M', 'H', 'H', None, None]
+
+
+def test_calc_stand_type_identifies_mixedwood_and_dominant_type():
+    params = pd.DataFrame({
+        'TreeType': ['conifer', 'broadleaf'],
+        'ConPyro_StandType': ['C', 'D'],
+    }, index=['FDI', 'ACT'])
+    rows = []
+    for uid, first, second, pct in [('mixed', 'FDI', 'ACT', 60), ('conifer', 'FDI', None, 90)]:
+        row = {'unique_id': uid, 'SPECIES_PCT_1': pct}
+        row.update({f'SPECIES_CD_{i}': None for i in range(1, 7)})
+        row['SPECIES_CD_1'], row['SPECIES_CD_2'] = first, second
+        rows.append(row)
+    result = _calc_stand_type(pd.DataFrame(rows), params)
+    assert result.set_index('unique_id')['conpyro_stand_type'].to_dict() == {'mixed': 'MW', 'conifer': 'C'}
+
+
+def test_calc_veg_fuel_loads_does_not_fragment_existing_frame():
+    df = pd.DataFrame({'grass_kgpm2': [1.0], 'herb_kgpm2': [2.0]})
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', pd.errors.PerformanceWarning)
+        for index in range(110):
+            df[f'padding_{index}'] = index
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', pd.errors.PerformanceWarning)
+        result = _calc_veg_fuel_loads(
+            df,
+            {
+                'herbaceous': ['grass', 'herb'],
+                'grass': ['grass'],
+                'empty': [],
+            },
+        )
+
+    assert result[['conpyro_herbaceous_fuel_load',
+                   'conpyro_grass_fuel_load',
+                   'conpyro_empty_fuel_load']].iloc[0].tolist() == [3.0, 1.0, 0.0]
+
+
+def test_calc_veg_fuel_loads_sums_fields_and_treats_missing_as_zero():
+    df = pd.DataFrame({'grass_kgpm2': [1.0, None], 'herb_kgpm2': [2.0, 3.0]})
+    result = _calc_veg_fuel_loads(df, {'herbaceous': ['grass', 'herb']})
+    assert result['conpyro_herbaceous_fuel_load'].tolist() == [3.0, 3.0]
 
 
 def test_prep_fbp_df_accepts_current_survey123_treatment_fields():
@@ -30,30 +82,3 @@ def test_prep_fbp_df_accepts_current_survey123_treatment_fields():
         'treatment_type',
         'plot_id',
     ]
-
-
-def test_calc_veg_fuel_loads_sums_fields_and_treats_missing_as_zero():
-    df = pd.DataFrame({'grass_kgpm2': [1.0, None], 'herb_kgpm2': [2.0, 3.0]})
-    result = _calc_veg_fuel_loads(df, {'herbaceous': ['grass', 'herb']})
-    assert result['conpyro_herbaceous_fuel_load'].tolist() == [3.0, 3.0]
-
-
-def test_calc_stand_density_assigns_boundaries():
-    df = pd.DataFrame({'cc': [0, 45, 45.1, 60, 60.1, 100, 101, None]})
-    result = _calc_stand_density(df, 'cc')
-    assert result['conpyro_density_class'].tolist() == ['L', 'L', 'M', 'M', 'H', 'H', None, None]
-
-
-def test_calc_stand_type_identifies_mixedwood_and_dominant_type():
-    params = pd.DataFrame({
-        'TreeType': ['conifer', 'broadleaf'],
-        'ConPyro_StandType': ['C', 'D'],
-    }, index=['FDI', 'ACT'])
-    rows = []
-    for uid, first, second, pct in [('mixed', 'FDI', 'ACT', 60), ('conifer', 'FDI', None, 90)]:
-        row = {'unique_id': uid, 'SPECIES_PCT_1': pct}
-        row.update({f'SPECIES_CD_{i}': None for i in range(1, 7)})
-        row['SPECIES_CD_1'], row['SPECIES_CD_2'] = first, second
-        rows.append(row)
-    result = _calc_stand_type(pd.DataFrame(rows), params)
-    assert result.set_index('unique_id')['conpyro_stand_type'].to_dict() == {'mixed': 'MW', 'conifer': 'C'}

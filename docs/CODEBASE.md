@@ -103,14 +103,18 @@ list, and `master_tree_df`.
 Processes the Survey123 woody transects with configurable Canadian, U.S.,
 modified, ConPyro, and FOFEM diameter schemes. It also calculates forest-floor
 duff/litter attributes and logs species-composition fallbacks through the
-central error handler.
+central error handler. Related transect, tally, QMD, volume, biomass, and final
+output columns are calculated in dependency-ordered batches and concatenated at
+logical boundaries so wide plot tables remain consolidated.
 
 ### `components/conpyro_attributes.py`
 
 Builds `conpyro_df` and `fbp_prep_df` from the merged plot data. Source columns
 may use `conpyro_` names internally, while the emitted ConPyro table uses the
 schema expected by the downstream model, such as `stand_type`, `stand_density`,
-and canopy/fuel attributes.
+and canopy/fuel attributes. Stand classifications and vegetation fuel-load
+columns are attached in batches because the incoming merged plot table can
+already be very wide.
 
 ### `components/fofem_attributes.py`
 
