@@ -3,7 +3,7 @@
 # Run after pulling new submodule commits:
 #   git submodule update --remote dependencies/BC_CFFBPS_FuelTyping_Tool
 #   bash update_vendors.sh
-# Note: flame_components is no longer vendored — it is pip-installed from its submodule.
+# Note: flame_components is no longer vendored or a submodule; it is installed from PyPI.
 set -e
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"

@@ -77,8 +77,9 @@ The normal sequence is:
 
 ## Requirements
 
-- Python 3.10 or newer
-- Git, if cloning the repository or installing optional dependencies from GitHub
+- Python 3.10 or newer for the core workflow
+- Python 3.11 or newer when installing the `conpyro` extra
+- Git, if cloning the repository or installing ConPyro or pyFOFEM from GitHub
 - A Survey123 export matching the expected form and repeat-table structure
 
 The base installation includes NumPy, pandas, SciPy, scikit-learn, Matplotlib, GeoPandas, Rasterio, PyProj, Shapely, python-dateutil, tqdm, and joblib.
@@ -142,7 +143,11 @@ Install both sets:
 python -m pip install -e ".[conpyro,fofem]"
 ```
 
-These extras install dependencies from their GitHub repositories and therefore require Git and network access. The repository also declares those projects as Git submodules for local dependency development; a recursive clone is only necessary if you intend to work directly on the checked-out dependency sources.
+The `conpyro` and `fofem` extras currently install ConPyro and pyFOFEM from their GitHub
+repositories and therefore require Git and network access. The `conpyro` extra installs
+the bounded `flame-components>=0.1.1,<0.2` distribution from PyPI. The repository retains
+other upstream projects as Git submodules for local dependency development; a recursive
+clone is only necessary if you intend to work directly on those checked-out sources.
 
 ### PhotoLoad model-development dependencies
 
