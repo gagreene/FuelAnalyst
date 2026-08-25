@@ -32,6 +32,24 @@ def add_line_to_csv(file_path: str, add_list: list, position: int) -> None:
             writer.writerow(line)
 
 
+def attach_columns(df: pd.DataFrame, columns: dict | pd.DataFrame) -> pd.DataFrame:
+    """
+    Attach calculated columns while replacing existing columns with the same names.
+
+    :param df: DataFrame receiving the calculated columns.
+    :param columns: Mapping (or DataFrame) of output column names to calculated Series.
+    :return: DataFrame with calculated columns attached and existing output columns
+        replaced in their original positions.
+    """
+    output_names = list(columns)
+    column_order = list(df.columns)
+    column_order.extend(name for name in output_names if name not in df.columns)
+
+    base_df = df.drop(columns=output_names, errors='ignore')
+    result = pd.concat([base_df, pd.DataFrame(columns, index=df.index)], axis=1)
+    return result.loc[:, column_order]
+
+
 def delete_files(src_dir: str) -> None:
     """
     Delete all files and folders in the specified source directory.

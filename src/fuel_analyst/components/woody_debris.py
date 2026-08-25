@@ -386,7 +386,7 @@ def _calc_plot_woody_debris(
                     # Assign the previous diameter class to the current one
                     prior_out_dc = out_dc
 
-    df = pd.concat([df, pd.DataFrame(output_columns, index=df.index)], axis=1)
+    df = helper.attach_columns(df, output_columns)
 
     return df, helper.sort_list(keep_columns)
 
@@ -510,7 +510,7 @@ def _calc_tallied_woody_biomass(
                     length_columns[f't1_length_cor_{woody_class_ext}_{lngth}'].replace(np.nan, 0) +
                     length_columns[f't2_length_cor_{woody_class_ext}_{lngth}'].replace(np.nan, 0)
                 )
-            df = pd.concat([df, pd.DataFrame(length_columns, index=df.index)], axis=1)
+            df = helper.attach_columns(df, length_columns)
 
             # Get counts of woody fuel tallies for each diameter class
             count_columns = {}
@@ -536,10 +536,10 @@ def _calc_tallied_woody_biomass(
                 # Assign prior diameter cutoff for next iteration
                 prior_dc = dc
             del prior_dc
-            df = pd.concat([df, pd.DataFrame(count_columns, index=df.index)], axis=1)
+            df = helper.attach_columns(df, count_columns)
 
             # Calculate theoretical QMD of woody fuel tallies using Van Wagner approach
-            df = pd.concat([
+            df = helper.attach_columns(
                 df,
                 _get_van_wagner_qmd(
                     df[[f'tsct_length_max_{woody_class_ext}'] +
@@ -554,7 +554,7 @@ def _calc_tallied_woody_biomass(
                     [f'woody_qmd_vanwagner_{woody_class_ext}_{str(dc).replace(".", "_")}'
                      for dc in sorted(diameter_cutoffs)],
                     axis=1)
-            ], axis=1)
+            )
 
             # Calculate actual QMD of woody fuel tallies (if comparing measure vs tally)
             if measure_tally_qmd_compare and (woody_class_ext != 'fofem'):
@@ -580,7 +580,7 @@ def _calc_tallied_woody_biomass(
                     # Assign prior diameter cutoff for next iteration
                     prior_dc = dc
                 del prior_dc
-                df = pd.concat([df, pd.DataFrame(comparison_columns, index=df.index)], axis=1)
+                df = helper.attach_columns(df, comparison_columns)
 
             # Calculate tallied woody fuel biomass for each diameter class
             biomass_columns = {}
@@ -635,7 +635,7 @@ def _calc_tallied_woody_biomass(
                     )
                 else:
                     break
-            df = pd.concat([df, pd.DataFrame(biomass_columns, index=df.index)], axis=1)
+            df = helper.attach_columns(df, biomass_columns)
 
     # Add QMD and biomass columns to keep_columns if QMD comparison is enabled
     if measure_tally_qmd_compare:

@@ -13,24 +13,6 @@ import pandas as pd
 from . import helper
 
 
-def _attach_columns(df: pd.DataFrame, columns: dict) -> pd.DataFrame:
-    """
-    Attach calculated columns while replacing existing columns with the same names.
-
-    :param df: DataFrame receiving the calculated columns.
-    :param columns: Mapping of output column names to calculated Series.
-    :return: DataFrame with calculated columns attached and existing output columns
-        replaced in their original positions.
-    """
-    output_names = list(columns)
-    column_order = list(df.columns)
-    column_order.extend(name for name in output_names if name not in df.columns)
-
-    base_df = df.drop(columns=output_names, errors='ignore')
-    result = pd.concat([base_df, pd.DataFrame(columns, index=df.index)], axis=1)
-    return result.loc[:, column_order]
-
-
 def _calc_stand_density(df: pd.DataFrame, cc_field: str) -> pd.DataFrame:
     """
     Calculate stand density based on canopy cover.
@@ -55,7 +37,7 @@ def _calc_stand_density(df: pd.DataFrame, cc_field: str) -> pd.DataFrame:
     density_class.loc[mask_m] = 'M'
     density_class.loc[mask_h] = 'H'
 
-    return _attach_columns(df, {'conpyro_density_class': density_class})
+    return helper.attach_columns(df, {'conpyro_density_class': density_class})
 
 
 def _calc_stand_type(df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataFrame:
@@ -109,7 +91,7 @@ def _calc_stand_type(df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataF
         'tree_type': tree_type,
         'conpyro_stand_type': conpyro_stand_type,
     }
-    return _attach_columns(df, stand_columns)
+    return helper.attach_columns(df, stand_columns)
 
 
 def _calc_veg_fuel_loads(df: pd.DataFrame, veg_fuel_dict: dict) -> pd.DataFrame:
@@ -127,7 +109,7 @@ def _calc_veg_fuel_loads(df: pd.DataFrame, veg_fuel_dict: dict) -> pd.DataFrame:
             fuel_load = fuel_load + df[f'{fuel_field}_kgpm2'].fillna(0)
         fuel_load_columns[f'conpyro_{fuel_att}_fuel_load'] = fuel_load
 
-    return _attach_columns(df, fuel_load_columns)
+    return helper.attach_columns(df, fuel_load_columns)
 
 
 _MISSING_TYPE_SENTINEL = object()
