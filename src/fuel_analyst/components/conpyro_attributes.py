@@ -7,6 +7,7 @@ Created on Tue Oct 21, 09:00:00 2025
 __author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
 
 import os
+import numpy as np
 import pandas as pd
 
 from . import helper
@@ -66,15 +67,21 @@ def _calc_stand_type(df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataF
     :return: DataFrame with added tree-type and ConPyro stand-type columns.
     """
     spp_code_cols = [f'SPECIES_CD_{x}' for x in range(1, 7)]
+    tree_type_lookup = tree_params_df['TreeType']
 
-    # Map species codes to tree types
+    # Map species codes to tree types via direct hash-based lookup
     stand_type_df = df[['unique_id'] + spp_code_cols].copy()
-    stand_type_df[spp_code_cols] = stand_type_df[spp_code_cols].map(
-        lambda x: tree_params_df.loc[x, 'TreeType'] if pd.notnull(x) else None
+    present_codes = stand_type_df[spp_code_cols].stack()
+    present_codes = present_codes[present_codes.notna()]
+    unknown_codes = present_codes[~present_codes.isin(tree_type_lookup.index)]
+    if not unknown_codes.empty:
+        raise KeyError(unknown_codes.iloc[0])
+
+    stand_type_df[spp_code_cols] = pd.DataFrame(
+        {column: stand_type_df[column].map(tree_type_lookup) for column in spp_code_cols},
+        index=stand_type_df.index,
     )
-    stand_type_df['tree_type'] = stand_type_df[spp_code_cols].apply(
-        lambda row: ' '.join(pd.Series([val for val in row if pd.notnull(val)]).unique()), axis=1
-    )
+    stand_type_df['tree_type'] = _join_first_seen_unique_types(stand_type_df[spp_code_cols])
     tree_type = df['unique_id'].map(stand_type_df.set_index('unique_id')['tree_type'])
 
     # Create masks for each condition
@@ -121,6 +128,37 @@ def _calc_veg_fuel_loads(df: pd.DataFrame, veg_fuel_dict: dict) -> pd.DataFrame:
         fuel_load_columns[f'conpyro_{fuel_att}_fuel_load'] = fuel_load
 
     return _attach_columns(df, fuel_load_columns)
+
+
+_MISSING_TYPE_SENTINEL = object()
+
+
+def _join_first_seen_unique_types(columns: pd.DataFrame) -> pd.Series:
+    """
+    Join each row's unique values across ordered columns, preserving first-seen order.
+
+    :param columns: DataFrame of per-row candidate values, in the column order that
+        determines first-seen priority.
+    :return: Series with each row's non-null unique values joined by a single space,
+        in the order they first appear across the columns.
+    """
+    filled = columns.fillna(_MISSING_TYPE_SENTINEL)
+    column_names = list(columns.columns)
+    joined = pd.Series('', index=columns.index)
+    for position, column in enumerate(column_names):
+        first_seen = filled[column] != _MISSING_TYPE_SENTINEL
+        for earlier_column in column_names[:position]:
+            first_seen &= filled[column] != filled[earlier_column]
+        display = pd.Series(np.where(first_seen, columns[column], ''), index=columns.index)
+        both_present = (joined != '') & (display != '')
+        only_joined = (joined != '') & (display == '')
+        only_display = (joined == '') & (display != '')
+        joined = pd.Series(np.select(
+            [both_present, only_joined, only_display],
+            [joined + ' ' + display, joined, display],
+            default='',
+        ), index=columns.index)
+    return joined
 
 
 def _prep_fbp_df(df: pd.DataFrame) -> pd.DataFrame:

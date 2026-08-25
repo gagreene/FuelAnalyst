@@ -59,10 +59,10 @@ FuelAnalyst/
 FuelAnalyst uses a standard `src` package layout and is installable with
 `python -m pip install -e .`. Optional dependency groups are declared in
 `pyproject.toml`: `conpyro`, `fofem`, `photoload`, `test`, `dev`, and `all`.
-The core package supports Python 3.10 and newer. The `conpyro` extra requires
-Python 3.11 or newer because it installs the bounded
-`flame-components>=0.1.1,<0.2` distribution from PyPI; ConPyro itself is
-currently installed from its GitHub repository.
+The package supports Python 3.11 through 3.14, tested on Windows, Linux, and
+macOS. The `conpyro` extra installs the bounded `flame-components>=0.1.1,<0.2`
+distribution from PyPI; ConPyro itself is currently installed from its GitHub
+repository.
 
 ## Public API
 

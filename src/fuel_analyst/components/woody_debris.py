@@ -545,13 +545,13 @@ def _calc_tallied_woody_biomass(
                     df[[f'tsct_length_max_{woody_class_ext}'] +
                        [f'tsct_length_total_{woody_class_ext}_{lngth}'
                         for lngth in sorted(np.unique(transect_lengths))] +
-                       [f'woody_count_{woody_class_ext}_{str(dc).replace('.', '_')}'
+                       [f'woody_count_{woody_class_ext}_{str(dc).replace(".", "_")}'
                         for dc in sorted(diameter_cutoffs)]],
                     woody_class_ext,
                     diameter_cutoffs,
                     transect_lengths
                 ).set_axis(
-                    [f'woody_qmd_vanwagner_{woody_class_ext}_{str(dc).replace('.', '_')}'
+                    [f'woody_qmd_vanwagner_{woody_class_ext}_{str(dc).replace(".", "_")}'
                      for dc in sorted(diameter_cutoffs)],
                     axis=1)
             ], axis=1)
