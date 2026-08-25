@@ -12,6 +12,24 @@ import pandas as pd
 from . import helper
 
 
+def _attach_columns(df: pd.DataFrame, columns: dict) -> pd.DataFrame:
+    """
+    Attach calculated columns while replacing existing columns with the same names.
+
+    :param df: DataFrame receiving the calculated columns.
+    :param columns: Mapping of output column names to calculated Series.
+    :return: DataFrame with calculated columns attached and existing output columns
+        replaced in their original positions.
+    """
+    output_names = list(columns)
+    column_order = list(df.columns)
+    column_order.extend(name for name in output_names if name not in df.columns)
+
+    base_df = df.drop(columns=output_names, errors='ignore')
+    result = pd.concat([base_df, pd.DataFrame(columns, index=df.index)], axis=1)
+    return result.loc[:, column_order]
+
+
 def _calc_stand_density(df: pd.DataFrame, cc_field: str) -> pd.DataFrame:
     """
     Calculate stand density based on canopy cover.
@@ -22,7 +40,7 @@ def _calc_stand_density(df: pd.DataFrame, cc_field: str) -> pd.DataFrame:
         elif cc <= 100:
             density = 'H'  # high density
 
-    :param df: DataFrame containing tree counts and plot area.
+    :param df: DataFrame containing the canopy-cover field.
     :param cc_field: Name of the canopy-cover field used to classify stand density.
     :return: DataFrame with an added 'conpyro_density_class' column.
     """
@@ -36,10 +54,7 @@ def _calc_stand_density(df: pd.DataFrame, cc_field: str) -> pd.DataFrame:
     density_class.loc[mask_m] = 'M'
     density_class.loc[mask_h] = 'H'
 
-    return pd.concat([
-        df,
-        density_class.rename('conpyro_density_class'),
-    ], axis=1)
+    return _attach_columns(df, {'conpyro_density_class': density_class})
 
 
 def _calc_stand_type(df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataFrame:
@@ -83,11 +98,11 @@ def _calc_stand_type(df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataF
         cd1_mask & ~mw_mask & ~pct80_mask, 'SPECIES_CD_1'
     ].map(tree_params_df['ConPyro_StandType'])
 
-    stand_columns = pd.DataFrame({
+    stand_columns = {
         'tree_type': tree_type,
         'conpyro_stand_type': conpyro_stand_type,
-    }, index=df.index)
-    return pd.concat([df, stand_columns], axis=1)
+    }
+    return _attach_columns(df, stand_columns)
 
 
 def _calc_veg_fuel_loads(df: pd.DataFrame, veg_fuel_dict: dict) -> pd.DataFrame:
@@ -105,7 +120,7 @@ def _calc_veg_fuel_loads(df: pd.DataFrame, veg_fuel_dict: dict) -> pd.DataFrame:
             fuel_load = fuel_load + df[f'{fuel_field}_kgpm2'].fillna(0)
         fuel_load_columns[f'conpyro_{fuel_att}_fuel_load'] = fuel_load
 
-    return pd.concat([df, pd.DataFrame(fuel_load_columns, index=df.index)], axis=1)
+    return _attach_columns(df, fuel_load_columns)
 
 
 def _prep_fbp_df(df: pd.DataFrame) -> pd.DataFrame:
