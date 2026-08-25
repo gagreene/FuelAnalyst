@@ -52,7 +52,7 @@ photoload = [
 ]
 conpyro = [
     "conpyro @ git+https://github.com/gagreene/conpyro.git",
-    "flame-components @ git+https://github.com/gagreene/flame_components.git",
+    "flame-components>=0.1.1,<0.2",
 ]
 fofem = [
     "pyfofem @ git+https://github.com/gagreene/pyfofem.git",

@@ -6,7 +6,8 @@ This guide gets the included Survey123 example running with the fewest steps. Co
 
 Install:
 
-- Python 3.10 or newer
+- Python 3.10 or newer for the core workflow; Python 3.11 or newer for the
+  `conpyro` extra
 - Git
 
 Confirm Python is available:
@@ -161,7 +162,9 @@ Only do this if you need to execute ConPyro or FOFEM after preparing the FuelAna
 python -m pip install -e ".[conpyro,fofem]"
 ```
 
-Those optional packages are downloaded from GitHub. ConPyro also uses the flame-components package.
+The ConPyro package is currently downloaded from GitHub. Its Flame Components dependency
+is installed from PyPI as `flame-components>=0.1.1,<0.2`. The pyFOFEM extra is also
+currently downloaded from GitHub.
 
 Before running ConPyro, merge weather fields into `conpyro_df.csv`. At minimum, the default workflow expects `ws`, `wd`, `ffmc`, `dmc`, `bui`, and `wx_date`; selected model settings may require additional fields.
 
@@ -215,7 +218,9 @@ Preparing `conpyro_df.csv` does not attach weather. Extract or supply weather da
 
 ### Installation of optional dependencies fails
 
-Confirm Git is installed and can access GitHub. The core FuelAnalyst workflow does not require the optional dependencies, so you can omit the extras until model execution is needed.
+Confirm Git is installed and can access GitHub when installing the ConPyro or pyFOFEM
+extras. The core FuelAnalyst workflow does not require those optional dependencies, so you
+can omit the extras until model execution is needed.
 
 ## Next steps
 

@@ -94,7 +94,11 @@ dmypy.json
 
 # Local planning and review artifacts
 docs/superpowers/
+development/plans/
 development/*plan*.md
 docs/*plan*.md
 docs/pr-description-*.md
 docs/commit-message-*.md
+
+# Retained local dependency checkout; FuelAnalyst installs the PyPI package.
+dependencies/flame_components/
