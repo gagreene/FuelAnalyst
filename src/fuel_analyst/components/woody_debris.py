@@ -641,7 +641,7 @@ def _calc_tallied_woody_biomass(
     # comparison output left over from a prior run if comparison is
     # disabled this run.
     df = _prefix_compare_columns(df, measure_tally_qmd_compare)
-    keep_columns.extend([col for col in df if any(x in col for x in _COMPARE_COLUMN_PREFIXES)])
+    keep_columns.extend([col for col in df if col.startswith(_COMPARE_COLUMN_PREFIXES)])
 
     return df, keep_columns
 
@@ -1150,7 +1150,7 @@ def _prefix_compare_columns(df: pd.DataFrame, enabled: bool) -> pd.DataFrame:
     if not enabled:
         stale_columns = [
             col_name for col_name in df
-            if any(prefix in col_name for prefix in _COMPARE_COLUMN_PREFIXES)
+            if col_name.startswith(_COMPARE_COLUMN_PREFIXES)
         ]
         return df.drop(columns=stale_columns)
 
