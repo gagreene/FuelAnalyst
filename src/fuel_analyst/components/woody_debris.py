@@ -310,6 +310,7 @@ def _calc_plot_woody_debris(
 
     # Initialize list of columns to keep
     keep_columns = []
+    output_columns = {}
 
     # Loop through each woody debris class defined in parameters
     for woody_class, woody_class_dict in woody_debris_params['woody_debris_classes'].items():
@@ -351,8 +352,10 @@ def _calc_plot_woody_debris(
                         else:
                             raise ValueError(f'Unsupported condition: {cond}')
 
+                    output_col = f'woody_kgpm2_{woody_class_ext}_{req_ext}_{out_dc_str}'
+
                     # Sum measured woody debris biomass for each plot and output class
-                    df[f'woody_kgpm2_{woody_class_ext}_{req_ext}_{out_dc_str}'] = df.GlobalID.map(
+                    output_columns[output_col] = df.GlobalID.map(
                         woody_merged_df[
                             (woody_merged_df['woody_diam_cm'] > prior_out_dc) &
                             (woody_merged_df['woody_diam_cm'] <= out_dc) &
@@ -367,13 +370,11 @@ def _calc_plot_woody_debris(
                         if dc == out_dc:
                             # If the tallied diameter class matches the output diameter class,
                             # copy the tallied woody value
-                            df[f'woody_kgpm2_{woody_class_ext}_{req_ext}_{out_dc_str}'] = (
-                                df[f'woody_kgpm2_{woody_class_ext}_{dc_str}']
-                            )
+                            output_columns[output_col] = df[f'woody_kgpm2_{woody_class_ext}_{dc_str}']
                         elif prior_out_dc < dc < out_dc:
                             # Add the tallied fuel mass to the first class if the tallied diameter class is between
                             # the prior and current output diameter classes
-                            df[f'woody_kgpm2_{woody_class_ext}_{req_ext}_{out_dc_str}'] += (
+                            output_columns[output_col] = output_columns[output_col] + (
                                 df[f'woody_kgpm2_{woody_class_ext}_{dc_str}']
                             )
                         else:
@@ -384,6 +385,8 @@ def _calc_plot_woody_debris(
 
                     # Assign the previous diameter class to the current one
                     prior_out_dc = out_dc
+
+    df = helper.attach_columns(df, output_columns)
 
     return df, helper.sort_list(keep_columns)
 
@@ -488,27 +491,35 @@ def _calc_tallied_woody_biomass(
             transect_lengths = woody_class_dict['transect_lengths']
 
             # Calculate total and max transect lengths for each plot
-            for i, lngth in enumerate(np.unique(transect_lengths)):
-                df[f'tsct_length_total_{woody_class_ext}_{lngth}'] = df['num_transects'] * lngth
-            df[f'tsct_length_max_{woody_class_ext}'] = df['num_transects'] * max(transect_lengths)
+            length_columns = {}
+            for lngth in np.unique(transect_lengths):
+                length_columns[f'tsct_length_total_{woody_class_ext}_{lngth}'] = (
+                    df['num_transects'] * lngth
+                )
+            length_columns[f'tsct_length_max_{woody_class_ext}'] = (
+                df['num_transects'] * max(transect_lengths)
+            )
 
             # Calculate corrected slope lengths for each transect and sum for each plot
-            for i, lngth in enumerate(np.unique(transect_lengths)):
+            for lngth in np.unique(transect_lengths):
                 for tsct in [1, 2]:
-                    df[f't{tsct}_length_cor_{woody_class_ext}_{lngth}'] = (
+                    length_columns[f't{tsct}_length_cor_{woody_class_ext}_{lngth}'] = (
                         lngth / df[f't{tsct}_slope_cor']
                     )
-                df[f'tsct_length_cor_{woody_class_ext}_{lngth}'] = (
-                    df[f't1_length_cor_{woody_class_ext}_{lngth}'].replace(np.nan, 0) +
-                    df[f't2_length_cor_{woody_class_ext}_{lngth}'].replace(np.nan, 0)
+                length_columns[f'tsct_length_cor_{woody_class_ext}_{lngth}'] = (
+                    length_columns[f't1_length_cor_{woody_class_ext}_{lngth}'].replace(np.nan, 0) +
+                    length_columns[f't2_length_cor_{woody_class_ext}_{lngth}'].replace(np.nan, 0)
                 )
+            df = helper.attach_columns(df, length_columns)
 
             # Get counts of woody fuel tallies for each diameter class
+            count_columns = {}
             prior_dc = 0
             for i, dc in enumerate(diameter_cutoffs):
                 dc_str = str(dc).replace('.', '_')
+                count_col = f'woody_count_{woody_class_ext}_{dc_str}'
                 # Count the number of measured woody fuels within each diameter class
-                df[f'woody_count_{woody_class_ext}_{dc_str}'] = df.GlobalID.map(
+                count_columns[count_col] = df.GlobalID.map(
                     woody_merged_df[
                         (woody_merged_df['woody_diam_cm'] > prior_dc) &
                         (woody_merged_df['woody_diam_cm'] <= dc)
@@ -518,111 +529,119 @@ def _calc_tallied_woody_biomass(
                 if i == 0:
                     # The measured woody fuel count should be 0 for Canadian and modified fuel classes,
                     # assuming the tallied woody fuel count encompasses the upper limit of the first diameter class.
-                    df[f'woody_count_{woody_class_ext}_{dc_str}'] = (
-                        df[f'woody_count_{woody_class_ext}_{dc_str}'].replace(np.nan, 0) +
+                    count_columns[count_col] = (
+                        count_columns[count_col].replace(np.nan, 0) +
                         df['woody_tally_count'].replace(np.nan, 0)
                     )
                 # Assign prior diameter cutoff for next iteration
                 prior_dc = dc
             del prior_dc
+            df = helper.attach_columns(df, count_columns)
 
             # Calculate theoretical QMD of woody fuel tallies using Van Wagner approach
-            df = pd.concat([
+            df = helper.attach_columns(
                 df,
                 _get_van_wagner_qmd(
                     df[[f'tsct_length_max_{woody_class_ext}'] +
                        [f'tsct_length_total_{woody_class_ext}_{lngth}'
                         for lngth in sorted(np.unique(transect_lengths))] +
-                       [f'woody_count_{woody_class_ext}_{str(dc).replace('.', '_')}'
+                       [f'woody_count_{woody_class_ext}_{str(dc).replace(".", "_")}'
                         for dc in sorted(diameter_cutoffs)]],
                     woody_class_ext,
                     diameter_cutoffs,
                     transect_lengths
                 ).set_axis(
-                    [f'woody_qmd_vanwagner_{woody_class_ext}_{str(dc).replace('.', '_')}'
+                    [f'woody_qmd_vanwagner_{woody_class_ext}_{str(dc).replace(".", "_")}'
                      for dc in sorted(diameter_cutoffs)],
                     axis=1)
-            ], axis=1)
+            )
 
             # Calculate actual QMD of woody fuel tallies (if comparing measure vs tally)
             if measure_tally_qmd_compare and (woody_class_ext != 'fofem'):
+                comparison_columns = {}
                 prior_dc = diameter_cutoffs[0]
-                for i, dc in enumerate(diameter_cutoffs[1:]):
+                for dc in diameter_cutoffs[1:]:
                     dc_str = str(dc).replace('.', '_')
+                    diam_squared_col = f'compare_woody_diamSquared_sum_{woody_class_ext}_{dc_str}'
+                    count_col = f'woody_count_{woody_class_ext}_{dc_str}'
                     # Sum of squared diameters for each class
-                    df[f'compare_woody_diamSquared_sum_{woody_class_ext}_{dc_str}'] = df.GlobalID.map(
+                    comparison_columns[diam_squared_col] = df.GlobalID.map(
                         woody_merged_df[
                             (woody_merged_df['woody_diam_cm'] > prior_dc) &
                             (woody_merged_df['woody_diam_cm'] <= dc)
                         ].groupby('ParentGlobalID')['woody_diamSquared'].sum()
                     )
                     # Calculate QMD for each class
-                    df[f'compare_woody_qmd_calculated_{woody_class_ext}_{dc_str}'] = np.where(
-                        df[f'woody_count_{woody_class_ext}_{dc_str}'] > 0,
-                        np.sqrt(df[f'compare_woody_diamSquared_sum_{woody_class_ext}_{dc_str}'] /
-                                df[f'woody_count_{woody_class_ext}_{dc_str}']),
+                    comparison_columns[f'compare_woody_qmd_calculated_{woody_class_ext}_{dc_str}'] = np.where(
+                        df[count_col] > 0,
+                        np.sqrt(comparison_columns[diam_squared_col] / df[count_col]),
                         np.nan
                     )
                     # Assign prior diameter cutoff for next iteration
                     prior_dc = dc
                 del prior_dc
+                df = helper.attach_columns(df, comparison_columns)
 
             # Calculate tallied woody fuel biomass for each diameter class
+            biomass_columns = {}
             for i, dc in enumerate(diameter_cutoffs):
                 dc_str = str(dc).replace('.', '_')
 
                 # Convert to volumes and biomass
                 if i == 0:
+                    volume_col = f'woody_volume_{woody_class_ext}_{dc_str}'
                     # Calculate volume using Van Wagner QMD for smallest size class
-                    df[f'woody_volume_{woody_class_ext}_{dc_str}'] = (
+                    biomass_columns[volume_col] = (
                         10000 * df[f'woody_count_{woody_class_ext}_{dc_str}'] *
                         ((np.pi**2 / 8) / df[f'tsct_length_cor_{woody_class_ext}_{transect_lengths[i]}']) *
                         np.power(df[f'woody_qmd_vanwagner_{woody_class_ext}_{dc_str}'] / 100, 2)
                     )
                     # Calculate biomass
-                    df[f'woody_kgpm2_{woody_class_ext}_{dc_str}'] = (
+                    biomass_columns[f'woody_kgpm2_{woody_class_ext}_{dc_str}'] = (
                         df[f'tsct_slope_cor'] *
                         df[f'woody_sg_{dc_str}cm'] *
-                        df[f'woody_volume_{woody_class_ext}_{dc_str}'] /
+                        biomass_columns[volume_col] /
                         10
                     )
                     # Add to keep columns
                     keep_columns.append(f'woody_kgpm2_{woody_class_ext}_{dc_str}')
 
                 elif measure_tally_qmd_compare and (woody_class_ext != 'fofem'):
+                    van_wagner_volume_col = f'compare_woody_volume_vanwagner_{woody_class_ext}_{dc_str}'
+                    calculated_volume_col = f'compare_woody_volume_calculated_{woody_class_ext}_{dc_str}'
                     # Calculate volumes and biomass using Van Wagner QMD
-                    df[f'compare_woody_volume_vanwagner_{woody_class_ext}_{dc_str}'] = (
+                    biomass_columns[van_wagner_volume_col] = (
                         10000 * df[f'woody_count_{woody_class_ext}_{dc_str}'] *
                         ((np.pi**2 / 8) / df[f'tsct_length_cor_{woody_class_ext}_{transect_lengths[i]}']) *
                         np.power(df[f'woody_qmd_vanwagner_{woody_class_ext}_{dc_str}'] / 100, 2)
                     )
-                    df[f'compare_woody_kgpm2_vanwagner_{woody_class_ext}_{dc_str}'] = (
+                    biomass_columns[f'compare_woody_kgpm2_vanwagner_{woody_class_ext}_{dc_str}'] = (
                         df[f'tsct_slope_cor'] *
                         df[f'woody_sg_{dc_str}cm'] *
-                        df[f'compare_woody_volume_vanwagner_{woody_class_ext}_{dc_str}'] /
+                        biomass_columns[van_wagner_volume_col] /
                         10
                     )
                     # Calculate volumes and biomass using calculated QMD
-                    df[f'compare_woody_volume_calculated_{woody_class_ext}_{dc_str}'] = (
+                    biomass_columns[calculated_volume_col] = (
                         10000 * df[f'woody_count_{woody_class_ext}_{dc_str}'] *
                         ((np.pi**2 / 8) / df[f'tsct_length_cor_{woody_class_ext}_{transect_lengths[i]}']) *
                         np.power(df[f'compare_woody_qmd_calculated_{woody_class_ext}_{dc_str}'] / 100, 2)
                     )
-                    df[f'compare_woody_kgpm2_calculated_{woody_class_ext}_{dc_str}'] = (
+                    biomass_columns[f'compare_woody_kgpm2_calculated_{woody_class_ext}_{dc_str}'] = (
                         df[f'tsct_slope_cor'] *
                         df[f'woody_sg_{dc_str}cm'] *
-                        df[f'compare_woody_volume_calculated_{woody_class_ext}_{dc_str}'] /
+                        biomass_columns[calculated_volume_col] /
                         10
                     )
                 else:
                     break
+            df = helper.attach_columns(df, biomass_columns)
 
-    # Add QMD and biomass columns to keep_columns if QMD comparison is enabled
-    if measure_tally_qmd_compare:
-        for col_name in [col for col in df if 'woody_count_' in col or 'qmd_vanwagner' in col]:
-            df = df.rename(columns={col_name: col_name.replace(col_name, f'compare_{col_name}')})
-        keep_prefix_list = ['compare_woody_count', 'compare_woody_qmd', 'compare_woody_kgpm2']
-        keep_columns.extend([col for col in df if any(x in col for x in keep_prefix_list)])
+    # Reconcile comparison columns for output; also cleans up any stale
+    # comparison output left over from a prior run if comparison is
+    # disabled this run.
+    df = _prefix_compare_columns(df, measure_tally_qmd_compare)
+    keep_columns.extend([col for col in df if col.startswith(_COMPARE_COLUMN_PREFIXES)])
 
     return df, keep_columns
 
@@ -1096,6 +1115,56 @@ def _merge_spp_comp(
         spp_comp_df = _concat_spp_comp_frames(spp_comp_df, transect_spp_comp)
     
     return spp_comp_df
+
+
+_COMPARE_COLUMN_PREFIXES = ('compare_woody_count', 'compare_woody_qmd', 'compare_woody_kgpm2')
+
+
+def _prefix_compare_columns(df: pd.DataFrame, enabled: bool) -> pd.DataFrame:
+    """
+    Reconcile woody-count and QMD comparison columns for output.
+
+    When measured-vs-tally comparison is enabled, renames fresh woody-count
+    and Van Wagner QMD columns to their 'compare_' form in place, so exported
+    column order matches the source column's own position rather than
+    wherever a stale same-named column happened to sit. Columns already
+    carrying the 'compare_' prefix are left alone, and any pre-existing
+    column already using a computed target name is dropped first so renaming
+    never creates a duplicate label.
+
+    When disabled, drops every existing column carrying a known comparison
+    prefix, so toggling comparison off always removes stale comparison
+    output regardless of what a prior run left behind.
+
+    Reprocessing safety does not extend across a change in
+    `woody_debris_params` between calls on the same DataFrame while
+    comparison stays enabled: columns left over from a diameter-cutoff or
+    woody-class configuration that is no longer active are not detected or
+    removed, since `woody_debris_params` is a single static configuration in
+    production and never varies between calls on the same table.
+
+    :param df: DataFrame containing tallied woody-debris count and QMD columns.
+    :param enabled: Whether measured-vs-tally comparison output is enabled.
+    :return: DataFrame with comparison columns reconciled for this run.
+    """
+    if not enabled:
+        stale_columns = [
+            col_name for col_name in df
+            if col_name.startswith(_COMPARE_COLUMN_PREFIXES)
+        ]
+        return df.drop(columns=stale_columns)
+
+    rename_map = {
+        col_name: f'compare_{col_name}'
+        for col_name in df
+        if not col_name.startswith('compare_')
+        and ('woody_count_' in col_name or 'qmd_vanwagner' in col_name)
+    }
+    if not rename_map:
+        return df
+
+    stale_targets = [target for target in rename_map.values() if target in df.columns]
+    return df.drop(columns=stale_targets).rename(columns=rename_map)
 
 
 def _resolve_spp_comp_type(df: pd.DataFrame, spp_comp_df: pd.DataFrame) -> tuple[pd.DataFrame, list]:

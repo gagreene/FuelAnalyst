@@ -94,8 +94,7 @@ dmypy.json
 
 # Local planning and review artifacts
 docs/superpowers/
-development/plans/
-development/*plan*.md
+development/
 docs/*plan*.md
 docs/pr-description-*.md
 docs/commit-message-*.md

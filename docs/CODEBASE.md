@@ -59,10 +59,10 @@ FuelAnalyst/
 FuelAnalyst uses a standard `src` package layout and is installable with
 `python -m pip install -e .`. Optional dependency groups are declared in
 `pyproject.toml`: `conpyro`, `fofem`, `photoload`, `test`, `dev`, and `all`.
-The core package supports Python 3.10 and newer. The `conpyro` extra requires
-Python 3.11 or newer because it installs the bounded
-`flame-components>=0.1.1,<0.2` distribution from PyPI; ConPyro itself is
-currently installed from its GitHub repository.
+The package supports Python 3.11 through 3.14, tested on Windows, Linux, and
+macOS. The `conpyro` extra installs the bounded `flame-components>=0.1.1,<0.2`
+distribution from PyPI; ConPyro itself is currently installed from its GitHub
+repository.
 
 ## Public API
 
@@ -103,14 +103,18 @@ list, and `master_tree_df`.
 Processes the Survey123 woody transects with configurable Canadian, U.S.,
 modified, ConPyro, and FOFEM diameter schemes. It also calculates forest-floor
 duff/litter attributes and logs species-composition fallbacks through the
-central error handler.
+central error handler. Related transect, tally, QMD, volume, biomass, and final
+output columns are calculated in dependency-ordered batches and concatenated at
+logical boundaries so wide plot tables remain consolidated.
 
 ### `components/conpyro_attributes.py`
 
 Builds `conpyro_df` and `fbp_prep_df` from the merged plot data. Source columns
 may use `conpyro_` names internally, while the emitted ConPyro table uses the
 schema expected by the downstream model, such as `stand_type`, `stand_density`,
-and canopy/fuel attributes.
+and canopy/fuel attributes. Stand classifications and vegetation fuel-load
+columns are attached in batches because the incoming merged plot table can
+already be very wide.
 
 ### `components/fofem_attributes.py`
 
@@ -223,6 +227,46 @@ all four component-form folders are present.
 
 `keep_columns` remains additive: skipped or unselected components do not add
 their result columns to `master_fuel_df.csv`.
+
+### Column-attaching helpers and reprocessing safety
+
+Any function that adds computed columns to a wide plot DataFrame must tolerate
+being called on a DataFrame that already carries its own output columns (a
+reprocessed or re-merged table), not only a fresh one. This class of bug is
+easy to reintroduce because it only shows up when the input already contains
+the function's own outputs, which fresh-input unit tests don't exercise by
+default — when adding or reviewing a column-generating function, add a test
+that feeds its own prior output back in.
+
+Two distinct safe patterns exist, for two distinct operations. They are not
+interchangeable:
+
+- **Attaching newly computed columns** (`_calc_*` helpers building a dict of
+  Series): use `helper.attach_columns()`. A plain `pd.concat` duplicates the
+  column label instead of overwriting it, and can crash downstream code that
+  selects that label expecting a single Series (`ValueError: cannot reindex
+  on an axis with duplicate labels`). `attach_columns()` replaces a
+  pre-existing same-named column in its original position.
+- **Renaming an existing column to a new name** (e.g. prefixing
+  `woody_count_x` to `compare_woody_count_x`): a plain `.rename()` over a
+  substring match re-matches its own already-renamed output on a second pass
+  (e.g. `compare_x` becoming `compare_compare_x`) — exclude the destination
+  prefix from the source match. Do **not** implement this by routing through
+  `attach_columns()`: dropping the source column first and reattaching under
+  the new name moves it to the end of the DataFrame when no conflicting
+  column already exists, which changes column order for the real, single-pass
+  pipeline (the common case) purely to preserve position in a reprocessing
+  scenario production doesn't produce. Instead, drop only a conflicting
+  pre-existing destination column, then `.rename()` in place — see
+  `_prefix_compare_columns()` in `woody_debris.py`. This preserves real-run
+  column order exactly while still preventing duplicates if reprocessing ever
+  does leave a stale destination behind. Note that this only guards a stable
+  configuration re-run on its own output; it does not detect columns
+  orphaned by a *changed* configuration (e.g. a removed diameter cutoff or
+  woody class) between two calls on the same DataFrame — `woody_debris_params`
+  is a single static configuration in production and never varies between
+  calls on the same table, so this is an accepted, documented scope
+  boundary rather than a gap to close with fragile name-parsing heuristics.
 
 ### Tree calculations
 

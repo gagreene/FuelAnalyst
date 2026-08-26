@@ -6,6 +6,22 @@ import pytest
 from fuel_analyst.components import helper
 
 
+def test_attach_columns_replaces_existing_columns_in_place():
+    df = pd.DataFrame({'a': [1], 'stale': ['old'], 'b': [2]})
+    result = helper.attach_columns(df, {'stale': pd.Series(['new']), 'c': pd.Series([3])})
+    assert list(result.columns) == ['a', 'stale', 'b', 'c']
+    assert result['stale'].tolist() == ['new']
+    assert result.columns.tolist().count('stale') == 1
+
+
+def test_attach_columns_accepts_a_dataframe_of_columns():
+    df = pd.DataFrame({'a': [1]})
+    new_columns = pd.DataFrame({'b': [2], 'c': [3]})
+    result = helper.attach_columns(df, new_columns)
+    assert list(result.columns) == ['a', 'b', 'c']
+    assert result.loc[0, ['b', 'c']].tolist() == [2, 3]
+
+
 def test_get_missing_df_columns_reports_only_absent_columns():
     df = pd.DataFrame(columns=['a', 'c'])
     assert helper.get_missing_df_columns(df, ['a', 'b', 'c']) == ['b']

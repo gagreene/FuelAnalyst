@@ -438,7 +438,7 @@ def _calc_stand_attributes(
             field_name = f"tree_{attribute_weighting_dict.get(_att, 'dens')}_ha"
             denom = _tree_df.groupby('ParentGlobalID')[field_name].sum()
         elif _att == 'cbd':
-            field_name = f'tree_{attribute_weighting_dict['crwn_dpth']}_ha'
+            field_name = f'tree_{attribute_weighting_dict["crwn_dpth"]}_ha'
             denom = (_tree_df.groupby('ParentGlobalID')['tree_crwn_dpth_wtd'].sum() /
                      _tree_df.groupby('ParentGlobalID')[field_name].sum())
         else:

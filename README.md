@@ -77,8 +77,7 @@ The normal sequence is:
 
 ## Requirements
 
-- Python 3.10 or newer for the core workflow
-- Python 3.11 or newer when installing the `conpyro` extra
+- Python 3.11 through 3.14
 - Git, if cloning the repository or installing ConPyro or pyFOFEM from GitHub
 - A Survey123 export matching the expected form and repeat-table structure
 

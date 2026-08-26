@@ -13,8 +13,10 @@ from fuel_analyst.components.woody_debris import (
     _calc_plot_t2_azimuth,
     _calc_plot_tsct_slope_correction,
     _calc_plot_tsct_total_slope_correction,
+    _calc_plot_woody_debris,
     _calc_spp_comp_duff_litter_bulk_density,
     _calc_spp_comp_specific_gravity,
+    _calc_tallied_woody_biomass,
     _calc_tallied_woody_counts,
     _calc_woody_corrected_tsct_lengths,
     _calc_woody_diam_cm,
@@ -22,6 +24,7 @@ from fuel_analyst.components.woody_debris import (
     _calc_woody_volume,
     _calc_woody_weight,
     _concat_spp_comp_frames,
+    _prefix_compare_columns,
     _resolve_spp_comp_type,
 )
 
@@ -200,6 +203,282 @@ def test_tallied_woody_counts_sum_both_ends_of_both_transects():
         't2_woody_tally_0to2': [3], 't2_woody_tally_28to30': [4],
     })
     assert _calc_tallied_woody_counts(df).loc[0, 'woody_tally_count'] == 10
+
+
+def test_calc_plot_woody_debris_replaces_pre_existing_output_column():
+    df = pd.DataFrame({
+        'GlobalID': ['p1'],
+        'woody_kgpm2_test_default_5': ['stale'],
+    })
+    woody_merged_df = pd.DataFrame({
+        'ParentGlobalID': ['p1'],
+        'woody_diam_cm': [2.0],
+        'woody_mass_kgpm2': [0.3],
+    })
+    params = {
+        'woody_debris_classes': {
+            'test': {
+                'process_classes': True,
+                'class_extension': 'test',
+                'diameter_cutoffs': [100],
+                'output_request': [
+                    ['default', {}, [0, 5]],
+                ],
+            },
+        },
+    }
+
+    result, keep_columns = _calc_plot_woody_debris(df, woody_merged_df, params)
+
+    assert list(result.columns) == ['GlobalID', 'woody_kgpm2_test_default_5']
+    assert result.columns.tolist().count('woody_kgpm2_test_default_5') == 1
+    assert result.loc[0, 'woody_kgpm2_test_default_5'] == pytest.approx(0.3)
+    assert keep_columns == ['woody_kgpm2_test_default_5']
+
+
+def test_tallied_woody_fragmentation_contract_preserves_outputs_without_warning():
+    df = pd.DataFrame({
+        'GlobalID': ['p1'],
+        'num_transects': [2],
+        't1_slope_cor': [1.0],
+        't2_slope_cor': [1.0],
+        'tsct_slope_cor': [1.0],
+        'woody_tally_count': [4.0],
+        'woody_sg_1cm': [0.5],
+        'woody_sg_3cm': [0.6],
+    })
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', pd.errors.PerformanceWarning)
+        for index in range(110):
+            df[f'padding_{index}'] = index
+    input_column_count = len(df.columns)
+
+    pieces = pd.DataFrame({
+        'ParentGlobalID': ['p1'],
+        'woody_diam_cm': [2.0],
+        'woody_diamSquared': [4.0],
+    })
+    params = {
+        'measure_vs_tally_qmd_comparison': True,
+        'woody_debris_classes': {
+            'test': {
+                'process_classes': True,
+                'class_extension': 'test',
+                'diameter_cutoffs': [1, 3],
+                'transect_lengths': [4, 10, 30],
+            },
+        },
+    }
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', pd.errors.PerformanceWarning)
+        result, keep_columns = _calc_tallied_woody_biomass(df, pieces, params)
+
+    generated_columns = list(result.columns[input_column_count:])
+    assert generated_columns == [
+        'tsct_length_total_test_4',
+        'tsct_length_total_test_10',
+        'tsct_length_total_test_30',
+        'tsct_length_max_test',
+        't1_length_cor_test_4',
+        't2_length_cor_test_4',
+        'tsct_length_cor_test_4',
+        't1_length_cor_test_10',
+        't2_length_cor_test_10',
+        'tsct_length_cor_test_10',
+        't1_length_cor_test_30',
+        't2_length_cor_test_30',
+        'tsct_length_cor_test_30',
+        'compare_woody_count_test_1',
+        'compare_woody_count_test_3',
+        'compare_woody_qmd_vanwagner_test_1',
+        'compare_woody_qmd_vanwagner_test_3',
+        'compare_woody_diamSquared_sum_test_3',
+        'compare_woody_qmd_calculated_test_3',
+        'woody_volume_test_1',
+        'woody_kgpm2_test_1',
+        'compare_woody_volume_vanwagner_test_3',
+        'compare_woody_kgpm2_vanwagner_test_3',
+        'compare_woody_volume_calculated_test_3',
+        'compare_woody_kgpm2_calculated_test_3',
+    ]
+    assert keep_columns == [
+        'woody_kgpm2_test_1',
+        'compare_woody_count_test_1',
+        'compare_woody_count_test_3',
+        'compare_woody_qmd_vanwagner_test_1',
+        'compare_woody_qmd_vanwagner_test_3',
+        'compare_woody_qmd_calculated_test_3',
+        'compare_woody_kgpm2_vanwagner_test_3',
+        'compare_woody_kgpm2_calculated_test_3',
+    ]
+    assert result.loc[0, 'woody_kgpm2_test_1'] == pytest.approx(0.0027059681182720645)
+    assert result.loc[0, 'compare_woody_qmd_calculated_test_3'] == pytest.approx(2.0)
+    assert result.loc[0, 'compare_woody_kgpm2_calculated_test_3'] == pytest.approx(
+        0.014804406601634037
+    )
+
+    params['measure_vs_tally_qmd_comparison'] = False
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', pd.errors.PerformanceWarning)
+        result_without_comparison, keep_without_comparison = _calc_tallied_woody_biomass(
+            df,
+            pieces,
+            params
+        )
+
+    assert keep_without_comparison == ['woody_kgpm2_test_1']
+    assert not any(column.startswith('compare_') for column in result_without_comparison)
+
+
+def test_calc_tallied_woody_biomass_replaces_pre_existing_output_columns():
+    df = pd.DataFrame({
+        'GlobalID': ['p1'],
+        'num_transects': [2],
+        't1_slope_cor': [1.0],
+        't2_slope_cor': [1.0],
+        'tsct_slope_cor': [1.0],
+        'woody_tally_count': [4.0],
+        'woody_sg_1cm': [0.5],
+        'woody_sg_3cm': [0.6],
+        'tsct_length_max_test': ['stale'],
+        'woody_kgpm2_test_1': ['stale'],
+    })
+    pieces = pd.DataFrame({
+        'ParentGlobalID': ['p1'],
+        'woody_diam_cm': [2.0],
+        'woody_diamSquared': [4.0],
+    })
+    params = {
+        'measure_vs_tally_qmd_comparison': False,
+        'woody_debris_classes': {
+            'test': {
+                'process_classes': True,
+                'class_extension': 'test',
+                'diameter_cutoffs': [1, 3],
+                'transect_lengths': [4, 10, 30],
+            },
+        },
+    }
+
+    result, keep_columns = _calc_tallied_woody_biomass(df, pieces, params)
+
+    assert result.columns.tolist().count('tsct_length_max_test') == 1
+    assert result.columns.tolist().count('woody_kgpm2_test_1') == 1
+    assert result.loc[0, 'woody_kgpm2_test_1'] == pytest.approx(0.0027059681182720645)
+    assert list(result.columns[:len(df.columns)]) == list(df.columns)
+
+
+def test_prefix_compare_columns_does_not_double_prefix_already_prefixed_columns():
+    df = pd.DataFrame({
+        'compare_woody_count_test_1': [3],
+        'compare_woody_qmd_vanwagner_test_1': [2.0],
+        'other': [1],
+    })
+    result = _prefix_compare_columns(df, enabled=True)
+    assert list(result.columns) == list(df.columns)
+
+
+def test_prefix_compare_columns_overwrites_stale_destination_without_duplicating():
+    df = pd.DataFrame({
+        'compare_woody_count_test_1': ['stale'],
+        'woody_count_test_1': [7],
+    })
+    result = _prefix_compare_columns(df, enabled=True)
+    assert result.columns.tolist().count('compare_woody_count_test_1') == 1
+    assert result.loc[0, 'compare_woody_count_test_1'] == 7
+
+
+def test_prefix_compare_columns_renames_fresh_columns():
+    df = pd.DataFrame({'woody_count_test_1': [5], 'qmd_vanwagner_test_1': [2.0], 'other': [1]})
+    result = _prefix_compare_columns(df, enabled=True)
+    assert list(result.columns) == ['compare_woody_count_test_1', 'compare_qmd_vanwagner_test_1', 'other']
+
+
+def test_prefix_compare_columns_drops_stale_columns_when_disabled():
+    df = pd.DataFrame({
+        'compare_woody_count_test_1': ['stale'],
+        'compare_woody_qmd_vanwagner_test_1': ['stale'],
+        'compare_woody_kgpm2_vanwagner_test_3': ['stale'],
+        'woody_count_test_1': [5],
+        'other': [1],
+    })
+    result = _prefix_compare_columns(df, enabled=False)
+    assert list(result.columns) == ['woody_count_test_1', 'other']
+
+
+def test_calc_tallied_woody_biomass_does_not_double_prefix_reprocessed_columns():
+    df = pd.DataFrame({
+        'GlobalID': ['p1'],
+        'num_transects': [2],
+        't1_slope_cor': [1.0],
+        't2_slope_cor': [1.0],
+        'tsct_slope_cor': [1.0],
+        'woody_tally_count': [4.0],
+        'woody_sg_1cm': [0.5],
+        'woody_sg_3cm': [0.6],
+        'compare_woody_count_test_1': ['stale'],
+        'compare_woody_qmd_vanwagner_test_1': ['stale'],
+    })
+    pieces = pd.DataFrame({
+        'ParentGlobalID': ['p1'],
+        'woody_diam_cm': [2.0],
+        'woody_diamSquared': [4.0],
+    })
+    params = {
+        'measure_vs_tally_qmd_comparison': True,
+        'woody_debris_classes': {
+            'test': {
+                'process_classes': True,
+                'class_extension': 'test',
+                'diameter_cutoffs': [1, 3],
+                'transect_lengths': [4, 10, 30],
+            },
+        },
+    }
+
+    result, _ = _calc_tallied_woody_biomass(df, pieces, params)
+
+    assert not any(column.startswith('compare_compare_') for column in result.columns)
+    assert result.columns.tolist().count('compare_woody_count_test_1') == 1
+    assert result.columns.tolist().count('compare_woody_qmd_vanwagner_test_1') == 1
+
+
+def test_calc_tallied_woody_biomass_drops_stale_compare_columns_when_toggled_off():
+    df = pd.DataFrame({
+        'GlobalID': ['p1'],
+        'num_transects': [2],
+        't1_slope_cor': [1.0],
+        't2_slope_cor': [1.0],
+        'tsct_slope_cor': [1.0],
+        'woody_tally_count': [4.0],
+        'woody_sg_1cm': [0.5],
+        'woody_sg_3cm': [0.6],
+        'compare_woody_count_test_1': ['stale'],
+        'compare_woody_qmd_vanwagner_test_1': ['stale'],
+        'compare_woody_kgpm2_vanwagner_test_3': ['stale'],
+    })
+    pieces = pd.DataFrame({
+        'ParentGlobalID': ['p1'],
+        'woody_diam_cm': [2.0],
+        'woody_diamSquared': [4.0],
+    })
+    params = {
+        'measure_vs_tally_qmd_comparison': False,
+        'woody_debris_classes': {
+            'test': {
+                'process_classes': True,
+                'class_extension': 'test',
+                'diameter_cutoffs': [1, 3],
+                'transect_lengths': [4, 10, 30],
+            },
+        },
+    }
+
+    result, keep_columns = _calc_tallied_woody_biomass(df, pieces, params)
+
+    assert not any(column.startswith('compare_') for column in result.columns)
+    assert keep_columns == ['woody_kgpm2_test_1']
 
 
 def test_species_composition_parameters_are_weighted_and_unknown_species_fall_back():
