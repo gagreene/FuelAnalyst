@@ -637,16 +637,11 @@ def _calc_tallied_woody_biomass(
                     break
             df = helper.attach_columns(df, biomass_columns)
 
-    # Add QMD and biomass columns to keep_columns if QMD comparison is enabled
-    if measure_tally_qmd_compare:
-        rename_map = {
-            col_name: f'compare_{col_name}'
-            for col_name in df
-            if 'woody_count_' in col_name or 'qmd_vanwagner' in col_name
-        }
-        df = df.rename(columns=rename_map)
-        keep_prefix_list = ['compare_woody_count', 'compare_woody_qmd', 'compare_woody_kgpm2']
-        keep_columns.extend([col for col in df if any(x in col for x in keep_prefix_list)])
+    # Reconcile comparison columns for output; also cleans up any stale
+    # comparison output left over from a prior run if comparison is
+    # disabled this run.
+    df = _prefix_compare_columns(df, measure_tally_qmd_compare)
+    keep_columns.extend([col for col in df if any(x in col for x in _COMPARE_COLUMN_PREFIXES)])
 
     return df, keep_columns
 
@@ -1120,6 +1115,56 @@ def _merge_spp_comp(
         spp_comp_df = _concat_spp_comp_frames(spp_comp_df, transect_spp_comp)
     
     return spp_comp_df
+
+
+_COMPARE_COLUMN_PREFIXES = ('compare_woody_count', 'compare_woody_qmd', 'compare_woody_kgpm2')
+
+
+def _prefix_compare_columns(df: pd.DataFrame, enabled: bool) -> pd.DataFrame:
+    """
+    Reconcile woody-count and QMD comparison columns for output.
+
+    When measured-vs-tally comparison is enabled, renames fresh woody-count
+    and Van Wagner QMD columns to their 'compare_' form in place, so exported
+    column order matches the source column's own position rather than
+    wherever a stale same-named column happened to sit. Columns already
+    carrying the 'compare_' prefix are left alone, and any pre-existing
+    column already using a computed target name is dropped first so renaming
+    never creates a duplicate label.
+
+    When disabled, drops every existing column carrying a known comparison
+    prefix, so toggling comparison off always removes stale comparison
+    output regardless of what a prior run left behind.
+
+    Reprocessing safety does not extend across a change in
+    `woody_debris_params` between calls on the same DataFrame while
+    comparison stays enabled: columns left over from a diameter-cutoff or
+    woody-class configuration that is no longer active are not detected or
+    removed, since `woody_debris_params` is a single static configuration in
+    production and never varies between calls on the same table.
+
+    :param df: DataFrame containing tallied woody-debris count and QMD columns.
+    :param enabled: Whether measured-vs-tally comparison output is enabled.
+    :return: DataFrame with comparison columns reconciled for this run.
+    """
+    if not enabled:
+        stale_columns = [
+            col_name for col_name in df
+            if any(prefix in col_name for prefix in _COMPARE_COLUMN_PREFIXES)
+        ]
+        return df.drop(columns=stale_columns)
+
+    rename_map = {
+        col_name: f'compare_{col_name}'
+        for col_name in df
+        if not col_name.startswith('compare_')
+        and ('woody_count_' in col_name or 'qmd_vanwagner' in col_name)
+    }
+    if not rename_map:
+        return df
+
+    stale_targets = [target for target in rename_map.values() if target in df.columns]
+    return df.drop(columns=stale_targets).rename(columns=rename_map)
 
 
 def _resolve_spp_comp_type(df: pd.DataFrame, spp_comp_df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
