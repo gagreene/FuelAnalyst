@@ -282,6 +282,32 @@ interchangeable:
   replaces it with tree height before deriving flame length and crown-fire
   intensity, so `444` is not treated as a physical height.
 
+### Canopy cover
+
+Missing canopy cover (`cc`) is handled inconsistently and without any
+warning, and the two downstream paths default in opposite directions:
+
+- `conpyro_attributes.py` fills `canopy_cover` with `0` (`.fillna(0)`) before
+  building ConPyro/wind-speed inputs, so a plot with unmeasured cover is
+  modeled as fully open — cascading into `instand_ws_mps`, `flame_length_m`,
+  and `flame_ht_m` in `run_conpyro.py`. `_calc_stand_density()` in the same
+  file classifies density from the *raw*, still-NaN value first, so
+  `conpyro_density_class` ends up `None` while `canopy_cover` on the same row
+  is separately filled to `0` — the two derived fields disagree.
+- `fbp_fuel_type.py` never fills `cc`; NaN comparisons (`cc < 10`, etc.) are
+  always `False`, so a missing value falls through to the fuel-typing
+  `else` branches (`BCLCS_LEVEL_2 = 'T'`, `BCLCS_LEVEL_5 = 'DE'`) —
+  misclassified as a dense treed stand, the opposite default from the
+  ConPyro path. The vendored `bcwft2018.py` engine's `CROWN_CLOSURE is None`
+  fallback branches never trigger for a NaN float, so it also falls through
+  to numeric-comparison branches silently.
+- `canopy_cover.py` never logs; `error_handling.py` already registers a
+  `'Canopy Cover'` report source, but nothing in that component uses it.
+  `fofem_mortality.py`'s `_log_and_drop_incomplete_rows()` is the only place
+  that checks, logs, and drops rows for NaN `canopy_cover`, but by the time
+  data reaches it, `canopy_cover` has usually already been silently
+  0-filled upstream, so it rarely fires for this field in practice.
+
 ### Units
 
 FuelAnalyst calculations are primarily SI. FOFEM preparation is the major

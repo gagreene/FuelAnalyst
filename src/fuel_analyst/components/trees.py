@@ -4,7 +4,7 @@ Created on Tue May 27, 15:30:00 2025
 
 @author: Gregory A. Greene
 """
-__author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
+__author__ = ['Gregory A. Greene']
 
 import logging
 import os
@@ -1147,9 +1147,14 @@ def _calc_tree_fire_attributes(tree_df: pd.DataFrame, surface_fire_intensity_mod
     print('\tCalculating fire metrics (Fireline Intensity, Flame Length)')
 
     # ### RESOLVE SENTINEL BARK CHAR HEIGHT ###
-    # A field entry of _CROWN_FIRE_CHAR_SENTINEL indicates bark char reached full tree height
-    # (crown fire). Replace sentinel with actual tree height before calculating flame length.
-    full_ht_mask = tree_df['tree_bark_char_high'] == _CROWN_FIRE_CHAR_SENTINEL
+    # Per field protocol, a bark char height reaching the full tree height (crown fire)
+    # is recorded either as _CROWN_FIRE_CHAR_SENTINEL or as the tree's own measured
+    # height entered directly -- both indicate the same condition. Replace the sentinel
+    # with actual tree height before calculating flame length (already-equal rows are a no-op).
+    full_ht_mask = (
+        (tree_df['tree_bark_char_high'] == _CROWN_FIRE_CHAR_SENTINEL) |
+        (tree_df['tree_bark_char_high'] == tree_df['tree_ht'])
+    )
     tree_df.loc[full_ht_mask, 'tree_bark_char_high'] = tree_df.loc[full_ht_mask, 'tree_ht']
 
     # ### ESTIMATE FLAME LENGTH ###

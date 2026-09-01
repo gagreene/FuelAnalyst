@@ -4,7 +4,7 @@ Created on Tue May 27, 9:30:00 2025
 
 @author: Gregory A. Greene
 """
-__author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
+__author__ = ['Gregory A. Greene']
 
 import os
 import pandas as pd
@@ -33,6 +33,10 @@ def process_plot_attributes(in_folder: str, out_folder: str) -> tuple[pd.DataFra
     df['plot_slope_pct'] = np.where(df['plot_slope_units'] == 'degrees',
                                       100 * np.tan(df['plot_slope'] * np.pi / 180),
                                       df['plot_slope'].astype(float)).round(1)
+
+    # Aspect may be undefined on flat ground (slope == 0).
+    # Force it to 270 for downstream consumers.
+    df['plot_aspect'] = df['plot_aspect'].where(df['plot_slope_pct'] != 0, 270)
 
     # ### SAVE DATASETS TO OUTPUT FOLDER
     os.makedirs(out_folder, exist_ok=True)

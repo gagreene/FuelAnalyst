@@ -4,7 +4,7 @@ Created on Tue May 29, 8:30:00 2025
 
 @author: Gregory A. Greene
 """
-__author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
+__author__ = ['Gregory A. Greene']
 
 import os
 import numpy as np

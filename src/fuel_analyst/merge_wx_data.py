@@ -4,7 +4,7 @@ Created on Wed Feb 12, 15:00:00 2026
 
 @author: Gregory A. Greene
 """
-__author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
+__author__ = ['Gregory A. Greene']
 
 import os
 import numpy as np
@@ -201,14 +201,18 @@ if __name__ == '__main__':
     examples_dir = helper.get_examples_dir(os.path.dirname(__file__))
     _out_dir = os.path.join(examples_dir, 'results', 'wx_extract')
     _out_file_name = 'wx_data'
-    _plot_data_path = os.path.join(examples_dir, 'results', 'fbp_fuel_typing', 'conpyro_df_fbp.csv')
+    # No FBP typing available yet (blocked on a new FBP-prep dataset, see
+    # development/plans/2026-08-31-demo-dataset-replacement-and-section3.md
+    # Open Question #2) so this reads the plain ConPyro table, not an
+    # FBP-typed one, and disables FBP seasonal refinement below.
+    _plot_data_path = os.path.join(examples_dir, 'results', 'fuel_analyst', 'conpyro_df.csv')
     _plot_merge_col_name = 'unique_id'
     _wx_data_path = os.path.join(_out_dir, f'{_out_file_name}.csv')
     _wx_merge_col_name = 'unique_id'  # Assign as None to merge all weather data with each plot
     _wx_merge_vars = None
     _out_path = os.path.join(_out_dir, f'conpyro_df_wx.csv')
     _add_season = True
-    _refine_fbp_seasonally = True
+    _refine_fbp_seasonally = False  # No 'fbp_fuel_type' column present; see note above
     _summer_start = 615
     _fall_start = 915
 
