@@ -4,7 +4,7 @@ Created on Tue May 28, 15:00:00 2025
 
 @author: Gregory A. Greene
 """
-__author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
+__author__ = ['Gregory A. Greene']
 
 import os
 import pandas as pd
@@ -167,7 +167,7 @@ default_stand_summary_dict = {
         'summary': ['total'],  # This is fixed (no user options)
         'summary_permutation': 'exact',  # This is fixed (no user options)
         'metrics': ['min', 'max', 'mean'],  # These are the only options
-        'units': 'kWpm2',  # This option is fixed
+        'units': 'kWpm',  # This option is fixed (no user options)
     },
 }
 

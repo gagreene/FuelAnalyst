@@ -4,7 +4,7 @@ Created on Tue Oct 21, 09:00:00 2025
 
 @author: Gregory A. Greene
 """
-__author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
+__author__ = ['Gregory A. Greene']
 
 import os
 import numpy as np
@@ -199,7 +199,7 @@ def gen_conpyro_df(df: pd.DataFrame, conpyro_params: dict) -> tuple[pd.DataFrame
         'long': df['x'],
         'elevation': df['plot_elevation'],
         'slope': df['plot_slope_pct'],
-        'aspect': df['plot_aspect'],
+        'aspect': df['plot_aspect'],  # slope==0 -> 270 already forced upstream in plot_attributes.py
         'stand_density': df['conpyro_density_class'],
         'stand_type': df['conpyro_stand_type'],
         'fbp_fuel_type': '',

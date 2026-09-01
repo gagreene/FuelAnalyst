@@ -10,7 +10,7 @@ readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
-    {name = "Gregory A. Greene", email = "map.n.trowel@gmail.com"},
+    {name = "Gregory A. Greene"},
 ]
 keywords = ["fuel", "wildfire", "forestry", "FBP", "FOFEM", "British Columbia"]
 classifiers = [

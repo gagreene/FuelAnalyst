@@ -4,7 +4,7 @@ Created on Sun Feb 1, 16:30:00 2026
 
 @author: Gregory A. Greene
 """
-__author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
+__author__ = ['Gregory A. Greene']
 
 import logging
 import os

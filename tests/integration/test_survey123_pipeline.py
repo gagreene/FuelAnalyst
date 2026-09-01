@@ -44,21 +44,22 @@ def test_complete_survey123_pipeline_generates_owned_output_contracts(tmp_path):
     assert master['unique_id'].is_unique
     assert set(conpyro['unique_id']) == set(master['unique_id'])
     assert set(fbp['unique_id']) == set(master['unique_id'])
-    # The checked-in child forms contain documented orphan IDs. They are
-    # retained in detailed outputs while the pipeline prints mismatch warnings.
     assert fofem_trees['# PlotId'].notna().all()
     assert set(fofem_trees['# PlotId']) & set(master['unique_id'])
     assert 'treatment_unit_other' not in master.columns
     assert 'treatment_unit_other' not in fbp.columns
     assert (master.filter(regex='kgpm2').fillna(0) >= 0).all().all()
-    # Tree-density input failures in the checked-in example data (orphan tree
-    # records with no matching Plot Attributes parent) surface as ERROR-level
-    # rows in the run-level error report's Trees column instead of the
-    # deleted per-form tree_processing_issues.csv.
+    # Tree-density input failures in the checked-in example data (missing tree
+    # DBH on several plots) surface as ERROR-level rows in the run-level error
+    # report's Trees column instead of the deleted per-form
+    # tree_processing_issues.csv. Orphan-tree-record handling (a different
+    # failure mode this dataset doesn't happen to exercise) has dedicated
+    # synthetic-fixture coverage in tests/unit/test_trees.py and
+    # tests/unit/test_fuel_analyst.py instead.
     assert 'Trees' in errors.columns
     tree_messages = errors['Trees'].dropna().str.cat(sep='\n')
     assert '[ERROR]' in tree_messages
-    assert 'orphan tree record' in tree_messages
+    assert 'missing tree dbh' in tree_messages
     # Confirmed by actually running fuel_analyst() against this exact checked-in
     # fixture: the current pipeline logs real ID-mismatch warnings for multiple
     # plots across all four child forms. The error report being non-empty is a

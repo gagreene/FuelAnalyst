@@ -2,9 +2,9 @@
 """
 Created on Tues Feb 11, 13:25:00 2026
 
-@author: Florencia Tiribelli,
+@author: Florencia Tiribelli
 """
-__author__ = ['Florencia Tiribelli, ftiribelli@forsite.ca']
+__author__ = ['Florencia Tiribelli']
 
 import logging
 import os
