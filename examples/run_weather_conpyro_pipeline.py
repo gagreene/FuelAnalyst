@@ -18,9 +18,13 @@ directory shadowing GDAL/Python DLLs) so ``--stage weather`` cannot run
 there; the ``ProcessGeospatial`` conda env has working ``rasterio`` but
 lacks ``conpyro``/``pyfofem``, so ``--stage merge``/``--stage conpyro``
 cannot run there. Run ``--stage weather`` in an environment with a
-working geospatial stack, then ``--stage merge --stage conpyro`` (or
-``--stage all`` for the remainder) in the environment with
-``conpyro``/``pyfofem`` installed.
+working geospatial stack, then ``--stage merge --stage conpyro`` in the
+environment with ``conpyro``/``pyfofem`` installed. ``--stage all`` is
+equivalent to ``--stage weather --stage merge --stage conpyro`` in one
+process, so it only works in an environment where every stage's
+dependencies are satisfied at once; it is **not** a substitute for
+``--stage merge --stage conpyro`` in the split-environment workflow
+above, since it would still try (and fail) to re-run the weather stage.
 
 Requires ``examples/results/fuel_analyst/`` to already exist (run
 ``fuel_analyst.fuel_analyst`` first).
@@ -55,7 +59,10 @@ WEATHER_DIR = os.path.join(EXAMPLES_DIR, 'results', 'weather')
 CONPYRO_DIR = os.path.join(EXAMPLES_DIR, 'results', 'conpyro')
 
 #: Base path to NRCAN gridded weather data (variable subdirectories + dated rasters).
-WX_DATA_DIR = r'I:\_Weather_Data\NRCAN_FWIS_Database'
+#: Override with the NRCAN_DATA_DIR environment variable (same variable name
+#: extract_nrcan_wx.py's own __main__ block uses for its Docker case) since this
+#: default is specific to the machine this script was developed on.
+WX_DATA_DIR = os.getenv('NRCAN_DATA_DIR', r'I:\_Weather_Data\NRCAN_FWIS_Database')
 
 #: Weather variables to sample; matches run_conpyro()'s required/optional fields.
 WX_VAR_LIST = ['temp', 'pcp', 'rh', 'ws', 'wd', 'ffmc', 'dmc', 'dc', 'bui', 'isi', 'fwi']
