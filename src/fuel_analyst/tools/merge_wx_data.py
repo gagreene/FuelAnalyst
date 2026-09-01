@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 from typing import Union
 
-from .components import helper
+from ..components import helper
 
 
 def _add_season_column(

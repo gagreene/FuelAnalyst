@@ -42,7 +42,7 @@ _LOGGER_DISPLAY_NAMES = {
     _FORM_LOGGER_NAMES['woody']: 'Woody Debris',
     f'{_LOGGER_NAME_ROOT}.components.fofem_emissions': 'FOFEM Emissions',
     f'{_LOGGER_NAME_ROOT}.components.fofem_mortality': 'FOFEM Mortality',
-    f'{_LOGGER_NAME_ROOT}.extract_nrcan_wx': 'NRCAN Weather',
+    f'{_LOGGER_NAME_ROOT}.tools.extract_nrcan_wx': 'NRCAN Weather',
 }
 
 GENERAL_ERROR_ROW = 'General Error'

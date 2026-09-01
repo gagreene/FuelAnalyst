@@ -13,17 +13,17 @@ __all__ = [
 
 _API_MAP = {
 	'fuel_analyst': ('fuel_analyst', 'fuel_analyst'),
-	'extract_weather_data': ('extract_nrcan_wx', 'extract_weather_data'),
-	'process_fbp_fuel_type': ('fbp_fuel_type', 'process_fbp_fuel_type'),
-	'merge_weather_data': ('merge_wx_data', 'merge_weather_data'),
+	'extract_weather_data': ('tools.extract_nrcan_wx', 'extract_weather_data'),
+	'process_fbp_fuel_type': ('tools.fbp_fuel_type', 'process_fbp_fuel_type'),
+	'merge_weather_data': ('tools.merge_wx_data', 'merge_weather_data'),
 	'run_conpyro': ('run_conpyro', 'run_conpyro'),
 }
 
 if TYPE_CHECKING:
 	from .fuel_analyst import fuel_analyst
-	from .extract_nrcan_wx import extract_weather_data
-	from .fbp_fuel_type import process_fbp_fuel_type
-	from .merge_wx_data import merge_weather_data
+	from .tools.extract_nrcan_wx import extract_weather_data
+	from .tools.fbp_fuel_type import process_fbp_fuel_type
+	from .tools.merge_wx_data import merge_weather_data
 	from .run_conpyro import run_conpyro
 
 

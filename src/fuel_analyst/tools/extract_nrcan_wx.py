@@ -17,7 +17,7 @@ from pyproj import CRS
 from datetime import datetime
 from typing import Optional
 from functools import reduce
-from .components import error_handling, helper
+from ..components import error_handling, helper
 
 logger = logging.getLogger(__name__)
 
