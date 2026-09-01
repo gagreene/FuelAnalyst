@@ -34,9 +34,11 @@ def process_plot_attributes(in_folder: str, out_folder: str) -> tuple[pd.DataFra
                                       100 * np.tan(df['plot_slope'] * np.pi / 180),
                                       df['plot_slope'].astype(float)).round(1)
 
-    # Aspect may be undefined on flat ground (slope == 0).
-    # Force it to 270 for downstream consumers.
-    df['plot_aspect'] = df['plot_aspect'].where(df['plot_slope_pct'] != 0, 270)
+    # Aspect may be undefined on flat ground (slope == 0). Force it to 270 for
+    # downstream consumers, but only when the source data provides an aspect
+    # column at all -- some inputs (and test fixtures) omit it entirely.
+    if 'plot_aspect' in df.columns:
+        df['plot_aspect'] = df['plot_aspect'].where(df['plot_slope_pct'] != 0, 270)
 
     # ### SAVE DATASETS TO OUTPUT FOLDER
     os.makedirs(out_folder, exist_ok=True)
