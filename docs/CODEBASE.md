@@ -29,9 +29,10 @@ FuelAnalyst/
 |-- src/fuel_analyst/
 |   |-- __init__.py                Lazily loaded public API
 |   |-- fuel_analyst.py            Survey123 orchestrator and preparation defaults
-|   |-- extract_nrcan_wx.py        NRCAN raster extraction
-|   |-- fbp_fuel_type.py           BC FBP fuel typing
-|   |-- merge_wx_data.py           Plot/weather merge
+|   |-- tools/                     Optional supporting scripts
+|   |   |-- extract_nrcan_wx.py    NRCAN raster extraction
+|   |   |-- fbp_fuel_type.py       BC FBP fuel typing
+|   |   |-- merge_wx_data.py       Plot/weather merge
 |   |-- run_conpyro.py             ConPyro and FOFEM orchestration
 |   |-- _vendor/                   Vendored BCWFT2018 implementation
 |   |-- components/
@@ -96,7 +97,9 @@ Processes `survey_0.csv`, `sapling_1.csv`, and `tree_plot_2.csv`. It calculates
 density expansion factors, CNBE biomass, modeled heights, crown fuels, fuel
 strata gap, tree fire attributes, basal-area-weighted stand summaries, and
 species composition. It returns the processed plot table, its output-column
-list, and `master_tree_df`.
+list, and `master_tree_df`. `master_tree_df` includes both live and dead
+trees, distinguished by a `status` column; `dens_live_ha`/`ba_live_ha` are 0
+for dead trees, while `dens_ha`/`ba_ha` hold real totals for every tree.
 
 ### `components/woody_debris.py`
 
@@ -139,7 +142,7 @@ It installs a fallback console handler only when the package logger and its
 propagation ancestors have no non-null output handler; a lone `NullHandler`
 does not suppress fallback output.
 
-### `extract_nrcan_wx.py`
+### `tools/extract_nrcan_wx.py`
 
 Loads CSV or spatial plot locations, samples locally available NRCAN raster
 archives, optionally uses BC Wildfire Service ecodivision season dates, and can
@@ -179,7 +182,7 @@ flowchart TD
     T --> MT[master_tree_df.csv]
     M --> CP[conpyro_df.csv]
     M --> FP[fbp_prep_df.csv]
-    M --> FT[fofem_tree_df.csv]
+    M --> FT[fofem_gui_app_tree_mortality_df.csv]
     M --> FC[fofem_consume_df.csv]
     M --> ER[fuelanalyst_errors.csv]
 
@@ -195,7 +198,7 @@ flowchart TD
 
 - `master_tree_df.csv` requires processed tree data;
 - `conpyro_df.csv` and `fbp_prep_df.csv` require `gen_conpyro_df=True`;
-- `fofem_tree_df.csv` requires `gen_fofem_tree_df=True`; and
+- `fofem_gui_app_tree_mortality_df.csv` requires `gen_fofem_gui_app_tree_df=True`; and
 - `fofem_consume_df.csv` requires `gen_fofem_consume_df=True`.
 
 The centralized report omits plots with no collected issues. Form columns and
@@ -281,6 +284,32 @@ interchangeable:
 - Survey value `tree_bark_char_high == 444` means full-height char. The code
   replaces it with tree height before deriving flame length and crown-fire
   intensity, so `444` is not treated as a physical height.
+
+### Canopy cover
+
+Missing canopy cover (`cc`) is handled inconsistently and without any
+warning, and the two downstream paths default in opposite directions:
+
+- `conpyro_attributes.py` fills `canopy_cover` with `0` (`.fillna(0)`) before
+  building ConPyro/wind-speed inputs, so a plot with unmeasured cover is
+  modeled as fully open — cascading into `instand_ws_mps`, `flame_length_m`,
+  and `flame_ht_m` in `run_conpyro.py`. `_calc_stand_density()` in the same
+  file classifies density from the *raw*, still-NaN value first, so
+  `conpyro_density_class` ends up `None` while `canopy_cover` on the same row
+  is separately filled to `0` — the two derived fields disagree.
+- `fbp_fuel_type.py` never fills `cc`; NaN comparisons (`cc < 10`, etc.) are
+  always `False`, so a missing value falls through to the fuel-typing
+  `else` branches (`BCLCS_LEVEL_2 = 'T'`, `BCLCS_LEVEL_5 = 'DE'`) —
+  misclassified as a dense treed stand, the opposite default from the
+  ConPyro path. The vendored `bcwft2018.py` engine's `CROWN_CLOSURE is None`
+  fallback branches never trigger for a NaN float, so it also falls through
+  to numeric-comparison branches silently.
+- `canopy_cover.py` never logs; `error_handling.py` already registers a
+  `'Canopy Cover'` report source, but nothing in that component uses it.
+  `fofem_mortality.py`'s `_log_and_drop_incomplete_rows()` is the only place
+  that checks, logs, and drops rows for NaN `canopy_cover`, but by the time
+  data reaches it, `canopy_cover` has usually already been silently
+  0-filled upstream, so it rarely fires for this field in practice.
 
 ### Units
 

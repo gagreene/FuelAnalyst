@@ -4,7 +4,7 @@ Created on Sun Feb 1, 16:30:00 2026
 
 @author: Gregory A. Greene
 """
-__author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
+__author__ = ['Gregory A. Greene']
 
 import logging
 import os
@@ -12,8 +12,7 @@ import numpy as np
 import pandas as pd
 from typing import Union
 
-from . import helper
-from pyfofem import pyfofem as fofem
+from . import error_handling, helper
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +93,46 @@ def _log_and_drop_incomplete_rows(
     return plot_fire_df.dropna(subset=filtered_required_cols)
 
 
+def filter_live_trees(
+        tree_df: pd.DataFrame,
+        component_logger: logging.Logger,
+        issue_code: str,
+) -> pd.DataFrame:
+    """
+    Keep only live trees eligible for FOFEM mortality modelling or export.
+
+    Dead trees have no crown depth (undefined by trees._calc_tree_crown_depth())
+    and either produce meaningless mortality predictions or NaN downstream
+    values (e.g. FOFEM GUI export's CrownBaseHeight/CrownRatio). Shared by
+    process_mortality() and fofem_attributes.gen_fofem_gui_app_tree_df() so
+    the filter predicate, fallback, and message text can't drift between the
+    two call sites - only the logger and issue_code differ per caller, for
+    correct attribution in the run's error report.
+
+    Falls back to the pre-'status'-column filter (dens_live_ha > 0 alone) and
+    logs a run-level error via component_logger if 'status' is missing from
+    tree_df, since that matches the exact behavior of a legacy input
+    predating this column.
+
+    :param tree_df: DataFrame of tree records; expected to include a
+        'status' column and 'dens_live_ha'.
+    :param component_logger: Logger to attribute a missing-'status' issue to.
+    :param issue_code: issue_code to log if 'status' is missing.
+    :return: DataFrame filtered to live trees only.
+    """
+    if helper.get_missing_df_columns(tree_df, ['status']):
+        component_logger.error(
+            "Tree data has no 'status' column; cannot distinguish live from "
+            'dead trees. Treating input as legacy (pre-status-column) data '
+            'and filtering on dens_live_ha alone.',
+            extra={'unique_id': error_handling.GENERAL_ERROR_ROW, 'issue_code': issue_code},
+        )
+        return tree_df.loc[tree_df['dens_live_ha'] > 0].reset_index(drop=True)
+    return tree_df.loc[
+        (tree_df['status'] == 'L') & (tree_df['dens_live_ha'] > 0)
+    ].reset_index(drop=True)
+
+
 def process_mortality(
         plot_wx_fire_csv_path: str,
         fofem_tree_csv_path: str,
@@ -107,7 +146,8 @@ def process_mortality(
     Process mortality for a DataFrame of trees using the CRNSCH model.
 
     :param plot_wx_fire_csv_path: Path to CSV file containing plot weather and fire data.
-    :param fofem_tree_csv_path: Path to CSV file containing tree data.
+    :param fofem_tree_csv_path: Path to CSV file containing tree data. May include dead
+        trees; they are filtered out via filter_live_trees() before modelling.
     :param out_dir: Output directory to save results.
     :param aspen_sev: Aspen severity level ('low' or 'high') for mortality calculation.
     :param plot_id_col_name: Name of the unique ID column in plot_fire_df (default 'unique_id').
@@ -116,6 +156,12 @@ def process_mortality(
         fire severity DataFrame (default False).
     :return: None if return_dfs is False, otherwise a tuple of (merged_tree_df, plot_fire_df) DataFrames.
     """
+    # Imported here, not at module level: pyfofem is an optional extra, and
+    # fofem_attributes.py imports this module for filter_live_trees() alone -
+    # eagerly importing pyfofem here would make it a hard dependency of the
+    # base fuel_analyst() pipeline.
+    from pyfofem import pyfofem as fofem
+
     # Load tree parameters and set index
     tree_params_df = helper.get_df(
         os.path.join(os.path.dirname(__file__), '..', 'supporting_data', 'tree_parameters.csv')
@@ -125,6 +171,7 @@ def process_mortality(
     # Load stand fire and tree data
     plot_fire_df = helper.get_df(plot_wx_fire_csv_path)
     tree_df = helper.get_df(fofem_tree_csv_path)
+    tree_df = filter_live_trees(tree_df, logger, 'fofem_mortality_missing_status_column')
 
     # Remove rows with missing required data
     required_cols = ['instand_ws_mps', 'canopy_cover', 'ht_ovrstry_live', 'fsg', 'ws', 'hfi', 'fire_type', 'temp']

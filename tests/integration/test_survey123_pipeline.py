@@ -21,13 +21,14 @@ def test_complete_survey123_pipeline_generates_owned_output_contracts(tmp_path):
             out_dir=str(output_dir),
             surface_fire_intensity_model='Byram',
             gen_conpyro_df=True,
-            gen_fofem_tree_df=True,
+            gen_fofem_gui_app_tree_df=True,
             gen_fofem_consume_df=True,
         )
 
     expected_outputs = [
         'master_fuel_df.csv', 'fuelanalyst_errors.csv', 'master_tree_df.csv',
-        'conpyro_df.csv', 'fbp_prep_df.csv', 'fofem_tree_df.csv', 'fofem_consume_df.csv',
+        'conpyro_df.csv', 'fbp_prep_df.csv', 'fofem_gui_app_tree_mortality_df.csv',
+        'fofem_consume_df.csv',
         '1_Plot_Attributes/survey_0.csv', '2_Plants_Regeneration/survey_0.csv',
         '3_Trees/survey_0.csv',
         '4_Canopy_Cover/survey_0.csv',
@@ -39,26 +40,37 @@ def test_complete_survey123_pipeline_generates_owned_output_contracts(tmp_path):
     errors = pd.read_csv(output_dir / 'fuelanalyst_errors.csv', low_memory=False)
     conpyro = pd.read_csv(output_dir / 'conpyro_df.csv', low_memory=False)
     fbp = pd.read_csv(output_dir / 'fbp_prep_df.csv', low_memory=False)
-    fofem_trees = pd.read_csv(output_dir / 'fofem_tree_df.csv', low_memory=False)
+    master_trees = pd.read_csv(output_dir / 'master_tree_df.csv', low_memory=False)
+    fofem_trees = pd.read_csv(output_dir / 'fofem_gui_app_tree_mortality_df.csv', low_memory=False)
 
     assert master['unique_id'].is_unique
     assert set(conpyro['unique_id']) == set(master['unique_id'])
     assert set(fbp['unique_id']) == set(master['unique_id'])
-    # The checked-in child forms contain documented orphan IDs. They are
-    # retained in detailed outputs while the pipeline prints mismatch warnings.
     assert fofem_trees['# PlotId'].notna().all()
     assert set(fofem_trees['# PlotId']) & set(master['unique_id'])
     assert 'treatment_unit_other' not in master.columns
     assert 'treatment_unit_other' not in fbp.columns
     assert (master.filter(regex='kgpm2').fillna(0) >= 0).all().all()
-    # Tree-density input failures in the checked-in example data (orphan tree
-    # records with no matching Plot Attributes parent) surface as ERROR-level
-    # rows in the run-level error report's Trees column instead of the
-    # deleted per-form tree_processing_issues.csv.
+    # master_tree_df.csv retains dead trees (the demo dataset's 3_Trees/tree_plot_2.csv
+    # and sapling_1.csv both include real dead records); the FOFEM GUI export is
+    # filtered back to live trees only via fofem_attributes._filter_live_trees().
+    assert 'status' in master_trees.columns
+    assert (master_trees['status'] == 'D').any()
+    expected_fofem_rows = master_trees.loc[
+        (master_trees['status'] == 'L') & (master_trees['dens_live_ha'] > 0)
+    ]
+    assert len(fofem_trees) == len(expected_fofem_rows)
+    # Tree-density input failures in the checked-in example data (missing tree
+    # DBH on several plots) surface as ERROR-level rows in the run-level error
+    # report's Trees column instead of the deleted per-form
+    # tree_processing_issues.csv. Orphan-tree-record handling (a different
+    # failure mode this dataset doesn't happen to exercise) has dedicated
+    # synthetic-fixture coverage in tests/unit/test_trees.py and
+    # tests/unit/test_fuel_analyst.py instead.
     assert 'Trees' in errors.columns
     tree_messages = errors['Trees'].dropna().str.cat(sep='\n')
     assert '[ERROR]' in tree_messages
-    assert 'orphan tree record' in tree_messages
+    assert 'missing tree dbh' in tree_messages
     # Confirmed by actually running fuel_analyst() against this exact checked-in
     # fixture: the current pipeline logs real ID-mismatch warnings for multiple
     # plots across all four child forms. The error report being non-empty is a

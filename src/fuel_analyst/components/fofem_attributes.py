@@ -4,13 +4,19 @@ Created on Wed June 4, 10:00:00 2025
 
 @author: Gregory A. Greene
 """
-__author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
+__author__ = ['Gregory A. Greene']
+
+import logging
 
 import pandas as pd
 import numpy as np
 
+from . import fofem_mortality
 
-def gen_fofem_tree_df(df: pd.DataFrame, master_tree_df: pd.DataFrame) -> pd.DataFrame:
+logger = logging.getLogger(__name__)
+
+
+def gen_fofem_gui_app_tree_df(df: pd.DataFrame, master_tree_df: pd.DataFrame) -> pd.DataFrame:
     """
     Generate a DataFrame formatted for FOFEM tree mortality modeling.
 
@@ -20,10 +26,19 @@ def gen_fofem_tree_df(df: pd.DataFrame, master_tree_df: pd.DataFrame) -> pd.Data
       - TreeHeight, CrownBaseHeight: feet (input: m)
       - CrownRatio: percent (dimensionless ratio, no conversion needed)
 
+    master_tree_df is filtered to live trees only via
+    fofem_mortality.filter_live_trees() before building the output, since
+    dead trees have no crown depth and modelling their mortality is
+    meaningless - they are already dead.
+
     :param df: DataFrame with plot-level data (must include 'unique_id', 'treatment_type', 'year').
     :param master_tree_df: DataFrame with processed tree-level data.
     :return: DataFrame with FOFEM tree mortality variables.
     """
+    master_tree_df = fofem_mortality.filter_live_trees(
+        master_tree_df, logger, 'fofem_attributes_missing_status_column'
+    )
+
     # Prepare lookup dictionaries
     treatment_dict = df.set_index('unique_id')['treatment_type'].to_dict()
     year_dict = df.set_index('unique_id')['year'].to_dict()

@@ -1,23 +1,56 @@
+import logging
+
 import numpy as np
 import pandas as pd
 import pytest
 
-from fuel_analyst.components.fofem_attributes import gen_fofem_consumption_df, gen_fofem_tree_df
+from fuel_analyst.components.fofem_attributes import gen_fofem_consumption_df, gen_fofem_gui_app_tree_df
 
 
-def test_gen_fofem_tree_df_converts_units_and_status():
+def test_gen_fofem_gui_app_tree_df_converts_units_and_status():
     plots = pd.DataFrame({'unique_id': ['p1'], 'treatment_type': ['treated'], 'year': [2025]})
     trees = pd.DataFrame({
-        'unique_id': ['p1', 'p1'], 'spp_fofem': ['DF', 'DF'], 'dens_live_ha': [2.47105, 4.9421],
+        'unique_id': ['p1', 'p1'], 'status': ['L', 'L'],
+        'spp_fofem': ['DF', 'DF'], 'dens_live_ha': [2.47105, 4.9421],
         'dbh': [2.54, 5.08], 'ht': [10.0, 20.0], 'crown_depth': [4.0, 5.0],
         'decay_cnfr': [1, 2], 'decay_brdlf': [np.nan, np.nan], 'crown_class': ['D', 'C'],
     })
-    result = gen_fofem_tree_df(plots, trees)
+    result = gen_fofem_gui_app_tree_df(plots, trees)
     assert result['TreeExpansionFactor'].tolist() == pytest.approx([1.0, 2.0])
     assert result['Diameter'].tolist() == pytest.approx([1.0, 2.0])
     assert result['TreeStatus'].tolist() == ['H', 'U']
     assert result['CrownRatio'].tolist() == pytest.approx([40.0, 25.0])
     assert (result['EquationType'] == 'CRNSCH').all()
+
+
+def test_gen_fofem_gui_app_tree_df_filters_out_dead_trees():
+    plots = pd.DataFrame({'unique_id': ['p1'], 'treatment_type': ['treated'], 'year': [2025]})
+    trees = pd.DataFrame({
+        'unique_id': ['p1', 'p1'], 'status': ['L', 'D'],
+        'spp_fofem': ['DF', 'DF'], 'dens_live_ha': [2.47105, 0.0],
+        'dbh': [2.54, 2.54], 'ht': [10.0, 10.0], 'crown_depth': [4.0, np.nan],
+        'decay_cnfr': [1, 3], 'decay_brdlf': [np.nan, np.nan], 'crown_class': ['D', 'D'],
+    })
+    result = gen_fofem_gui_app_tree_df(plots, trees)
+    assert len(result) == 1
+    assert not result['CrownRatio'].isna().any()
+
+
+def test_gen_fofem_gui_app_tree_df_missing_status_logs_and_falls_back(caplog):
+    plots = pd.DataFrame({'unique_id': ['p1'], 'treatment_type': ['treated'], 'year': [2025]})
+    trees = pd.DataFrame({
+        'unique_id': ['p1', 'p1'],
+        'spp_fofem': ['DF', 'DF'], 'dens_live_ha': [2.47105, 0.0],
+        'dbh': [2.54, 2.54], 'ht': [10.0, 10.0], 'crown_depth': [4.0, np.nan],
+        'decay_cnfr': [1, 3], 'decay_brdlf': [np.nan, np.nan], 'crown_class': ['D', 'D'],
+    })
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.fofem_attributes'):
+        result = gen_fofem_gui_app_tree_df(plots, trees)
+
+    assert len(result) == 1
+    matching = [r for r in caplog.records if getattr(r, 'issue_code', None) ==
+                'fofem_attributes_missing_status_column']
+    assert len(matching) == 1
 
 
 def test_gen_fofem_consumption_df_assigns_categories_and_moisture_defaults():
