@@ -10,6 +10,7 @@ from fuel_analyst.components.trees import (
     _calc_sapling_density,
     _calc_sapling_tree_type,
     _calc_tree_basal_area,
+    _calc_tree_biomass,
     _calc_tree_cbh,
     _calc_tree_crown_depth,
     _calc_tree_crown_fuels,
@@ -119,6 +120,58 @@ def test_gen_master_tree_df_retains_dead_trees_with_status():
     assert result.loc[result['status'] == 'D', 'dens_live_ha'].tolist() == [0.0]
     assert result.loc[result['status'] == 'D', 'ba_live_ha'].tolist() == [0.0]
     assert result.loc[result['status'] == 'L', 'dens_live_ha'].tolist() == [100.0]
+
+
+def test_calc_tree_biomass_dead_tree_uses_modeled_height_not_raw():
+    # Regression test: mask_dead must gate on tree_ht_modeled, not raw tree_ht, since a
+    # dead/decayed tree's biomass is computed from tree_ht_modeled (trees.py's mask_dead
+    # branch) - checking raw tree_ht would wrongly zero out a tree with a missing field
+    # height but a perfectly valid modeled one.
+    tree_df = pd.DataFrame({
+        'tree_species': ['FDI'],
+        'tree_type': ['conifer'],
+        'tree_dcy_class_cnfr': [9],
+        'tree_dcy_class_brdlf': [np.nan],
+        'tree_dbh': [30.0],
+        'tree_ht': [np.nan],
+        'tree_ht_modeled': [15.0],
+        'tree_dens_ha': [100.0],
+    })
+    tree_params_df = pd.DataFrame({
+        'BIOMASS_CNBE_DBH-HT_Bwood1': [1.0], 'BIOMASS_CNBE_DBH-HT_Bwood2': [1.0], 'BIOMASS_CNBE_DBH-HT_Bwood3': [0.0],
+        'BIOMASS_CNBE_DBH-HT_Bbark1': [1.0], 'BIOMASS_CNBE_DBH-HT_Bbark2': [1.0], 'BIOMASS_CNBE_DBH-HT_Bbark3': [0.0],
+        'BIOMASS_CNBE_DBH-HT_Bbranches1': [1.0], 'BIOMASS_CNBE_DBH-HT_Bbranches2': [1.0], 'BIOMASS_CNBE_DBH-HT_Bbranches3': [0.0],
+        'BIOMASS_CNBE_DBH-HT_Bfoliage1': [1.0], 'BIOMASS_CNBE_DBH-HT_Bfoliage2': [1.0], 'BIOMASS_CNBE_DBH-HT_Bfoliage3': [0.0],
+    }, index=['FDI'])
+
+    result = _calc_tree_biomass(tree_df, tree_params_df)
+
+    # Conifer decay class 9 wood retention factor is 0.05; bark/branches/foliage are 0.
+    assert result.loc[0, 'tree_wood_cnbe_ha'] == pytest.approx(100 * 0.05 * 30.0 / 10000)
+    assert result.loc[0, 'tree_bark_cnbe_ha'] == 0.0
+
+
+def test_calc_tree_biomass_dead_tree_missing_dbh_gets_zero_biomass():
+    tree_df = pd.DataFrame({
+        'tree_species': ['FDI'],
+        'tree_type': ['conifer'],
+        'tree_dcy_class_cnfr': [9],
+        'tree_dcy_class_brdlf': [np.nan],
+        'tree_dbh': [np.nan],
+        'tree_ht': [np.nan],
+        'tree_ht_modeled': [0.0],
+        'tree_dens_ha': [0.0],
+    })
+    tree_params_df = pd.DataFrame({
+        'BIOMASS_CNBE_DBH-HT_Bwood1': [1.0], 'BIOMASS_CNBE_DBH-HT_Bwood2': [1.0], 'BIOMASS_CNBE_DBH-HT_Bwood3': [0.0],
+        'BIOMASS_CNBE_DBH-HT_Bbark1': [1.0], 'BIOMASS_CNBE_DBH-HT_Bbark2': [1.0], 'BIOMASS_CNBE_DBH-HT_Bbark3': [0.0],
+        'BIOMASS_CNBE_DBH-HT_Bbranches1': [1.0], 'BIOMASS_CNBE_DBH-HT_Bbranches2': [1.0], 'BIOMASS_CNBE_DBH-HT_Bbranches3': [0.0],
+        'BIOMASS_CNBE_DBH-HT_Bfoliage1': [1.0], 'BIOMASS_CNBE_DBH-HT_Bfoliage2': [1.0], 'BIOMASS_CNBE_DBH-HT_Bfoliage3': [0.0],
+    }, index=['FDI'])
+
+    result = _calc_tree_biomass(tree_df, tree_params_df)
+
+    assert result.loc[0, 'tree_wood_cnbe_ha'] == 0.0
 
 
 def test_calc_tree_fire_attributes_uses_crown_sentinel_and_surface_model():
@@ -295,6 +348,52 @@ def test_tree_density_logs_each_root_cause_at_correct_severity(caplog):
     assert codes == {'missing_plot_radius', 'non_numeric_tree_dbh'}
     assert all(r.levelname == 'ERROR' for r in caplog.records)
     assert all(r.unique_id == 'Unit_Plot_1_2025' for r in caplog.records)
+
+
+def test_tree_density_issue_message_names_the_tree_id(caplog):
+    plots = pd.DataFrame({
+        'GlobalID': ['p1'], 'unique_id': ['Unit_Plot_1_2025'],
+        'lgtree_plot_radius': [11.28], 'smtree_plot_radius': [5.64],
+        'sapling_plot_radius': [5.64],
+    })
+    plots = _calc_plot_multipliers(plots)
+    trees = _normalize_tree_inputs(pd.DataFrame({
+        'GlobalID': ['t1', 't2'], 'ParentGlobalID': ['p1', 'p1'],
+        'tree_id': [5, 12], 'tree_dbh': [20, 'not measured'],
+    }))
+    density = _calc_tree_density(plots, trees)
+
+    with caplog.at_level(logging.INFO, logger='fuel_analyst.components.trees'):
+        _log_tree_density_issues(plots, pd.DataFrame(), density)
+
+    messages = [r.getMessage() for r in caplog.records]
+    assert len(messages) == 1
+    assert 'tree_id 12' in messages[0]
+
+
+def test_tree_density_issue_message_falls_back_without_tree_id(caplog):
+    # Sapling-merged rows have no tree_id (saplings are tallied by species, not
+    # individually tagged) - the message should still identify the source record.
+    plots = pd.DataFrame({
+        'GlobalID': ['p1'], 'unique_id': ['Unit_Plot_1_2025'],
+        'lgtree_plot_radius': [11.28], 'smtree_plot_radius': [5.64],
+        'sapling_plot_radius': [5.64],
+    })
+    plots = _calc_plot_multipliers(plots)
+    trees = pd.DataFrame({
+        'GlobalID': ['s1'], 'ParentGlobalID': ['p1'], 'tree_dbh': ['not measured'],
+        'tree_density_source_table': ['sapling_1.csv'], 'tree_density_source_record_id': ['s1'],
+        'tree_density_required': [True], 'tree_count': [1.0],
+        '_tree_dbh_raw': ['not measured'], '_tree_dbh_issue': [''], '_tree_dbh_warning': [''],
+    })
+    density = _calc_tree_density(plots, trees)
+
+    with caplog.at_level(logging.INFO, logger='fuel_analyst.components.trees'):
+        _log_tree_density_issues(plots, pd.DataFrame(), density)
+
+    messages = [r.getMessage() for r in caplog.records]
+    assert len(messages) == 1
+    assert 'sapling_1.csv record s1' in messages[0]
 
 
 def test_tree_density_radius_issues_name_the_failing_radius_class(caplog):
