@@ -6,11 +6,45 @@ Created on Wed June 4, 10:00:00 2025
 """
 __author__ = ['Gregory A. Greene']
 
+import logging
+
 import pandas as pd
 import numpy as np
 
+from . import error_handling, helper
 
-def gen_fofem_tree_df(df: pd.DataFrame, master_tree_df: pd.DataFrame) -> pd.DataFrame:
+logger = logging.getLogger(__name__)
+
+
+def _filter_live_trees(master_tree_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Keep only live trees eligible for the FOFEM GUI mortality export.
+
+    Dead trees have no crown depth (undefined by trees._calc_tree_crown_depth())
+    and would produce NaN CrownBaseHeight/CrownRatio values. Falls back to the
+    pre-'status'-column filter (dens_live_ha > 0 alone) and logs a run-level
+    error if 'status' is missing from master_tree_df, since that matches the
+    exact behavior of a legacy input predating this column.
+
+    :param master_tree_df: DataFrame of tree records; expected to include a
+        'status' column and 'dens_live_ha'.
+    :return: DataFrame filtered to live trees only.
+    """
+    if helper.get_missing_df_columns(master_tree_df, ['status']):
+        logger.error(
+            "Tree data has no 'status' column; cannot distinguish live from "
+            'dead trees. Treating input as legacy (pre-status-column) data '
+            'and filtering on dens_live_ha alone.',
+            extra={'unique_id': error_handling.GENERAL_ERROR_ROW,
+                   'issue_code': 'fofem_attributes_missing_status_column'},
+        )
+        return master_tree_df.loc[master_tree_df['dens_live_ha'] > 0].reset_index(drop=True)
+    return master_tree_df.loc[
+        (master_tree_df['status'] == 'L') & (master_tree_df['dens_live_ha'] > 0)
+    ].reset_index(drop=True)
+
+
+def gen_fofem_gui_app_tree_df(df: pd.DataFrame, master_tree_df: pd.DataFrame) -> pd.DataFrame:
     """
     Generate a DataFrame formatted for FOFEM tree mortality modeling.
 
@@ -20,10 +54,16 @@ def gen_fofem_tree_df(df: pd.DataFrame, master_tree_df: pd.DataFrame) -> pd.Data
       - TreeHeight, CrownBaseHeight: feet (input: m)
       - CrownRatio: percent (dimensionless ratio, no conversion needed)
 
+    master_tree_df is filtered to live trees only via _filter_live_trees()
+    before building the output, since dead trees have no crown depth and
+    modelling their mortality is meaningless - they are already dead.
+
     :param df: DataFrame with plot-level data (must include 'unique_id', 'treatment_type', 'year').
     :param master_tree_df: DataFrame with processed tree-level data.
     :return: DataFrame with FOFEM tree mortality variables.
     """
+    master_tree_df = _filter_live_trees(master_tree_df)
+
     # Prepare lookup dictionaries
     treatment_dict = df.set_index('unique_id')['treatment_type'].to_dict()
     year_dict = df.set_index('unique_id')['year'].to_dict()

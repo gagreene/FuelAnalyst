@@ -97,7 +97,9 @@ Processes `survey_0.csv`, `sapling_1.csv`, and `tree_plot_2.csv`. It calculates
 density expansion factors, CNBE biomass, modeled heights, crown fuels, fuel
 strata gap, tree fire attributes, basal-area-weighted stand summaries, and
 species composition. It returns the processed plot table, its output-column
-list, and `master_tree_df`.
+list, and `master_tree_df`. `master_tree_df` includes both live and dead
+trees, distinguished by a `status` column; `dens_live_ha`/`ba_live_ha` are 0
+for dead trees, while `dens_ha`/`ba_ha` hold real totals for every tree.
 
 ### `components/woody_debris.py`
 
@@ -180,7 +182,7 @@ flowchart TD
     T --> MT[master_tree_df.csv]
     M --> CP[conpyro_df.csv]
     M --> FP[fbp_prep_df.csv]
-    M --> FT[fofem_tree_df.csv]
+    M --> FT[fofem_gui_app_tree_mortality_df.csv]
     M --> FC[fofem_consume_df.csv]
     M --> ER[fuelanalyst_errors.csv]
 
@@ -196,7 +198,7 @@ flowchart TD
 
 - `master_tree_df.csv` requires processed tree data;
 - `conpyro_df.csv` and `fbp_prep_df.csv` require `gen_conpyro_df=True`;
-- `fofem_tree_df.csv` requires `gen_fofem_tree_df=True`; and
+- `fofem_gui_app_tree_mortality_df.csv` requires `gen_fofem_gui_app_tree_df=True`; and
 - `fofem_consume_df.csv` requires `gen_fofem_consume_df=True`.
 
 The centralized report omits plots with no collected issues. Form columns and

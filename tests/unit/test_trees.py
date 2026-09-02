@@ -19,6 +19,7 @@ from fuel_analyst.components.trees import (
     _calc_tree_fire_attributes,
     _calc_tree_fsg,
     _calc_tree_type,
+    _gen_master_tree_df,
     _get_temesgen_tree_height,
     _log_tree_density_issues,
     _merge_saplings_to_trees,
@@ -91,6 +92,33 @@ def test_calc_tree_basal_area_uses_density_weighting():
     expected = np.pi * 0.1 ** 2
     assert result.loc[0, 'tree_ba'] == pytest.approx(expected)
     assert result.loc[0, 'tree_ba_ha'] == pytest.approx(100 * expected)
+
+
+def test_gen_master_tree_df_retains_dead_trees_with_status():
+    df = pd.DataFrame({'GlobalID': ['g1'], 'unique_id': ['p1']})
+    tree_df = pd.DataFrame({
+        'ParentGlobalID': ['g1', 'g1'],
+        'tree_ht_class': [1, 1],
+        'tree_status': ['L', 'D'],
+        'tree_dens_ha': [100.0, 50.0],
+        'tree_ba_ha': [2.0, 1.0],
+        'tree_species': ['FDI', 'FDI'],
+        'tree_species_fofem': ['DF', 'DF'],
+        'tree_dcy_class_cnfr': [np.nan, 3],
+        'tree_dcy_class_brdlf': [np.nan, np.nan],
+        'tree_dbh': [20.0, 15.0],
+        'tree_ht': [15.0, 12.0],
+        'tree_crwn_dpth': [5.0, np.nan],
+        'tree_bark_thick': [1.0, 0.8],
+    })
+    result = _gen_master_tree_df(df, tree_df)
+
+    assert result['status'].tolist() == ['L', 'D']
+    assert result['dens_ha'].tolist() == [100.0, 50.0]
+    assert result['ba_ha'].tolist() == [2.0, 1.0]
+    assert result.loc[result['status'] == 'D', 'dens_live_ha'].tolist() == [0.0]
+    assert result.loc[result['status'] == 'D', 'ba_live_ha'].tolist() == [0.0]
+    assert result.loc[result['status'] == 'L', 'dens_live_ha'].tolist() == [100.0]
 
 
 def test_calc_tree_fire_attributes_uses_crown_sentinel_and_surface_model():
