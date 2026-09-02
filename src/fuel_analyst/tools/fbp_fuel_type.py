@@ -14,6 +14,7 @@ from dateutil import parser
 from ..components import helper
 from .._vendor import bcwft2018 as bcwft
 
+
 def _coerce_datetime_columns(df: pd.DataFrame, field_dict: dict) -> pd.DataFrame:
     """
     Coerce columns BCWFT2018 expects as datetime64[ns] to a timezone-naive dtype.
@@ -30,7 +31,11 @@ def _coerce_datetime_columns(df: pd.DataFrame, field_dict: dict) -> pd.DataFrame
     df = df.copy()
     for field, dtype in field_dict.items():
         if field in df.columns and str(dtype).startswith('datetime64'):
-            df[field] = pd.to_datetime(df[field], errors='coerce', utc=True).dt.tz_localize(None)
+            df[field] = (
+                pd.to_datetime(df[field], errors='coerce', utc=True)
+                .dt.tz_localize(None)
+                .astype('datetime64[ns]')
+            )
     return df
 
 
