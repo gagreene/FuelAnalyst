@@ -784,6 +784,8 @@ def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> p
 
     For each species and component, applies the appropriate decay reduction factor and allometric parameters.
     Uses measured height for live/less decayed trees, and modeled height for dead/more decayed trees.
+    A tree missing DBH or the applicable height (measured for live/less decayed, modeled for
+    dead/more decayed) is excluded entirely and contributes zero biomass for every component.
 
     :param tree_df: DataFrame with tree attributes, including species, DBH, height, density, and decay class.
     :param tree_params_df: DataFrame with species-specific allometric parameters.
@@ -813,7 +815,13 @@ def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> p
             param2 = tree_params_df.loc[spp, f'BIOMASS_CNBE_DBH-HT_B{component}2']
             param3 = tree_params_df.loc[spp, f'BIOMASS_CNBE_DBH-HT_B{component}3']
 
-            # Masks for live/less decayed and dead/more decayed trees
+            # Masks for live/less decayed (measured height) and dead/more decayed (modeled
+            # height) trees. mask_live includes all live trees, and less decayed dead trees.
+            # mask_dead includes more decayed dead trees, and checks tree_ht_modeled, not raw tree_ht,
+            # to match the height actually used in its biomass formula below - tree_ht_modeled is
+            # guaranteed whenever tree_dbh is present (_calc_tree_missing_heights() models it
+            # unconditionally for this same decay/DBH-filtered population), so this never excludes
+            # a tree the DBH check alone wouldn't already exclude.
             mask_live = (
                 (tree_df.tree_species == spp) &
                 (tree_df.tree_dcy_class > 0) &
@@ -828,7 +836,7 @@ def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> p
                 ((tree_df.tree_dcy_class_cnfr >= _DEAD_DECAY_THRESHOLD_CONIFER) |
                  (tree_df.tree_dcy_class_brdlf >= _DEAD_DECAY_THRESHOLD_BROADLEAF)) &
                 (tree_df.tree_dbh > 0) &
-                (tree_df.tree_ht > 0)
+                (tree_df.tree_ht_modeled > 0)
             )
 
             # Calculate biomass for live/less decayed trees
@@ -1558,6 +1566,10 @@ def _log_tree_density_issues(
     """
     Report tree-density input failures through the centralized error_handling logger.
 
+    Every tree- or sapling-specific message names the individual record (tree_id,
+    or sapling species) so a plot with multiple issues can be traced back to
+    which record needs fixing, not just which plot.
+
     :param df: Plot-level DataFrame containing plot identity and radius validation fields.
     :param sapling_df: Sapling records containing parent identity and count validation fields.
     :param tree_df: Tree records containing parent identity and density validation fields.
@@ -1627,21 +1639,41 @@ def _log_tree_density_issues(
         'invalid_plot_area', 'invalid_plot_radius',
     }
     # Row-level issues include every independent cause except radius causes,
-    # which are represented by their parent survey source above.
+    # which are represented by their parent survey source above. Each message
+    # names the specific tree record so a plot with multiple issues can be
+    # traced back to the individual tree: tree_id (the field crew's own tag
+    # number) for direct tree_plot_2.csv records, or the sapling-merged
+    # record's source table/id when tree_id isn't applicable (saplings are
+    # tallied by species, not individually tagged).
     for _, tree in tree_df.iterrows():
         codes = [code for code in str(tree.get('tree_density_issue_codes', '')).split('|') if code]
+        if not codes:
+            continue
+        tree_id = tree.get('tree_id')
+        if pd.notna(tree_id):
+            if isinstance(tree_id, float) and tree_id.is_integer():
+                tree_id = int(tree_id)
+            tree_detail = f'tree_id {tree_id}'
+        else:
+            tree_detail = (
+                f"{tree.get('tree_density_source_table', 'unknown source')} "
+                f"record {tree.get('tree_density_source_record_id', 'unknown')}"
+            )
         for code in codes:
             if code in radius_issue_codes:
                 continue
             is_warning = code == 'sapling_dbh_zero_normalized'
             partial = bool(tree.get('tree_density_affected', False)) and not is_warning
-            log_issue(tree.get('ParentGlobalID'), code, results_partial=partial)
+            log_issue(tree.get('ParentGlobalID'), code, results_partial=partial, detail=tree_detail)
 
     # Invalid sapling counts cannot be synthesized into tree rows, so report
     # them directly from their source table. Parent linkage is also checked at
     # source level so simultaneous causes are not lost.
     known_parent_ids = set(df['GlobalID'].dropna())
     for _, sapling in sapling_df.iterrows():
+        # Saplings are tallied by species per plot, not individually tagged like
+        # trees, so species is the most specific identifier available for these.
+        sapling_detail = f"sapling species {sapling.get('sapling_species')}"
         parent_id = sapling.get('ParentGlobalID')
         parent_code = ''
         if pd.isna(parent_id) or not str(parent_id).strip():
@@ -1654,6 +1686,7 @@ def _log_tree_density_issues(
             log_issue(
                 parent_id, parent_code,
                 results_partial=sapling.get('sapling_species') != 'NO_SAPLINGS',
+                detail=sapling_detail,
             )
 
         if sapling.get('sapling_species') == 'NO_SAPLINGS':
@@ -1662,7 +1695,7 @@ def _log_tree_density_issues(
             count_col = f'sapling_{status}_count'
             issue_code = sapling.get(f'_{count_col}_issue', '')
             if issue_code:
-                log_issue(parent_id, issue_code, results_partial=True)
+                log_issue(parent_id, issue_code, results_partial=True, detail=sapling_detail)
 
     return partial_log
 
