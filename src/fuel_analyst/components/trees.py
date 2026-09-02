@@ -1462,7 +1462,7 @@ def _gen_master_tree_df(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame
       dead trees by design; 'dens_ha'/'ba_ha' hold real totals for every tree.
       The 'status' column distinguishes live ('L') from dead ('D') trees.
 
-    :param df: DataFrame containing plot-level data with 'group' and 'unique_id' columns.
+    :param df: DataFrame containing plot-level data with 'GlobalID' and 'unique_id' columns.
     :param tree_df: DataFrame containing individual tree data.
     :return: Master tree DataFrame ready for export.
     """
