@@ -1,32 +1,21 @@
-﻿ObjectID,GlobalID,_date,treatment_area,treatment_unit,treatment_type,plot_id,comments,tree_large_present,tree_small_present,sapling_present,lgtree_plot_radius,smtree_plot_radius,sapling_plot_radius,lgtree_mult,smtree_mult,sapling_mult,CreationDate,Creator,EditDate,Editor,x,y
-3,0d08a8f7-9988-4675-bd46-a32d862f847a,5/13/2025 19:00,Williams Lake WUI,501,burned,TBURN1,"All original height data save for first 6 trees
-",Y,Y,Y,11.28,5.64,5.64,25,100,100,5/16/2025 16:52,reginas1_UBC,5/16/2025 16:52,reginas1_UBC,-122.1140137,52.13864517
-4,e79feae9-1255-4b19-a23d-d06b62093efc,5/8/2025 19:00,WLFN CP008,B12,untreated,7,,Y,Y,Y,7.98,5.64,5.64,50,100,100,5/16/2025 16:52,reginas1_UBC,5/16/2025 16:52,reginas1_UBC,0,0
-5,b38455b7-6cee-4cba-bc7a-58fb356b3e9c,5/14/2025 19:00,Williams Lake WUI,501,untreated,TBA2,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/16/2025 16:53,reginas1_UBC,5/16/2025 16:53,reginas1_UBC,0,0
-6,a2583497-2bab-4034-b3e0-4a3f902df07b,5/8/2025 19:00,WLFN CP008,B12,untreated,14,"
-",Y,Y,Y,11.28,5.64,5.64,25,100,100,5/16/2025 17:20,jordnrs_UBC,5/16/2025 17:20,jordnrs_UBC,-122.0715886,52.17054248
-7,b4e53764-4551-48d9-ba8e-77f5e4dffdf3,5/13/2025 19:00,Williams Lake WUI,501,burned,TBURN2,"Trees were incorrectly ordered based on azimuth. New observations were recorded with the original (incorrect) numbering convention. Burn data, heights, and Live/ dead crown were remeasured on 13/05/2025. Other data was repeated from 2019 measurements.",Y,Y,Y,11.28,5.64,5.64,25,100,100,5/16/2025 17:20,jordnrs_UBC,5/16/2025 17:20,jordnrs_UBC,-122.1199524,52.13894279
-8,5d11cd92-7653-4529-944e-187373aee2fa,5/14/2025 19:00,Williams Lake WUI,501,treated,TBURN3,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/16/2025 17:20,jordnrs_UBC,5/16/2025 17:20,jordnrs_UBC,-122.1233466,52.14121382
-9,4619c4c1-1f27-4c60-b32f-f66d108718f1,5/8/2025 19:00,WLFN CP008,B12,untreated,17,No saplings in plot,Y,Y,Y,7.98,5.64,5.64,50,100,100,5/16/2025 21:59,lboydbel_UBC,5/16/2025 21:59,lboydbel_UBC,0,0
-10,5ba6d4b2-d35b-4d81-bb70-e1b948c78510,5/13/2025 19:00,Williams Lake WUI,501,burned,TCHP2,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/16/2025 21:59,lboydbel_UBC,5/16/2025 21:59,lboydbel_UBC,-122.1140137,52.13864517
-11,3db1b4dd-61dc-4921-908b-8db8cd264402,5/8/2025 19:00,WLFN CP008,B12,burned,1,"Ensure radius are correct when entering tree data.
-
-",Y,Y,Y,11.28,5.64,5.64,25,100,100,5/16/2025 22:38,lkelly99_UBC,5/16/2025 22:38,lkelly99_UBC,0,0
-12,d9dc0805-d410-4003-9ab6-c62dbefbe3b3,5/8/2025 19:00,WLFN CP008,B12,untreated,1,Small tree plot radius was 11.28 m,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/16/2025 22:38,lkelly99_UBC,5/16/2025 22:38,lkelly99_UBC,0,0
-13,174b3e45-3940-4182-947a-dc14df4115b3,5/13/2025 19:00,Williams Lake WUI,501,burned,TCHP3,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/16/2025 22:38,lkelly99_UBC,5/16/2025 22:38,lkelly99_UBC,-122.0715622,52.17065453
-14,7a821f31-60ab-4b3b-a962-949a9f910fc7,5/8/2025 19:00,WLFN CP008,B12,untreated,19,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/16/2025 23:39,awestein_UBC,5/16/2025 23:39,awestein_UBC,-122.071754,52.17065078
-15,1d850507-90e1-4c1d-8455-45e3d490681c,5/8/2025 19:00,WLFN CP008,B12,untreated,19,,Y,Y,Y,7.98,5.64,5.64,50,100,100,5/17/2025 0:06,awestein_UBC,5/17/2025 0:06,awestein_UBC,-121.8530469,52.09033745
-16,a1c18f4e-2954-47e6-8245-6c8c3c183644,5/21/2025 19:00,WLFN CP008,T0013,treated,1,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/23/2025 1:35,lkelly99_UBC,5/23/2025 1:35,lkelly99_UBC,0,0
-17,7c6111a4-0bb9-4b78-a67c-10f4e786ca3f,5/22/2025 19:00,WLFN CP008,T0013,treated,7,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/23/2025 1:35,lkelly99_UBC,5/23/2025 1:35,lkelly99_UBC,0,0
-18,9f1742c9-9cf3-42d9-97cd-5c89086d2f28,5/21/2025 19:00,WLFN CP008,T0011,treated,1,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/23/2025 1:38,lboydbel_UBC,5/23/2025 1:38,lboydbel_UBC,-121.8731555,52.09006058
-19,2579ecb8-33c2-44af-bd72-29beb452dbd8,5/21/2025 19:00,WLFN CP008,T0011,treated,2,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/23/2025 1:38,lboydbel_UBC,5/23/2025 1:38,lboydbel_UBC,-121.8712361,52.08999192
-20,7f9d5966-006a-4a8b-9b1d-bc11cad429c8,5/22/2025 19:00,WLFN CP008,T0013,treated,8,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/23/2025 1:38,lboydbel_UBC,5/23/2025 1:38,lboydbel_UBC,-121.8638375,52.09294783
-21,628a465f-daa2-4ed0-a133-f6c6b4048412,5/23/2025 19:00,WLFN CP008,T0014,treated,5,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/24/2025 2:55,lboydbel_UBC,5/24/2025 2:55,lboydbel_UBC,-121.8544032,52.08171462
-22,0aba2b46-0b97-4ac6-8c10-7507aa49fcf4,5/23/2025 19:00,WLFN CP008,T0014,treated,7,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/24/2025 2:55,lboydbel_UBC,5/24/2025 2:55,lboydbel_UBC,0,0
-23,e8b973ae-4c72-49b2-ad31-861b6ecd17a3,5/23/2025 19:00,WLFN CP008,T0014,treated,3,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/24/2025 2:55,lboydbel_UBC,5/24/2025 2:55,lboydbel_UBC,-121.8580896,52.08173357
-24,68f654d6-459b-4b9a-af6e-df81060d9901,5/26/2025 19:00,WLFN CP008,T0011,treated,5,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/27/2025 1:58,mnunn_UBC,5/27/2025 1:58,mnunn_UBC,-121.8730153,52.09224117
-25,be857dfe-2670-49c1-a327-6c5df23a715d,5/26/2025 19:00,WLFN CP008,T0015,treated,7,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/27/2025 2:28,lboydbel_UBC,5/27/2025 2:28,lboydbel_UBC,-121.8383089,52.07929915
-26,b8de079c-7f41-4edb-8054-95a6af4a0696,5/26/2025 19:00,WLFN CP008,T0011,treated,4,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/27/2025 2:28,lboydbel_UBC,5/27/2025 2:28,lboydbel_UBC,-121.8730629,52.09104442
-27,400430fb-2b52-4d7a-8e4e-5078c607a2d3,5/27/2025 19:00,WLFN CP008,T0011,treated,6,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/27/2025 23:01,lboydbel_UBC,5/27/2025 23:01,lboydbel_UBC,-121.8714014,52.09223182
-28,ffbf0518-7be8-4e02-9d1e-a66ead0179a5,5/27/2025 19:00,WLFN CP008,T0013,treated,5,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/27/2025 23:01,lboydbel_UBC,5/27/2025 23:01,lboydbel_UBC,-121.8620013,52.09180175
-29,2eef7725-f1d9-4f32-9376-eaa6deed9767,5/27/2025 19:00,WLFN CP008,T0013,treated,6,,Y,Y,Y,11.28,5.64,5.64,25,100,100,5/27/2025 23:01,lboydbel_UBC,5/27/2025 23:01,lboydbel_UBC,-121.8602613,52.09177233
+"ObjectID","GlobalID","_date","_user","_affiliation","treatment_area","treatment_unit","treatment_type","plot_id","comments","tree_large_present","tree_small_present","sapling_present","lgtree_plot_radius","smtree_plot_radius","sapling_plot_radius","CreationDate","Creator","EditDate","Editor","x","y"
+1,"Demo_P04_burned_20211026","10/26/2021 12:00","","","Demo","TU1","burned","P04","","Y","N","Y",11.28,5.64,5.64,"10/26/2021 12:00","demo_data","","",-120.566,50.391
+2,"Demo_P05_burned_20211026","10/26/2021 12:00","","","Demo","TU1","burned","P05","","Y","N","Y",11.28,5.64,5.64,"10/26/2021 12:00","demo_data","","",-120.569,50.712
+3,"Demo_P06_burned_20211026","10/26/2021 12:00","","","Demo","TU1","burned","P06","","Y","Y","N",11.28,5.64,5.64,"10/26/2021 12:00","demo_data","","",-120.204,50.453
+4,"Demo_P07_burned_20211009","10/9/2021 12:00","","","Demo","TU3","burned","P07","","Y","Y","N",11.28,5.64,5.64,"10/9/2021 12:00","demo_data","","",-120.118,50.585
+5,"Demo_P11_burned_20211009","10/9/2021 12:00","","","Demo","TU2","burned","P11","","Y","N","N",11.28,5.64,5.64,"10/9/2021 12:00","demo_data","","",-120.044,50.186
+6,"Demo_P16_burned_20211009","10/9/2021 12:00","","","Demo","TU6","burned","P16","","Y","Y","N",11.28,5.64,5.64,"10/9/2021 12:00","demo_data","","",-121.349,50.444
+7,"Demo_P17_burned_20211009","10/9/2021 12:00","","","Demo","TU6","burned","P17","","Y","Y","N",11.28,5.64,5.64,"10/9/2021 12:00","demo_data","","",-120.737,50.988
+8,"Demo_P18_burned_20211009","10/9/2021 12:00","","","Demo","TU6","burned","P18","","Y","N","N",11.28,5.64,5.64,"10/9/2021 12:00","demo_data","","",-120.054,50.724
+9,"Demo_P19_burned_20211008","10/8/2021 12:00","","","Demo","TU7","burned","P19","","Y","N","N",11.28,5.64,5.64,"10/8/2021 12:00","demo_data","","",-121.468,49.939
+10,"Demo_P20_burned_20211008","10/8/2021 12:00","","","Demo","TU7","burned","P20","","Y","N","N",11.28,5.64,5.64,"10/8/2021 12:00","demo_data","","",-120.28,51.085
+11,"Demo_P01_untreated_20210524","5/24/2021 12:00","","","Demo","TU5","untreated","P01","","Y","Y","N",11.28,5.64,5.64,"5/24/2021 12:00","demo_data","","",-120.023,50.752
+12,"Demo_P02_untreated_20210525","5/25/2021 12:00","","","Demo","TU5","untreated","P02","","Y","Y","N",11.28,5.64,5.64,"5/25/2021 12:00","demo_data","","",-121.305,50.936
+13,"Demo_P03_untreated_20210526","5/26/2021 12:00","","","Demo","TU5","untreated","P03","","Y","Y","Y",11.28,5.64,5.64,"5/26/2021 12:00","demo_data","","",-120.37,50.143
+14,"Demo_P08_treated_20210531","5/31/2021 12:00","","","Demo","TU3","treated","P08","","Y","N","Y",11.28,5.64,5.64,"5/31/2021 12:00","demo_data","","",-121.222,50.376
+15,"Demo_P09_treated_20210531","5/31/2021 12:00","","","Demo","TU3","treated","P09","","Y","N","N",11.28,5.64,5.64,"5/31/2021 12:00","demo_data","","",-121.525,50.883
+16,"Demo_P10_treated_20210531","5/31/2021 12:00","","","Demo","TU4","treated","P10","","Y","N","Y",11.28,5.64,5.64,"5/31/2021 12:00","demo_data","","",-121.008,50.976
+17,"Demo_P12_treated_20210609","6/9/2021 12:00","","","Demo","TU2","treated","P12","","Y","N","Y",11.28,5.64,5.64,"6/9/2021 12:00","demo_data","","",-120.259,50.699
+18,"Demo_P13_treated_20210530","5/30/2021 12:00","","","Demo","TU2","treated","P13","","Y","N","N",11.28,5.64,5.64,"5/30/2021 12:00","demo_data","","",-121.214,50.65
+19,"Demo_P14_untreated_20210518","5/18/2021 12:00","","","Demo","TU2","untreated","P14","","Y","N","Y",11.28,5.64,5.64,"5/18/2021 12:00","demo_data","","",-121.292,49.833
+20,"Demo_P15_untreated_20210519","5/19/2021 12:00","","","Demo","TU2","untreated","P15","","Y","N","N",11.28,5.64,5.64,"5/19/2021 12:00","demo_data","","",-121.295,50.816

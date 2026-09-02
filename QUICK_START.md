@@ -75,10 +75,10 @@ examples/results/fuel_analyst/
 The main files are:
 
 - `master_fuel_df.csv` — plot-level results
-- `master_tree_df.csv` — detailed tree results
+- `master_tree_df.csv` — detailed tree results (all trees, live and dead)
 - `conpyro_df.csv` — prepared ConPyro inputs
 - `fbp_prep_df.csv` — prepared BC FBP fuel-typing inputs
-- `fofem_tree_df.csv` — prepared FOFEM mortality inputs
+- `fofem_gui_app_tree_mortality_df.csv` — tree-mortality input for the standalone FOFEM GUI application
 - `fofem_consume_df.csv` — prepared FOFEM consumption inputs
 - `fuelanalyst_errors.csv` — every data-quality issue encountered during the run, by plot and reporting source
 
@@ -127,7 +127,7 @@ fuel_analyst(
     out_dir=r"C:\path\to\FuelAnalyst_results",
     surface_fire_intensity_model="Byram",
     gen_conpyro_df=True,
-    gen_fofem_tree_df=True,
+    gen_fofem_gui_app_tree_df=True,
     gen_fofem_consume_df=True,
 )
 ```

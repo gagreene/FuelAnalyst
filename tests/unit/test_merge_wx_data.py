@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from fuel_analyst.merge_wx_data import (
+from fuel_analyst.tools.merge_wx_data import (
     _add_season_column,
     _refine_fbp_fuel_types_by_season,
     merge_weather_data,

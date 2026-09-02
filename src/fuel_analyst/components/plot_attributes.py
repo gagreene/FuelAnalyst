@@ -4,7 +4,7 @@ Created on Tue May 27, 9:30:00 2025
 
 @author: Gregory A. Greene
 """
-__author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
+__author__ = ['Gregory A. Greene']
 
 import os
 import pandas as pd
@@ -29,10 +29,19 @@ def process_plot_attributes(in_folder: str, out_folder: str) -> tuple[pd.DataFra
     # Generate a unique ID for each plot
     df = helper.get_unique_id(df)
 
-    # Calculate slope as %
-    df['plot_slope_pct'] = np.where(df['plot_slope_units'] == 'degrees',
+    # Calculate slope as % -- keep the unrounded value for the exact-zero check
+    # below so a tiny nonzero slope that would round to display 0.0 isn't
+    # misclassified as flat.
+    _slope_pct_unrounded = np.where(df['plot_slope_units'] == 'degrees',
                                       100 * np.tan(df['plot_slope'] * np.pi / 180),
-                                      df['plot_slope'].astype(float)).round(1)
+                                      df['plot_slope'].astype(float))
+    df['plot_slope_pct'] = np.round(_slope_pct_unrounded, 1)
+
+    # Aspect may be undefined on flat ground (slope == 0). Force it to 270 for
+    # downstream consumers, but only when the source data provides an aspect
+    # column at all -- some inputs (and test fixtures) omit it entirely.
+    if 'plot_aspect' in df.columns:
+        df['plot_aspect'] = df['plot_aspect'].where(_slope_pct_unrounded != 0, 270)
 
     # ### SAVE DATASETS TO OUTPUT FOLDER
     os.makedirs(out_folder, exist_ok=True)

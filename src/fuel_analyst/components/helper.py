@@ -4,7 +4,7 @@ Created on Tue May 27, 9:25:00 2025
 
 @author: Gregory A. Greene
 """
-__author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
+__author__ = ['Gregory A. Greene']
 
 import csv as CSV
 import os

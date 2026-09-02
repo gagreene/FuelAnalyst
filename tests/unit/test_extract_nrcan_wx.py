@@ -7,8 +7,8 @@ import pandas as pd
 import pytest
 from shapely.geometry import Point
 
-from fuel_analyst import extract_nrcan_wx
-from fuel_analyst.extract_nrcan_wx import (
+from fuel_analyst.tools import extract_nrcan_wx
+from fuel_analyst.tools.extract_nrcan_wx import (
     _attach_geometry,
     _calc_percentile_worker,
     _get_filtered_raster_paths,
@@ -53,7 +53,7 @@ def test_missing_lat_long_logs_per_plot_warning(caplog):
     plot_id_col_name, lat_col_name, lon_col_name = 'unique_id', 'lat', 'lon'
 
     plots_sub = plots.dropna(subset=[lat_col_name, lon_col_name])
-    with caplog.at_level(logging.WARNING, logger='fuel_analyst.extract_nrcan_wx'):
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.tools.extract_nrcan_wx'):
         if len(plots_sub) < len(plots):
             missing_coords = plots[plots[lat_col_name].isna() | plots[lon_col_name].isna()]
             for missing_id in missing_coords[plot_id_col_name]:
@@ -75,7 +75,7 @@ def test_extract_weather_logs_per_plot_warning_for_missing_fire_season_dates(cap
     # Directly exercise the drop-with-warning logic as it exists in _extract_weather,
     # since a full call requires raster/geometry fixtures out of scope for a unit test.
     missing_dates = plots[plots['start_month_day'].isna() | plots['end_month_day'].isna()]
-    with caplog.at_level(logging.WARNING, logger='fuel_analyst.extract_nrcan_wx'):
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.tools.extract_nrcan_wx'):
         for missing_id in missing_dates['unique_id']:
             extract_nrcan_wx.logger.warning(
                 'Plot has missing fire season dates due to missing or unrecognized '

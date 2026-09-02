@@ -4,7 +4,7 @@ Created on Tue May 28, 15:00:00 2025
 
 @author: Gregory A. Greene
 """
-__author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
+__author__ = ['Gregory A. Greene']
 
 import os
 import pandas as pd
@@ -167,7 +167,7 @@ default_stand_summary_dict = {
         'summary': ['total'],  # This is fixed (no user options)
         'summary_permutation': 'exact',  # This is fixed (no user options)
         'metrics': ['min', 'max', 'mean'],  # These are the only options
-        'units': 'kWpm2',  # This option is fixed
+        'units': 'kWpm',  # This option is fixed (no user options)
     },
 }
 
@@ -479,7 +479,7 @@ def fuel_analyst(
         conpyro_params: Optional[dict] = None,
         fofem_consume_params: Optional[dict] = None,
         gen_conpyro_df: bool = False,
-        gen_fofem_tree_df: bool = False,
+        gen_fofem_gui_app_tree_df: bool = False,
         gen_fofem_consume_df: bool = False
 ) -> None:
     """
@@ -493,7 +493,7 @@ def fuel_analyst(
     :param conpyro_params: Dictionary containing ConPyro parameters.
     :param fofem_consume_params: Dictionary containing FOFEM consumption parameters.
     :param gen_conpyro_df: Boolean indicating whether to generate the ConPyro DataFrame.
-    :param gen_fofem_tree_df: Boolean indicating whether to generate the FOFEM tree DataFrame.
+    :param gen_fofem_gui_app_tree_df: Boolean indicating whether to generate the FOFEM GUI app tree mortality DataFrame.
     :param gen_fofem_consume_df: Boolean indicating whether to generate the FOFEM consumption DataFrame.
     :return: None. Every completed run writes master_fuel_df.csv and
         fuelanalyst_errors.csv; model-preparation outputs depend on the generation
@@ -644,8 +644,8 @@ def fuel_analyst(
         conpyro_df, fbp_prep_df = conpyro_attributes.gen_conpyro_df(plot_df, conpyro_params)
 
     # ### PROCESS FOFEM DATA
-    if gen_fofem_tree_df:
-        fofem_tree_df = fofem_attributes.gen_fofem_tree_df(plot_df, master_tree_df)
+    if gen_fofem_gui_app_tree_df:
+        fofem_tree_df = fofem_attributes.gen_fofem_gui_app_tree_df(plot_df, master_tree_df)
     if gen_fofem_consume_df:
         fofem_consume_df = fofem_attributes.gen_fofem_consumption_df(plot_df, fofem_consume_params)
 
@@ -681,10 +681,10 @@ def fuel_analyst(
         print(f'Saving the FBP Prep DataFrame to: {fbp_df_path}')
         helper.export_csv(fbp_prep_df, fbp_df_path)
 
-    # Save the FOFEM Tree DataFrame to the output folder if it exists
+    # Save the FOFEM GUI App Tree Mortality DataFrame to the output folder if it exists
     if fofem_tree_df is not None:
-        fofem_tree_df_path = os.path.join(out_dir, 'fofem_tree_df.csv')
-        print(f'Saving the FOFEM Tree DataFrame to: {fofem_tree_df_path}')
+        fofem_tree_df_path = os.path.join(out_dir, 'fofem_gui_app_tree_mortality_df.csv')
+        print(f'Saving the FOFEM GUI App Tree Mortality DataFrame to: {fofem_tree_df_path}')
         helper.export_csv(fofem_tree_df, fofem_tree_df_path)
 
     # Save the FOFEM Consumption DataFrame to the output folder if it exists
@@ -708,7 +708,7 @@ if __name__ == '__main__':
     _conpyro_dict = None            # Uses default ConPyro settings if None
     _fofem_consume_dict = None      # Uses default FOFEM woody debris settings if None
     _gen_conpyro_df = True          # Whether to generate the ConPyro DataFrame
-    _gen_fofem_tree_df = True       # Whether to generate the FOFEM tree DataFrame
+    _gen_fofem_gui_app_tree_df = False  # Whether to generate the FOFEM GUI app tree mortality DataFrame
     _gen_fofem_consume_df = True    # Whether to generate the FOFEM consumption DataFrame
 
     # Run the main fuel_analyst function
@@ -720,5 +720,5 @@ if __name__ == '__main__':
                  conpyro_params=_conpyro_dict,
                  fofem_consume_params=_fofem_consume_dict,
                  gen_conpyro_df=_gen_conpyro_df,
-                 gen_fofem_tree_df=_gen_fofem_tree_df,
+                 gen_fofem_gui_app_tree_df=_gen_fofem_gui_app_tree_df,
                  gen_fofem_consume_df=_gen_fofem_consume_df)

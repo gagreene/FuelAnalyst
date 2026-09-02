@@ -4,7 +4,7 @@ Created on Sun Feb 2, 11:15:00 2026
 
 @author: Gregory A. Greene
 """
-__author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
+__author__ = ['Gregory A. Greene']
 
 import os
 from numpy import array, column_stack, full, nan
@@ -22,6 +22,14 @@ try:
     _TQDM_PROCESS_MAP_AVAILABLE = True
 except ImportError:
     _TQDM_PROCESS_MAP_AVAILABLE = False
+
+# Matches pyfofem's Burnup _FIRE_BOUNDS['ti'] (surface fire residence time,
+# seconds) -- dependencies/pyfofem/src/pyfofem/components/burnup.py. Below
+# the min, Burnup hard-fails (BurnupError 11) and silently skips the
+# consumption/emissions merge; above the max, Burnup already clips
+# internally. Re-verify these against pyfofem if it's updated.
+_FOFEM_MIN_FLAME_RES_TIME_S = 10.0
+_FOFEM_MAX_FLAME_RES_TIME_S = 200.0
 
 
 default_fire_modelling_dict = {
@@ -79,6 +87,9 @@ default_fire_modelling_dict = {
                                             #     Options: 'legacy', 'default', 'expanded'
         'model_soil_heating': False,        # If True, pass SoilFamily data to pyfofem soil-heating model
         'emissions_units': 'Imperial',      # Options: 'Imperial' (kgha), 'SI' (kg/ha)
+        'force_flame_res_time_limits': True,  # Clip flame_res_time_sec to FOFEM/Burnup's valid range
+                                              #     (10-200s) instead of letting Burnup silently drop
+                                              #     out-of-range scenarios from the emissions estimate
     },
 }
 
@@ -252,12 +263,26 @@ def _calc_flame_tilt(df: pd.DataFrame) -> pd.Series:
     return df
 
 
-def _calc_flame_res_time(df: pd.DataFrame) -> pd.DataFrame:
+def _calc_flame_res_time(df: pd.DataFrame, force_flame_res_time_limits: bool = True) -> pd.DataFrame:
     """
     Calculate flame residence time using FLAME components.
 
+    Optionally clips the result to FOFEM/Burnup's valid residence-time
+    range (see :data:`_FOFEM_MIN_FLAME_RES_TIME_S` /
+    :data:`_FOFEM_MAX_FLAME_RES_TIME_S`) so out-of-range scenarios are
+    adjusted rather than silently dropped from Burnup's consumption/
+    emissions merge (``BurnupError`` 11 below the min; Burnup already
+    clips internally above the max).
+
     :param df: DataFrame with required columns.
-    :return: DataFrame with flame residence time values.
+    :param force_flame_res_time_limits: If True (default), clip
+        ``flame_res_time_sec`` values below :data:`_FOFEM_MIN_FLAME_RES_TIME_S`
+        up to that minimum, and values above :data:`_FOFEM_MAX_FLAME_RES_TIME_S`
+        down to that maximum.
+    :return: DataFrame with flame residence time values, plus
+        ``flame_res_time_sec_orig`` (the unclipped value) and
+        ``flame_res_time_comment`` (set on rows that were clipped,
+        blank/``NA`` elsewhere).
     """
     # Verify that required columns exist
     required_cols = ['hros', 'tfc', 'instand_ws_mps']
@@ -279,6 +304,21 @@ def _calc_flame_res_time(df: pd.DataFrame) -> pd.DataFrame:
         units='min'
     )
     df.loc[valid_mask, 'flame_res_time_sec'] = df.loc[valid_mask, 'flame_res_time_min'] * 60
+
+    df['flame_res_time_sec_orig'] = df['flame_res_time_sec']
+    df['flame_res_time_comment'] = pd.Series([pd.NA] * len(df), dtype='object')
+    if force_flame_res_time_limits:
+        too_low = df['flame_res_time_sec'] < _FOFEM_MIN_FLAME_RES_TIME_S
+        too_high = df['flame_res_time_sec'] > _FOFEM_MAX_FLAME_RES_TIME_S
+        adjusted = (too_low | too_high) & df['flame_res_time_sec'].notna()
+        df.loc[too_low, 'flame_res_time_sec'] = _FOFEM_MIN_FLAME_RES_TIME_S
+        df.loc[too_high, 'flame_res_time_sec'] = _FOFEM_MAX_FLAME_RES_TIME_S
+        df.loc[adjusted, 'flame_res_time_comment'] = (
+            'Flame residence time values adjusted to fit within FOFEM limits'
+        )
+        # Keep flame_res_time_min consistent with the (possibly clipped)
+        # seconds value, since _calc_flame_depth() consumes minutes.
+        df.loc[adjusted, 'flame_res_time_min'] = df.loc[adjusted, 'flame_res_time_sec'] / 60
 
     return df
 
@@ -435,12 +475,17 @@ def _model_fire_behavior(
     return df
 
 
-def _model_flame_components(df: pd.DataFrame, flame_comp_out_list: list) -> pd.DataFrame:
+def _model_flame_components(
+        df: pd.DataFrame,
+        flame_comp_out_list: list,
+        force_flame_res_time_limits: bool = True,
+) -> pd.DataFrame:
     """
     Model flame components using ConPyro output fire behavior parameters.
 
     :param df: DataFrame with ConPyro output parameters.
     :param flame_comp_out_list: List of flame component variables to calculate and add to the DataFrame.
+    :param force_flame_res_time_limits: Passed through to :func:`_calc_flame_res_time`.
     :return: DataFrame with additional flame component columns.
     """
     # Calculate in-stand wind speed (km/h)
@@ -465,7 +510,7 @@ def _model_flame_components(df: pd.DataFrame, flame_comp_out_list: list) -> pd.D
 
     # Calculate flame residence time
     print('\tCalculating flame residence time...')
-    df = _calc_flame_res_time(df)
+    df = _calc_flame_res_time(df, force_flame_res_time_limits=force_flame_res_time_limits)
 
     # Calculate flame depth
     print('\tCalculating flame depth...')
@@ -692,7 +737,11 @@ def run_conpyro(
 
         # ### MODEL FLAME COMPONENTS ###
         print('\n>>>> Modelling flame components with ConPyro output...')
-        df = _model_flame_components(df, flame_comp_out_list)
+        df = _model_flame_components(
+            df,
+            flame_comp_out_list,
+            force_flame_res_time_limits=fofem_emissions_params.get('force_flame_res_time_limits', True),
+        )
 
         # Save ConPyro results to CSV
         fire_csv_path = os.path.join(fire_dir, 'conpyro_results.csv')

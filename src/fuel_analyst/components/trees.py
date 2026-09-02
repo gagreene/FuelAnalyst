@@ -4,7 +4,7 @@ Created on Tue May 27, 15:30:00 2025
 
 @author: Gregory A. Greene
 """
-__author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
+__author__ = ['Gregory A. Greene']
 
 import logging
 import os
@@ -1147,9 +1147,14 @@ def _calc_tree_fire_attributes(tree_df: pd.DataFrame, surface_fire_intensity_mod
     print('\tCalculating fire metrics (Fireline Intensity, Flame Length)')
 
     # ### RESOLVE SENTINEL BARK CHAR HEIGHT ###
-    # A field entry of _CROWN_FIRE_CHAR_SENTINEL indicates bark char reached full tree height
-    # (crown fire). Replace sentinel with actual tree height before calculating flame length.
-    full_ht_mask = tree_df['tree_bark_char_high'] == _CROWN_FIRE_CHAR_SENTINEL
+    # Per field protocol, a bark char height reaching the full tree height (crown fire)
+    # is recorded either as _CROWN_FIRE_CHAR_SENTINEL or as the tree's own measured
+    # height entered directly -- both indicate the same condition. Replace the sentinel
+    # with actual tree height before calculating flame length (already-equal rows are a no-op).
+    full_ht_mask = (
+        (tree_df['tree_bark_char_high'] == _CROWN_FIRE_CHAR_SENTINEL) |
+        (tree_df['tree_bark_char_high'] == tree_df['tree_ht'])
+    )
     tree_df.loc[full_ht_mask, 'tree_bark_char_high'] = tree_df.loc[full_ht_mask, 'tree_ht']
 
     # ### ESTIMATE FLAME LENGTH ###
@@ -1453,9 +1458,11 @@ def _gen_master_tree_df(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame
     - Maps group IDs to unique IDs.
     - Converts tree height class codes to descriptive labels.
     - Selects and renames relevant columns.
-    - Filters out trees with non-positive live density.
+    - Retains all trees, live and dead. 'dens_live_ha'/'ba_live_ha' are 0 for
+      dead trees by design; 'dens_ha'/'ba_ha' hold real totals for every tree.
+      The 'status' column distinguishes live ('L') from dead ('D') trees.
 
-    :param df: DataFrame containing plot-level data with 'group' and 'unique_id' columns.
+    :param df: DataFrame containing plot-level data with 'GlobalID' and 'unique_id' columns.
     :param tree_df: DataFrame containing individual tree data.
     :return: Master tree DataFrame ready for export.
     """
@@ -1475,26 +1482,29 @@ def _gen_master_tree_df(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame
 
     # Columns to keep and their new names
     tree_cols = [
-        'unique_id', 'tree_species', 'tree_species_fofem', 'tree_dcy_class_cnfr', 'tree_dcy_class_brdlf',
-        'tree_ht_class_cd', 'tree_dens_live_ha', 'tree_dbh', 'tree_ba_live_ha',
-        'tree_ht', 'tree_crwn_dpth', 'tree_bark_thick'
+        'unique_id', 'tree_status', 'tree_species', 'tree_species_fofem', 'tree_dcy_class_cnfr',
+        'tree_dcy_class_brdlf', 'tree_ht_class_cd', 'tree_dens_live_ha', 'tree_dens_ha', 'tree_dbh',
+        'tree_ba_live_ha', 'tree_ba_ha', 'tree_ht', 'tree_crwn_dpth', 'tree_bark_thick'
     ]
     tree_cols_dict = {
+        'tree_status': 'status',
         'tree_species': 'spp',
         'tree_species_fofem': 'spp_fofem',
         'tree_dcy_class_cnfr': 'decay_cnfr',
         'tree_dcy_class_brdlf': 'decay_brdlf',
         'tree_ht_class_cd': 'crown_class',
         'tree_dens_live_ha': 'dens_live_ha',
+        'tree_dens_ha': 'dens_ha',
         'tree_dbh': 'dbh',
         'tree_ba_live_ha': 'ba_live_ha',
+        'tree_ba_ha': 'ba_ha',
         'tree_ht': 'ht',
         'tree_crwn_dpth': 'crown_depth',
         'tree_bark_thick': 'bark_thick'
     }
 
-    # Select, filter, and rename columns
-    temp_df = tree_df.loc[tree_df['tree_dens_live_ha'] > 0, tree_cols].rename(columns=tree_cols_dict)
+    # Select and rename columns; retain all trees, live and dead
+    temp_df = tree_df.loc[:, tree_cols].rename(columns=tree_cols_dict)
 
     # Return the master DataFrame
     return temp_df.reset_index(drop=True)

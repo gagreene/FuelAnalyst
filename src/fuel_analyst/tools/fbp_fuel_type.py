@@ -4,15 +4,15 @@ Created on Tue May 29, 8:30:00 2025
 
 @author: Gregory A. Greene
 """
-__author__ = ['Gregory A. Greene, map.n.trowel@gmail.com']
+__author__ = ['Gregory A. Greene']
 
 import os
 import numpy as np
 import pandas as pd
 from dateutil import parser
 
-from .components import helper
-from ._vendor import bcwft2018 as bcwft
+from ..components import helper
+from .._vendor import bcwft2018 as bcwft
 
 def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFrame:
     """
