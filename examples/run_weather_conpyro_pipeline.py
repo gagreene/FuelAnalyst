@@ -109,7 +109,7 @@ def _run_merge_stage() -> None:
     :return: None. Writes the merged table to
         ``<WEATHER_DIR>/conpyro_df_wx.csv``.
     """
-    from fuel_analyst.merge_wx_data import merge_weather_data
+    from fuel_analyst.tools.merge_wx_data import merge_weather_data
 
     merge_weather_data(
         plot_data_path=os.path.join(FUEL_ANALYST_RESULTS_DIR, 'conpyro_df.csv'),
@@ -136,7 +136,7 @@ def _run_weather_stage() -> None:
     :return: None. Writes ``wx_data.csv``, ``wx_data.shp``, and
         ``wx_data_errors.csv`` under :data:`WX_EXTRACT_DIR`.
     """
-    from fuel_analyst.extract_nrcan_wx import extract_weather_data
+    from fuel_analyst.tools.extract_nrcan_wx import extract_weather_data
 
     extract_weather_data(
         wx_data_dir=WX_DATA_DIR,

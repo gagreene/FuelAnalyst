@@ -91,7 +91,7 @@ def test_identity_columns_populated_from_plot_df(tmp_path):
 
 def test_known_non_form_loggers_use_stable_display_names(tmp_path):
     error_handling.start_run()
-    logging.getLogger('fuel_analyst.extract_nrcan_wx').warning(
+    logging.getLogger('fuel_analyst.tools.extract_nrcan_wx').warning(
         'weather issue', extra={'unique_id': 'A'}
     )
     logging.getLogger('fuel_analyst.components.fofem_emissions').warning(

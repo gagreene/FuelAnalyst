@@ -29,9 +29,10 @@ FuelAnalyst/
 |-- src/fuel_analyst/
 |   |-- __init__.py                Lazily loaded public API
 |   |-- fuel_analyst.py            Survey123 orchestrator and preparation defaults
-|   |-- extract_nrcan_wx.py        NRCAN raster extraction
-|   |-- fbp_fuel_type.py           BC FBP fuel typing
-|   |-- merge_wx_data.py           Plot/weather merge
+|   |-- tools/                     Optional supporting scripts
+|   |   |-- extract_nrcan_wx.py    NRCAN raster extraction
+|   |   |-- fbp_fuel_type.py       BC FBP fuel typing
+|   |   |-- merge_wx_data.py       Plot/weather merge
 |   |-- run_conpyro.py             ConPyro and FOFEM orchestration
 |   |-- _vendor/                   Vendored BCWFT2018 implementation
 |   |-- components/
@@ -139,7 +140,7 @@ It installs a fallback console handler only when the package logger and its
 propagation ancestors have no non-null output handler; a lone `NullHandler`
 does not suppress fallback output.
 
-### `extract_nrcan_wx.py`
+### `tools/extract_nrcan_wx.py`
 
 Loads CSV or spatial plot locations, samples locally available NRCAN raster
 archives, optionally uses BC Wildfire Service ecodivision season dates, and can

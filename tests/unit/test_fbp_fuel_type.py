@@ -1,6 +1,6 @@
 import pandas as pd
 
-from fuel_analyst import fbp_fuel_type
+from fuel_analyst.tools import fbp_fuel_type
 
 
 def test_process_fbp_fuel_type_merges_fuel_type_into_conpyro_output(tmp_path, monkeypatch):

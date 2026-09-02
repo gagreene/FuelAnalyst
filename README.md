@@ -60,8 +60,12 @@ flowchart LR
     B --> C[Master plot and tree tables]
     B --> D[ConPyro and FBP preparation]
     B --> E[FOFEM preparation]
-    D --> F[FBP fuel typing]
-    D --> G[Merge NRCAN weather]
+    D --> F
+    subgraph CFIS["CFIS modelling only"]
+        F[FBP fuel typing]
+    end
+    D --> G[Merge weather data]
+    F -.-> G
     G --> H[ConPyro fire behaviour]
     E --> I[FOFEM mortality and emissions]
     H --> I
@@ -78,7 +82,7 @@ The normal sequence is:
 ## Requirements
 
 - Python 3.11 through 3.14
-- Git, if cloning the repository or installing ConPyro or pyFOFEM from GitHub
+- Git, if cloning the repository or installing ConPyro or PyFOFEM from GitHub
 - A Survey123 export matching the expected form and repeat-table structure
 
 The base installation includes NumPy, pandas, SciPy, scikit-learn, Matplotlib, GeoPandas, Rasterio, PyProj, Shapely, python-dateutil, tqdm, and joblib.
@@ -466,10 +470,11 @@ FuelAnalyst/
 |-- src/fuel_analyst/
 |   |-- components/          FuelAnalyst processing components
 |   |-- supporting_data/     Packaged species, plant, and ecodivision data
+|   |-- tools/                   Optional supporting scripts
+|   |   |-- extract_nrcan_wx.py  NRCAN weather extraction
+|   |   |-- fbp_fuel_type.py     BC FBP fuel typing
+|   |   `-- merge_wx_data.py     Plot/weather merge
 |   |-- fuel_analyst.py      Core orchestrator and preparation defaults
-|   |-- extract_nrcan_wx.py  NRCAN weather extraction
-|   |-- fbp_fuel_type.py     BC FBP fuel typing
-|   |-- merge_wx_data.py     Plot/weather merge
 |   `-- run_conpyro.py       Fire-model orchestration
 |-- tests/                   Unit, integration, and regression suites
 |-- pyproject.toml           Package metadata and dependencies
