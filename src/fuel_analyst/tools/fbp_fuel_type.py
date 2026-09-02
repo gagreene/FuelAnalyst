@@ -14,6 +14,31 @@ from dateutil import parser
 from ..components import helper
 from .._vendor import bcwft2018 as bcwft
 
+
+def _coerce_datetime_columns(df: pd.DataFrame, field_dict: dict) -> pd.DataFrame:
+    """
+    Coerce columns BCWFT2018 expects as datetime64[ns] to a timezone-naive dtype.
+
+    Accepts timezone-naive datetimes, timezone-aware datetimes (e.g., columns
+    sourced from a GeoPackage), and string dates, so any of these date
+    formats can be passed through to BCWFT2018 without a dtype-cast error.
+
+    :param df: DataFrame containing columns to coerce.
+    :param field_dict: Mapping of column name to the dtype string BCWFT2018 expects.
+    :return: Copy of df with datetime-typed columns coerced to timezone-naive
+        datetime64[ns]; other columns are unchanged.
+    """
+    df = df.copy()
+    for field, dtype in field_dict.items():
+        if field in df.columns and str(dtype).startswith('datetime64'):
+            df[field] = (
+                pd.to_datetime(df[field], errors='coerce', utc=True)
+                .dt.tz_localize(None)
+                .astype('datetime64[ns]')
+            )
+    return df
+
+
 def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFrame:
     """
     Calculate CFFBPS fuel types with the BCWFT2018 fuel-typing algorithm.
@@ -72,6 +97,9 @@ def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFra
 
     # Filter columns to only those needed for fuel typing
     fbp_df = fbp_df.reindex(columns=['unique_id'] + field_list)
+
+    # Normalize date columns (timezone-naive, timezone-aware, or string) before casting
+    fbp_df = _coerce_datetime_columns(fbp_df, field_dict)
 
     # Ensure correct data types
     fbp_df = fbp_df.astype(field_dict)

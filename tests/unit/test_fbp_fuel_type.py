@@ -3,6 +3,29 @@ import pandas as pd
 from fuel_analyst.tools import fbp_fuel_type
 
 
+def test_coerce_datetime_columns_accepts_tz_aware_naive_and_string_dates():
+    df = pd.DataFrame({
+        'HARVEST_DATE': [
+            pd.Timestamp('2016-05-19', tz='UTC'),
+            pd.Timestamp('2016-05-19'),
+            '2016-05-19',
+            None,
+        ],
+        'unrelated': ['a', 'b', 'c', 'd'],
+    })
+    field_dict = {'HARVEST_DATE': 'datetime64[ns]', 'unrelated': 'str'}
+
+    result = fbp_fuel_type._coerce_datetime_columns(df, field_dict)
+
+    assert result['HARVEST_DATE'].dtype == 'datetime64[ns]'
+    assert result.loc[0, 'HARVEST_DATE'] == pd.Timestamp('2016-05-19')
+    assert result.loc[1, 'HARVEST_DATE'] == pd.Timestamp('2016-05-19')
+    assert result.loc[2, 'HARVEST_DATE'] == pd.Timestamp('2016-05-19')
+    assert pd.isna(result.loc[3, 'HARVEST_DATE'])
+    # non-datetime fields are left untouched
+    assert result['unrelated'].tolist() == ['a', 'b', 'c', 'd']
+
+
 def test_process_fbp_fuel_type_merges_fuel_type_into_conpyro_output(tmp_path, monkeypatch):
     master_path, prep_path, conpyro_path = (
         tmp_path / 'master.csv', tmp_path / 'prep.csv', tmp_path / 'conpyro.csv'
