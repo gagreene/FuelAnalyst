@@ -278,7 +278,7 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     plant_photoload_df = helper.get_df(
         os.path.join(os.path.dirname(__file__), '../supporting_data', 'plant_photoload.csv')
     )
-    plant_photoload_df.set_index('Code', inplace=True)
+    plant_photoload_df.set_index('name', inplace=True)
 
     # Initialize columns for plant species data
     df['pc_species_kgpm2'] = 0.0
@@ -299,8 +299,8 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     df['shrubs_pct_total'] = 0.0
 
     # Get the plant Photoload codes and labels
-    pl_code_map = plant_photoload_df['PL_Code'].to_dict()
-    label_map = plant_photoload_df['Label'].to_dict()
+    pl_code_map = plant_photoload_df['pl_code'].to_dict()
+    label_map = plant_photoload_df['label'].to_dict()
 
     # Cycle through the top 5 plant species
     for x in range(1, 6):
