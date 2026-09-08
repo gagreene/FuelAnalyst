@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]          # FuelAnalyst_Workshop
 sys.path[:0] = [
     str(ROOT / "Upstream_dependencies" / "conpyro" / "src"),
-    str(ROOT / "Upstream_dependencies"),
+    str(ROOT / "FuelAnalyst" / "dependencies" / "pyfofem" / "src"),
 ]
 from conpyro import conpyro
 import flame_components as fc
@@ -376,9 +376,9 @@ def _single_run_fire_behavior(args):
         model_terrain_effects_on_wind=bool(input_params['model_terrain_effects_on_wind']),
         model_terrain_effects_on_ffmc=bool(input_params['model_terrain_effects_on_ffmc']),
         process_ladder=input_params['process_ladder'],
-        season=(input_params['season'] if input_params['season'] != 'use_csv' else subset_df['season'].values.astype(str)),
-        density=subset_df['stand_density'].values.astype(str),
-        stand_type=subset_df['stand_type'].values.astype(str),
+        season=(input_params['season'] if input_params['season'] != 'use_csv' else subset_df['season'].to_numpy(dtype=str)),
+        density=subset_df['stand_density'].to_numpy(dtype=str),
+        stand_type=subset_df['stand_type'].to_numpy(dtype=str),
         cbd=subset_df['cbd_ovrstry'].values,
         cfl_ovrstry=subset_df['cfl_ovrstry'].values,
         fsg=subset_df['fsg'].values,
@@ -393,7 +393,7 @@ def _single_run_fire_behavior(args):
         ffmc=subset_df['ffmc'].values,
         dmc=subset_df['dmc'].values,
         bui=subset_df['bui'].values,
-        fuel_type=(subset_df['fbp_fuel_type'].values.astype(str) if subset_df['fbp_fuel_type'].notna().all() else None),
+        fuel_type=(subset_df['fbp_fuel_type'].to_numpy(dtype=str) if subset_df['fbp_fuel_type'].notna().all() else None),
         pct_cnfr=subset_df['pct_cnfr'].values,
         ht_midstry_live=subset_df['ht_midstry_live'].values,
         ht_midstry_dead=subset_df['ht_midstry_dead'].values,
