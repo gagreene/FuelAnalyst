@@ -14,6 +14,25 @@ from dateutil import parser
 from ..components import helper
 from .._vendor import bcwft2018 as bcwft
 
+# BCWFT2018's verifyInputs() only accepts str or None for these fields - unlike several other
+# fields it also accepts a bare NaN float for (e.g. BCLCS_LEVEL_1..5, INVENTORY_STANDARD_CD).
+# A plot recording fewer than 6 tallied species (the common case) gets a genuine NaN for the
+# unused SPECIES_CD_x ranks from trees.py's _calc_stand_type(); an unvegetated/unforested plot
+# can leave even SPECIES_CD_1 as NaN. Left uncoerced, that NaN reaches verifyInputs() untouched
+# and raises TypeError.
+_SPECIES_CD_FIELDS = [f'SPECIES_CD_{x}' for x in range(1, 7)]
+
+# conpyro_attributes.py's _prep_fbp_df() intentionally leaves these as pd.NA placeholders for
+# the user to fill in manually (e.g. from BC VRI/BEC-zone GIS layers) before calling
+# process_fbp_fuel_type() - FuelAnalyst has no access to that external data itself. Confirmed
+# by direct testing against the real vendored bcwft2018.py that each of these genuinely raises
+# (not just degrades gracefully like the two date fields _coerce_datetime_columns() already
+# handles) when left unfilled: BEC_ZONE_CODE/BEC_SUBZONE/COAST_INTERIOR_CD require an actual
+# str with no None/NaN fallback at all; PROJ_AGE_1 tolerates None and a plain float NaN, but
+# not pd.NA specifically (isinstance(pd.NA, (int, float, type(None))) is False).
+_REQUIRED_STRING_FIELDS = ['COAST_INTERIOR_CD', 'BEC_ZONE_CODE', 'BEC_SUBZONE']
+_REQUIRED_NUMERIC_OR_NONE_FIELDS = ['PROJ_AGE_1']
+
 
 def _coerce_datetime_columns(df: pd.DataFrame, field_dict: dict) -> pd.DataFrame:
     """
@@ -39,6 +58,73 @@ def _coerce_datetime_columns(df: pd.DataFrame, field_dict: dict) -> pd.DataFrame
     return df
 
 
+def _coerce_missing_species_codes(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Replace missing (NaN) SPECIES_CD_1..SPECIES_CD_6 values with None.
+
+    BCWFT2018's verifyInputs() only accepts str or None for these fields, not a bare NaN
+    float. Must run before the general field_dict-driven astype() cast in
+    _calc_fbp_fuel_type(): casting a column to 'str' converts both NaN and None into the
+    literal strings 'nan'/'None' rather than leaving None alone, so these columns are
+    coerced here and then excluded from that later cast.
+
+    :param df: DataFrame containing zero or more of the SPECIES_CD_1..SPECIES_CD_6 columns.
+    :return: Copy of df with NaN replaced by None in those columns; other columns unchanged.
+    """
+    df = df.copy()
+    present_cols = [col for col in _SPECIES_CD_FIELDS if col in df.columns]
+    # Cast to object first: .where(..., None) on a float64 column (the common case - a rank
+    # with zero non-null values across every row, e.g. no plot has a 6th species) coerces the
+    # replacement None back into NaN to match the column's existing float dtype, silently
+    # undoing the fix.
+    df[present_cols] = df[present_cols].astype(object)
+    df[present_cols] = df[present_cols].where(df[present_cols].notna(), None)
+    return df
+
+
+def _validate_user_supplied_fbp_fields(df: pd.DataFrame) -> None:
+    """
+    Raise a clear, upfront error for every plot missing a manually-supplied BEC/coast-interior
+    or stand-age field, instead of letting BCWFT2018's verifyInputs() raise a cryptic TypeError
+    for the first affected plot deep inside the per-plot loop.
+
+    COAST_INTERIOR_CD, BEC_ZONE_CODE, and BEC_SUBZONE must be a real string for every plot;
+    PROJ_AGE_1 must be int, float, or explicit None. These are user-supplied fields (see
+    conpyro_attributes.py's _prep_fbp_df()), not something FuelAnalyst itself can compute, so an
+    invalid value here always means the user's own fill-in step missed a plot - it is never a
+    FuelAnalyst bug to fix by coercion, unlike the missing species codes _calc_fbp_fuel_type()
+    also handles.
+
+    :param df: DataFrame with 'unique_id' and the fields BCWFT2018 requires already merged in.
+    :return: None.
+    :raises ValueError: If any plot has a missing/invalid value for a required field, naming
+        every affected field and its affected unique_id values.
+    """
+    problems = {}
+    for field in _REQUIRED_STRING_FIELDS:
+        if field not in df.columns:
+            problems[field] = 'column is missing entirely'
+            continue
+        invalid_mask = ~df[field].apply(lambda value: isinstance(value, str))
+        if invalid_mask.any():
+            problems[field] = df.loc[invalid_mask, 'unique_id'].tolist()
+    for field in _REQUIRED_NUMERIC_OR_NONE_FIELDS:
+        if field not in df.columns:
+            problems[field] = 'column is missing entirely'
+            continue
+        invalid_mask = ~df[field].apply(lambda value: isinstance(value, (int, float, type(None))))
+        if invalid_mask.any():
+            problems[field] = df.loc[invalid_mask, 'unique_id'].tolist()
+
+    if problems:
+        details = '; '.join(f'{field}: {affected}' for field, affected in problems.items())
+        raise ValueError(
+            'fbp_prep_df has unfilled or invalid user-supplied field(s) required by BCWFT2018 '
+            '(fill these in manually from BC VRI/BEC-zone GIS data before calling '
+            f'process_fbp_fuel_type()): {details}.'
+        )
+
+
 def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFrame:
     """
     Calculate CFFBPS fuel types with the BCWFT2018 fuel-typing algorithm.
@@ -46,7 +132,11 @@ def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFra
     :param df: DataFrame containing the fields required by BCWFT2018.
     :param season: Season used for seasonal fuel-type assignments.
     :return: DataFrame containing calculated fuel types and modifiers.
+    :raises ValueError: If any plot is missing a required user-supplied field (see
+        _validate_user_supplied_fbp_fields()).
     """
+    _validate_user_supplied_fbp_fields(df)
+
     print('Calculating CFFBPS Fuel Types using BCWFT2018 fuel typing algorithm')
     bc_fuel_type = bcwft.FuelTyping()
     field_list = bc_fuel_type.fldList
@@ -101,8 +191,13 @@ def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFra
     # Normalize date columns (timezone-naive, timezone-aware, or string) before casting
     fbp_df = _coerce_datetime_columns(fbp_df, field_dict)
 
+    # Replace missing species codes with None before casting; excluded from the astype()
+    # call below since casting 'None' to 'str' would turn it into the literal text 'None'
+    fbp_df = _coerce_missing_species_codes(fbp_df)
+    non_species_field_dict = {k: v for k, v in field_dict.items() if k not in _SPECIES_CD_FIELDS}
+
     # Ensure correct data types
-    fbp_df = fbp_df.astype(field_dict)
+    fbp_df = fbp_df.astype(non_species_field_dict)
 
     # Convert dataframe to list containing only the rows needed for fbp fuel typing
     dfList = fbp_df.reindex(columns=['unique_id'] + field_list).values.tolist()
