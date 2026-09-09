@@ -122,7 +122,11 @@ def merge_weather_data(
         Required if add_season or refine_fbp_seasonally is True
     :param fall_start: Integer representing the month and day (MMDD) when fall starts (default: 915 for September 15)
         Required if add_season or refine_fbp_seasonally is True
-    :return: None. Writes the merged table to out_path.
+    :return: None. Writes the merged table to out_path. For a keyed merge
+        (wx_merge_col_name is not None), plot rows with no matching weather row are excluded
+        from out_path and written instead to missing_wx.csv beside it - written even when every
+        plot matches, in which case it contains headers and no data rows. Cartesian-product mode
+        (wx_merge_col_name is None) does not produce missing_wx.csv.
     """
     # Check if required parameters are provided when adding season or refining FBP fuel types
     if (add_season or refine_fbp_seasonally) and (summer_start is None or fall_start is None):
@@ -147,13 +151,55 @@ def merge_weather_data(
         if wx_merge_col_name not in wx_df.columns:
             raise ValueError(f'Plot ID column "{wx_merge_col_name}" not found in '
                              f'weather data columns: {list(wx_df.columns)}')
-        # Merge on the specified ID columns
+        # Merge on the specified ID columns. Use pandas' own merge indicator to detect an
+        # unmatched plot row rather than a weather value like wx_date: wx_date may be missing
+        # from a matched weather row, or omitted from wx_merge_vars entirely when seasonal
+        # behavior is disabled, so it cannot reliably stand in for match status.
+        merge_indicator_col = '_wx_merge_status'
+        wx_merge_cols = [wx_merge_col_name] + wx_merge_vars
+        if merge_indicator_col in plot_df.columns or merge_indicator_col in wx_merge_cols:
+            raise ValueError(
+                f'Internal merge-indicator column name "{merge_indicator_col}" collides with '
+                'an existing plot or weather data column. Rename that column before merging.'
+            )
+        # pandas matches a null left key against a null right key. Drop right-side rows with a
+        # missing merge key first, so a plot row with a missing key can never spuriously match a
+        # weather row that also has a missing key - it becomes left_only, as a missing plot key
+        # genuinely has no real weather match.
+        wx_df_for_merge = wx_df[wx_merge_cols]
+        wx_df_for_merge = wx_df_for_merge.loc[wx_df_for_merge[wx_merge_col_name].notna()]
         merged_df = plot_df.merge(
-            wx_df[[wx_merge_col_name] + wx_merge_vars],
+            wx_df_for_merge,
             left_on=plot_merge_col_name,
             right_on=wx_merge_col_name,
-            how='left'
+            how='left',
+            indicator=merge_indicator_col,
         )
+
+        # Split out plot rows with no matching weather row before any wx_date/season/FBP
+        # processing below, so an unmatched row's missing weather values never influence that
+        # processing and its own missing values are never mistaken for an unmatched row.
+        missing_mask = merged_df[merge_indicator_col].eq('left_only')
+        missing_wx_df = merged_df.loc[missing_mask].drop(columns=merge_indicator_col)
+        merged_df = merged_df.loc[~missing_mask].drop(columns=merge_indicator_col)
+
+        # Always (re)write missing_wx.csv, even when every plot matches, so a stale diagnostic
+        # from an earlier run is never mistaken for the current result. Fail clearly instead of
+        # silently overwriting an input or the primary output if the fixed diagnostic name
+        # happens to collide with one of those paths.
+        missing_wx_path = os.path.join(os.path.dirname(out_path), 'missing_wx.csv')
+        colliding_paths = {
+            name: path for name, path in
+            (('out_path', out_path), ('plot_data_path', plot_data_path), ('wx_data_path', wx_data_path))
+            if os.path.normcase(os.path.abspath(path)) == os.path.normcase(os.path.abspath(missing_wx_path))
+        }
+        if colliding_paths:
+            raise ValueError(
+                f'The missing-weather diagnostic path "{missing_wx_path}" collides with '
+                f'{list(colliding_paths.keys())}. Choose an out_path whose directory does not '
+                'already contain a file named "missing_wx.csv" that must be preserved.'
+            )
+        missing_wx_df.to_csv(missing_wx_path, index=False)
     else:
         # Remove plot_merge_col_name from wx_df if it exists to avoid duplication in the merge
         if plot_merge_col_name in wx_df.columns:
