@@ -88,12 +88,17 @@ def _run_conpyro_stage() -> None:
         under :data:`CONPYRO_DIR`.
     """
     from fuel_analyst.run_conpyro import run_conpyro
+    from fuel_analyst.components import fofem_units
 
     run_conpyro(
         out_dir=CONPYRO_DIR,
         in_conpyro_csv_path=os.path.join(WEATHER_DIR, 'conpyro_df_wx.csv'),
         in_tree_csv_path=os.path.join(FUEL_ANALYST_RESULTS_DIR, 'master_tree_df.csv'),
-        in_fofem_consume_csv_path=os.path.join(FUEL_ANALYST_RESULTS_DIR, 'fofem_consume_df.csv'),
+        # fire_modelling_params=None below uses default_fire_modelling_dict, whose
+        # fofem_emissions.emissions_units defaults to 'SI' - must match this filename.
+        in_fofem_consume_csv_path=os.path.join(
+            FUEL_ANALYST_RESULTS_DIR, fofem_units.consume_filename('SI')
+        ),
         fire_modelling_params=None,
     )
 
