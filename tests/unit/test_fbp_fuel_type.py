@@ -18,7 +18,7 @@ def _minimal_fuel_typing_row(**overrides):
         'stand_dens_tpha_live_sum': [500.0], 'cc': [40.0],
         'stand_pct_cnfr_live': [100.0], 'stand_pct_brdlf_live': [0.0],
         'dom_substrate': ['TC'], 'treatment_type': ['untreated'],
-        'PROJ_AGE_1': [60.0], 'stand_dens_tpha_dead_sum': [0.0],
+        'PROJ_AGE_1': [60.0], 'stand_dens_tpha_sum': [500.0], 'stand_dens_tpha_dead_sum': [0.0],
         'stand_ba_m2pha_dead_sum': [0.0], 'stand_ba_m2pha_sum': [30.0],
         'COAST_INTERIOR_CD': ['I'], 'BEC_ZONE_CODE': ['IDF'], 'BEC_SUBZONE': ['dm'],
         'PROJ_HEIGHT_1': [20.0],
@@ -67,6 +67,29 @@ def test_calc_fbp_fuel_type_accepts_unfilled_proj_age_1_when_stand_has_no_live_t
     assert result.loc[0, 'fbp_fuel_type'] not in (None, 'NoMatchingFuelType_ERROR')
 
 
+def test_calc_fbp_fuel_type_ambiguous_live_density_names_only_the_affected_plot():
+    df = pd.DataFrame({
+        col: [
+            _minimal_fuel_typing_row()[col][0],
+            _minimal_fuel_typing_row()[col][0],
+            _minimal_fuel_typing_row()[col][0],
+        ]
+        for col in _minimal_fuel_typing_row()
+    })
+    df['unique_id'] = ['ambiguous_plot', 'valid_live_plot', 'confirmed_all_dead_plot']
+    df['stand_dens_tpha_live_sum'] = [np.nan, 500.0, np.nan]
+    df['stand_dens_tpha_sum'] = [np.nan, 500.0, 300.0]
+    df['stand_dens_tpha_dead_sum'] = [np.nan, 0.0, 300.0]
+
+    with pytest.raises(ValueError) as exc_info:
+        fbp_fuel_type._calc_fbp_fuel_type(df, season='growing')
+
+    message = str(exc_info.value)
+    assert 'ambiguous_plot' in message
+    assert 'valid_live_plot' not in message
+    assert 'confirmed_all_dead_plot' not in message
+
+
 def test_calc_fbp_fuel_type_does_not_mutate_caller_dataframe():
     df = pd.DataFrame(_minimal_fuel_typing_row(BEC_ZONE_CODE=[' idf ']))
     original_bec_zone = df.loc[0, 'BEC_ZONE_CODE']
@@ -82,7 +105,7 @@ def test_calc_fbp_fuel_type_handles_dataset_where_every_plot_lacks_a_species_ran
         stand_dens_tpha_live_sum=[500.0, 300.0], cc=[40.0, 20.0],
         stand_pct_cnfr_live=[100.0, 100.0], stand_pct_brdlf_live=[0.0, 0.0],
         dom_substrate=['TC', 'TC'], treatment_type=['untreated', 'untreated'],
-        PROJ_AGE_1=[60.0, 40.0], stand_dens_tpha_dead_sum=[0.0, 0.0],
+        PROJ_AGE_1=[60.0, 40.0], stand_dens_tpha_sum=[500.0, 300.0], stand_dens_tpha_dead_sum=[0.0, 0.0],
         stand_ba_m2pha_dead_sum=[0.0, 0.0], stand_ba_m2pha_sum=[30.0, 15.0],
         COAST_INTERIOR_CD=['I', 'I'], BEC_ZONE_CODE=['IDF', 'IDF'], BEC_SUBZONE=['dm', 'dm'],
         PROJ_HEIGHT_1=[20.0, 15.0],
@@ -215,10 +238,38 @@ def test_calc_fbp_fuel_type_raises_before_processing_when_required_field_missing
         fbp_fuel_type._calc_fbp_fuel_type(df, season='growing')
 
 
+def test_calc_fbp_fuel_type_raises_for_ambiguous_missing_live_density(monkeypatch):
+    """A missing live density with no total/dead corroboration is ambiguous input (e.g. no tree
+    records, unjoined identifiers, missing tree statuses), not a confirmed all-dead stand, and
+    must be rejected before any BCWFT2018 row processing begins."""
+    calls = []
+    monkeypatch.setattr(
+        bcwft2018.FuelTyping, 'getFuelType',
+        lambda self, season, *args: calls.append(args),
+    )
+    df = pd.DataFrame(_minimal_fuel_typing_row(
+        stand_dens_tpha_live_sum=[np.nan], stand_dens_tpha_sum=[np.nan], stand_dens_tpha_dead_sum=[np.nan],
+    ))
+    with pytest.raises(ValueError, match='stand_dens_tpha_live_sum'):
+        fbp_fuel_type._calc_fbp_fuel_type(df, season='growing')
+    assert calls == []
+
+
 def test_calc_fbp_fuel_type_rejects_a_genuinely_invalid_season():
     df = pd.DataFrame(_minimal_fuel_typing_row())
     with pytest.raises(ValueError, match='season'):
         fbp_fuel_type._calc_fbp_fuel_type(df, season='summer')
+
+
+def test_calc_fbp_fuel_type_rejects_ambiguous_live_density_even_with_populated_age():
+    """Proves ambiguous density itself is rejected, not merely caught incidentally by missing-age
+    validation: PROJ_AGE_1 and every other required field is validly populated, but live density
+    is missing and contradicted (not corroborated) by unequal total/dead density."""
+    df = pd.DataFrame(_minimal_fuel_typing_row(
+        stand_dens_tpha_live_sum=[np.nan], stand_dens_tpha_sum=[500.0], stand_dens_tpha_dead_sum=[300.0],
+    ))
+    with pytest.raises(ValueError, match='stand_dens_tpha_live_sum'):
+        fbp_fuel_type._calc_fbp_fuel_type(df, season='growing')
 
 
 def test_calc_fbp_fuel_type_rejects_missing_proj_age_1_for_a_live_stand():
@@ -231,6 +282,78 @@ def test_calc_fbp_fuel_type_rejects_missing_proj_age_1_for_a_live_stand():
     ))
     with pytest.raises(ValueError, match='PROJ_AGE_1'):
         fbp_fuel_type._calc_fbp_fuel_type(df, season='growing')
+
+
+def test_calc_fbp_fuel_type_treats_confirmed_all_dead_stand_as_no_live_trees(monkeypatch):
+    """Regression matching the Demo-WorkingWithConPyro tutorial's Demo_TU7_burned_P19_2021 plot:
+    17 recorded trees, all dead, giving a missing stand_dens_tpha_live_sum corroborated by equal,
+    populated stand_dens_tpha_sum/stand_dens_tpha_dead_sum. cc is set high enough that the old
+    exact-zero-only fallback would have classified the row as treed."""
+    captured_calls = []
+    original_get_fuel_type = bcwft2018.FuelTyping.getFuelType
+
+    def _capturing_get_fuel_type(self, season, *args):
+        captured_calls.append(args)
+        return original_get_fuel_type(self, season, *args)
+
+    monkeypatch.setattr(bcwft2018.FuelTyping, 'getFuelType', _capturing_get_fuel_type)
+
+    df = pd.DataFrame(_minimal_fuel_typing_row(
+        stand_dens_tpha_live_sum=[np.nan], stand_dens_tpha_sum=[400.0], stand_dens_tpha_dead_sum=[400.0],
+        stand_ba_m2pha_dead_sum=[30.0], stand_ba_m2pha_sum=[30.0], cc=[60.0],
+    )).drop(columns=['PROJ_AGE_1'])
+
+    result = fbp_fuel_type._calc_fbp_fuel_type(df, season='growing')
+
+    assert result.loc[0, 'fbp_fuel_type'] not in (None, 'NoMatchingFuelType_ERROR')
+    (call_args,) = captured_calls
+    arg_names = bcwft2018.FuelTyping().fldList[3:]
+    named_args = dict(zip(arg_names, call_args))
+    assert named_args['BCLCS_LEVEL_2'] == 'N'
+    assert named_args['PROJ_AGE_1'] == 0
+    assert named_args['VRI_LIVE_STEMS_PER_HA'] == 0
+
+
+def test_calc_fbp_fuel_type_treats_mixed_live_and_all_dead_rows_correctly(monkeypatch):
+    captured_calls = []
+    original_get_fuel_type = bcwft2018.FuelTyping.getFuelType
+
+    def _capturing_get_fuel_type(self, season, *args):
+        captured_calls.append(args)
+        return original_get_fuel_type(self, season, *args)
+
+    monkeypatch.setattr(bcwft2018.FuelTyping, 'getFuelType', _capturing_get_fuel_type)
+
+    df = pd.DataFrame({
+        col: [
+            _minimal_fuel_typing_row()[col][0],
+            _minimal_fuel_typing_row()[col][0],
+            _minimal_fuel_typing_row()[col][0],
+        ]
+        for col in _minimal_fuel_typing_row()
+    })
+    df['unique_id'] = ['exact_zero_plot', 'confirmed_all_dead_plot', 'live_plot']
+    df['stand_dens_tpha_live_sum'] = [0.0, np.nan, 500.0]
+    df['stand_dens_tpha_sum'] = [0.0, 400.0, 500.0]
+    df['stand_dens_tpha_dead_sum'] = [0.0, 400.0, 0.0]
+    df['PROJ_AGE_1'] = [np.nan, np.nan, 60.0]
+
+    result = fbp_fuel_type._calc_fbp_fuel_type(df, season='growing')
+
+    assert (result['fbp_fuel_type'] != 'NoMatchingFuelType_ERROR').all()
+    arg_names = bcwft2018.FuelTyping().fldList[3:]
+    named_calls = [dict(zip(arg_names, call_args)) for call_args in captured_calls]
+
+    exact_zero, confirmed_all_dead, live = named_calls
+    assert exact_zero['BCLCS_LEVEL_2'] == 'N'
+    assert exact_zero['PROJ_AGE_1'] == 0
+    assert exact_zero['VRI_LIVE_STEMS_PER_HA'] == 0
+    assert confirmed_all_dead['BCLCS_LEVEL_2'] == 'N'
+    assert confirmed_all_dead['PROJ_AGE_1'] == 0
+    assert confirmed_all_dead['VRI_LIVE_STEMS_PER_HA'] == 0
+    assert live['BCLCS_LEVEL_2'] == 'T'
+    assert live['PROJ_AGE_1'] == 60.0
+    assert live['VRI_LIVE_STEMS_PER_HA'] == 500.0
 
 
 def test_coerce_datetime_columns_accepts_tz_aware_naive_and_string_dates():
@@ -301,6 +424,53 @@ def test_is_valid_stand_age_accepts_valid_values(value):
 ])
 def test_is_valid_stand_age_rejects_invalid_values(value):
     assert fbp_fuel_type._is_valid_stand_age(value) is False
+
+
+def test_no_live_trees_false_for_positive_live_density():
+    result = fbp_fuel_type._no_live_trees(
+        pd.Series([500.0]), pd.Series([500.0]), pd.Series([0.0]),
+    )
+    assert result.tolist() == [False]
+
+
+def test_no_live_trees_false_when_live_total_and_dead_are_all_missing():
+    result = fbp_fuel_type._no_live_trees(
+        pd.Series([np.nan]), pd.Series([np.nan]), pd.Series([np.nan]),
+    )
+    assert result.tolist() == [False]
+
+
+def test_no_live_trees_false_when_missing_live_and_total_differs_from_dead():
+    result = fbp_fuel_type._no_live_trees(
+        pd.Series([np.nan]), pd.Series([500.0]), pd.Series([300.0]),
+    )
+    assert result.tolist() == [False]
+
+
+def test_no_live_trees_preserves_index_and_is_elementwise_across_mixed_cases():
+    index = ['a', 'b', 'c', 'd', 'e']
+    live = pd.Series([0.0, np.nan, 500.0, np.nan, np.nan], index=index)
+    total = pd.Series([0.0, 500.0, 500.0, np.nan, 500.0], index=index)
+    dead = pd.Series([0.0, 500.0, 0.0, np.nan, 300.0], index=index)
+
+    result = fbp_fuel_type._no_live_trees(live, total, dead)
+
+    assert result.index.tolist() == index
+    assert result.tolist() == [True, True, False, False, False]
+
+
+def test_no_live_trees_true_for_confirmed_all_dead_when_live_missing():
+    result = fbp_fuel_type._no_live_trees(
+        pd.Series([np.nan]), pd.Series([500.0]), pd.Series([500.0]),
+    )
+    assert result.tolist() == [True]
+
+
+def test_no_live_trees_true_for_exact_zero_live_density():
+    result = fbp_fuel_type._no_live_trees(
+        pd.Series([0.0]), pd.Series([0.0]), pd.Series([0.0]),
+    )
+    assert result.tolist() == [True]
 
 
 def test_normalize_user_supplied_fbp_fields_does_not_mutate_caller_dataframe():
