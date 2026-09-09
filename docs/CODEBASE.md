@@ -122,8 +122,12 @@ already be very wide.
 ### `components/fofem_attributes.py`
 
 Builds `fofem_tree_df` for mortality and `fofem_consume_df` for consumption and
-emissions. These schemas use FOFEM-required U.S. units rather than FuelAnalyst's
-primarily metric internal units.
+emissions. `fofem_tree_df`'s schema uses FOFEM's own required Imperial units
+unconditionally (the FOFEM GUI's `.TRE` import format has no metric mode).
+`fofem_consume_df`'s column names/order are fixed regardless of units, but its
+values default to SI and can be configured to Imperial via
+`fofem_consume_params['fofem_processing_units']`; see `fofem_units.py` and the
+README's Units section.
 
 ### `components/error_handling.py`
 
@@ -183,7 +187,7 @@ flowchart TD
     M --> CP[conpyro_df.csv]
     M --> FP[fbp_prep_df.csv]
     M --> FT[fofem_gui_app_tree_mortality_df.csv]
-    M --> FC[fofem_consume_df.csv]
+    M --> FC[fofem_consume_si_df.csv or fofem_consume_imperial_df.csv]
     M --> ER[fuelanalyst_errors.csv]
 
     CP --> FBP[process_fbp_fuel_type]
@@ -199,7 +203,8 @@ flowchart TD
 - `master_tree_df.csv` requires processed tree data;
 - `conpyro_df.csv` and `fbp_prep_df.csv` require `gen_conpyro_df=True`;
 - `fofem_gui_app_tree_mortality_df.csv` requires `gen_fofem_gui_app_tree_df=True`; and
-- `fofem_consume_df.csv` requires `gen_fofem_consume_df=True`.
+- `fofem_consume_si_df.csv`/`fofem_consume_imperial_df.csv` requires `gen_fofem_consume_df=True`
+  (filename set by `fofem_consume_params['fofem_processing_units']`, default SI).
 
 The centralized report omits plots with no collected issues. Form columns and
 identity columns are dynamic. Multiple messages in one cell are numbered and
@@ -313,10 +318,18 @@ warning, and the two downstream paths default in opposite directions:
 
 ### Units
 
-FuelAnalyst calculations are primarily SI. FOFEM preparation is the major
-exception: tree density is converted from per hectare to per acre, DBH and duff
-depth from centimetres to inches, height from metres to feet (`× 3.28084`), and
-fuel load from kilograms per square metre to tons per acre.
+FuelAnalyst calculations are primarily SI. `gen_fofem_gui_app_tree_df()`'s FOFEM
+GUI mortality preparation is unconditionally Imperial (the `.TRE` import format
+has no metric mode): tree density is converted from per hectare to per acre,
+DBH from centimetres to inches, height from metres to feet (`× 3.28084`).
+`gen_fofem_consumption_df()`'s FOFEM consumption/emissions preparation defaults
+to SI but is configurable to Imperial via `fofem_processing_units`; the
+`fofem_consume_si_df.csv`/`fofem_consume_imperial_df.csv` filename encodes which
+one a given file contains, since the column schema itself is fixed either way.
+`run_conpyro()`'s FOFEM mortality and emissions result tables carry an explicit
+unit suffix (`_m2pha`, `_kgpm2`/`_tpac`, `_cm`/`_in`, `_gpm2`/`_lbpac`, etc.) on
+every physical column instead; see `fofem_units.py` and the README's Units
+section for the full suffix reference.
 
 ### Weather and downstream models
 

@@ -28,7 +28,7 @@ def test_complete_survey123_pipeline_generates_owned_output_contracts(tmp_path):
     expected_outputs = [
         'master_fuel_df.csv', 'fuelanalyst_errors.csv', 'master_tree_df.csv',
         'conpyro_df.csv', 'fbp_prep_df.csv', 'fofem_gui_app_tree_mortality_df.csv',
-        'fofem_consume_df.csv',
+        'fofem_consume_si_df.csv',
         '1_Plot_Attributes/survey_0.csv', '2_Plants_Regeneration/survey_0.csv',
         '3_Trees/survey_0.csv',
         '4_Canopy_Cover/survey_0.csv',

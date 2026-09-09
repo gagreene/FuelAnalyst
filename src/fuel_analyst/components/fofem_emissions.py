@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 from typing import Union
 
+from . import fofem_units
 from . import helper
 from . import fwis_moisture_content as mc
 from pyfofem import pyfofem as fofem
@@ -217,6 +218,7 @@ def process_emissions(
         out_dir: str,
         emissions_mode: str = 'legacy',
         model_soil_heating: bool = False,
+        emissions_units: str = 'SI',
         num_workers: int = 1,
         return_df: bool = False,
 ) -> Union[None, pd.DataFrame]:
@@ -225,10 +227,16 @@ def process_emissions(
 
     :param plot_wx_fire_csv_path: Path to CSV containing plot weather and fire behavior.
     :param plot_id_col_name: Name of unique plot ID column in fire behavior CSV.
-    :param fofem_consume_csv_path: Path to FOFEM consumption CSV.
+    :param fofem_consume_csv_path: Path to FOFEM consumption CSV. Its filename must be one of
+        the canonical, unit-bearing names from fofem_units.consume_filename() and must match
+        emissions_units.
     :param out_dir: Output directory for temporary/final emissions files.
     :param emissions_mode: Emissions factor mode: legacy, default, or expanded.
     :param model_soil_heating: Toggle FOFEM soil-heating model.
+    :param emissions_units: Unit system of the values in fofem_consume_csv_path, passed
+        through to pyfofem.run_fofem_emissions(). Options: 'Imperial', 'SI'. Also determines the
+        unit suffixes applied to physical result columns in the final analyst-facing DataFrame
+        and CSV (see fofem_units.emissions_result_rename_map()).
     :param num_workers: Number of workers for pyfofem burnup processing.
     :param return_df: If True, return final emissions DataFrame.
     :return: None or final DataFrame.
@@ -241,6 +249,12 @@ def process_emissions(
             f'Invalid emissions_mode "{emissions_mode}". '
             f'Valid options are: {sorted(_VALID_EMISSIONS_MODES)}'
         )
+
+    # Validate the configured units and the input file's unit-bearing filename before any
+    # processing, so this public component is safe to call directly (not only via run_conpyro(),
+    # which performs the same check on its own behalf before dispatching here).
+    emissions_units = fofem_units.validate_fofem_units(emissions_units)
+    fofem_units.validate_consume_units(fofem_consume_csv_path, emissions_units)
 
     merged_df = _get_merged_consumption_df(
         plot_wx_fire_csv_path=plot_wx_fire_csv_path,
@@ -307,7 +321,7 @@ def process_emissions(
         windspeed=_to_float_arr(model_df, 'instand_ws_mps', default=0.0),
         use_burnup=True,
         em_mode=em_mode,
-        units='Imperial',
+        units=emissions_units,
         soil_heating=model_soil_heating,
         soil_family=_prepare_soil_family(model_df) if model_soil_heating else None,
         # num_workers fans this call out inside pyfofem. logging calls made from code that
@@ -325,6 +339,9 @@ def process_emissions(
     helper.export_csv(model_df, os.path.join(out_dir, 'merged_df_temp.csv'))
 
     final_df = pd.concat([model_df.reset_index(drop=True), fofem_results_df.reset_index(drop=True)], axis=1)
+    # Unit-qualify pyfofem's raw physical result column names in the final analyst-facing
+    # DataFrame/CSV only; the temp exports above keep the backend-native names.
+    final_df = final_df.rename(columns=fofem_units.emissions_result_rename_map(emissions_units))
     final_df = _restore_plot_id(final_df, plotid_map)
     final_df = final_df.sort_values(by=['#PlotId', 'wx_date']).reset_index(drop=True)
 
@@ -344,7 +361,7 @@ if __name__ == '__main__':
     _out_dir = os.path.join(examples_dir, 'results', 'fofem_emissions')
 
     _plot_wx_fire_csv_path = os.path.join(_in_fire_data_dir, 'fofem_severity_results.csv')
-    _fofem_consume_csv_path = os.path.join(_in_fofem_consume_dir, 'fofem_consume_df.csv')
+    _fofem_consume_csv_path = os.path.join(_in_fofem_consume_dir, fofem_units.consume_filename('SI'))
     _plot_id_col_name = 'unique_id'
 
     process_emissions(

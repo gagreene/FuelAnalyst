@@ -79,7 +79,7 @@ The main files are:
 - `conpyro_df.csv` — prepared ConPyro inputs
 - `fbp_prep_df.csv` — prepared BC FBP fuel-typing inputs
 - `fofem_gui_app_tree_mortality_df.csv` — tree-mortality input for the standalone FOFEM GUI application
-- `fofem_consume_df.csv` — prepared FOFEM consumption inputs
+- `fofem_consume_si_df.csv` (or `fofem_consume_imperial_df.csv`) — prepared FOFEM consumption inputs; filename encodes the configured `fofem_processing_units` (default SI)
 - `fuelanalyst_errors.csv` — every data-quality issue encountered during the run, by plot and reporting source
 
 The example enables all three model-preparation switches, so all seven files

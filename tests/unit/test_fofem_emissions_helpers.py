@@ -53,6 +53,10 @@ def test_mortality_basal_area_and_severity_boundaries():
     result = mortality._calc_severity_class(mortality._calc_plot_ba_killed(plots, 'id', trees, 'tree_id'))
     assert result['prop_dead_ba_crnsch'].tolist() == pytest.approx([0.2, 0.5, 0.7])
     assert result['fire_severity'].tolist() == ['low', 'mod', 'high']
+    assert result['total_live_ba_m2pha'].tolist() == pytest.approx([10.0, 10.0, 10.0])
+    assert result['dead_ba_crnsch_m2pha'].tolist() == pytest.approx([2.0, 5.0, 7.0])
+    assert 'total_live_ba' not in result.columns
+    assert 'dead_ba_crnsch' not in result.columns
 
 
 def test_dropna_logs_per_plot_warning_for_rows_with_missing_required_columns(caplog):

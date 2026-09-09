@@ -12,6 +12,7 @@ import pandas as pd
 from typing import Optional
 
 from .components import error_handling
+from .components import fofem_units
 from .components import helper
 
 import sys
@@ -95,7 +96,15 @@ default_fire_modelling_dict = {
         'emissions_mode': 'expanded',       # Emissions modelling modes for pyfofem
                                             #     Options: 'legacy', 'default', 'expanded'
         'model_soil_heating': False,        # If True, pass SoilFamily data to pyfofem soil-heating model
-        'emissions_units': 'Imperial',      # Options: 'Imperial' (kgha), 'SI' (kg/ha)
+        'emissions_units': 'SI',            # Options: 'Imperial', 'SI'. Must match the unit system
+                                            #     of in_fofem_consume_csv_path's own filename (see
+                                            #     fofem_units.py) - validated against it before any
+                                            #     backend runs. Set independently from, and not
+                                            #     automatically synced with, fuel_analyst()'s own
+                                            #     fofem_processing_units setting (a separate call,
+                                            #     possibly a separate process); it is this setting
+                                            #     and the consumption file it points to that must
+                                            #     agree, not the two dictionaries themselves.
         'force_flame_res_time_limits': True,  # Clip flame_res_time_sec to FOFEM/Burnup's valid range
                                               #     (10-200s) instead of letting Burnup silently drop
                                               #     out-of-range scenarios from the emissions estimate
@@ -542,9 +551,12 @@ def _model_fofem_emissions(
 
     :param df: DataFrame with plot-level fire behavior results from ConPyro.
     :param fire_csv_path: Path to the CSV file with fire behavior results.
-    :param fofem_emissions_params: Dictionary of FOFEM emissions model parameters.
+    :param fofem_emissions_params: Dictionary of FOFEM emissions model parameters, including
+        'emissions_units' ('SI' or 'Imperial'; defaults to 'SI'). Validated against
+        in_fofem_consume_csv_path's unit-bearing filename before either backend runs.
     :param in_fofem_consume_csv_path: Path to the input CSV file containing FOFEM fuel
-        consumption data for emissions modelling.
+        consumption data for emissions modelling. Its filename must be one of the canonical,
+        unit-bearing names from fofem_units.consume_filename() and must match emissions_units.
     :param out_dir: Directory to save FOFEM emissions output files.
     :param conpyro_params: Dictionary of ConPyro model parameters.
     :param num_workers: Number of parallel workers to use (default 1 = no multiprocessing).
@@ -554,6 +566,14 @@ def _model_fofem_emissions(
     emissions_dir = os.path.join(out_dir, 'fofem_emissions')
     os.makedirs(emissions_dir, exist_ok=True)
     helper.delete_files(emissions_dir)
+
+    # Validate the configured units and the input file's unit-bearing filename before importing
+    # or running either backend, so a mismatched/renamed file fails clearly upfront rather than
+    # being silently misinterpreted (or surfacing as a per-row error deep inside a worker).
+    emissions_units = fofem_units.validate_fofem_units(
+        fofem_emissions_params.get('emissions_units', 'SI')
+    )
+    fofem_units.validate_consume_units(in_fofem_consume_csv_path, emissions_units)
 
     model_select = str(fofem_emissions_params.get('model_select', 'pyfofem')).strip().lower()
     if model_select == 'pyfofem':
@@ -566,6 +586,7 @@ def _model_fofem_emissions(
             'out_dir': emissions_dir,
             'emissions_mode': fofem_emissions_params.get('emissions_mode', 'legacy'),
             'model_soil_heating': fofem_emissions_params.get('model_soil_heating', False),
+            'emissions_units': emissions_units,
             'num_workers': num_workers,
             'return_df': True,
         }
@@ -578,6 +599,7 @@ def _model_fofem_emissions(
             'fofem_consume_csv_path': in_fofem_consume_csv_path,
             'out_dir': emissions_dir,
             'model_soil_heating': fofem_emissions_params.get('model_soil_heating', False),
+            'emissions_units': emissions_units,
             'num_workers': num_workers,
             'return_df': True,
         }
@@ -828,7 +850,9 @@ if __name__ == '__main__':
     _in_dir = os.path.join(examples_dir, 'results', 'wx_extract')
     _in_conpyro_csv_path = os.path.join(_in_dir, 'conpyro_df_wx.csv')
     _tree_csv_path = os.path.join(examples_dir, 'results', 'fuel_analyst', 'master_tree_df.csv')
-    _fofem_consume_csv_path = os.path.join(examples_dir, 'results', 'fuel_analyst', 'fofem_consume_df.csv')
+    _fofem_consume_csv_path = os.path.join(
+        examples_dir, 'results', 'fuel_analyst', fofem_units.consume_filename('SI')
+    )
     _fire_modelling_dict = default_fire_modelling_dict
 
     # Run ConPyro modelling

@@ -19,6 +19,7 @@ from .components import canopy_cover as cc
 from .components import woody_debris as wd
 from .components import conpyro_attributes
 from .components import fofem_attributes
+from .components import fofem_units
 
 default_stand_summary_dict = {
     'dens': {
@@ -399,12 +400,6 @@ default_conpyro_dict = {
     },
 }
 
-default_fofem_mortality_dict = {
-    'mortality_cause_attribute': 'mortality_cause',  # Field name for mortality cause
-    'natural_mortality_codes': [1, 2, 3, 4, 5],  # Codes representing natural mortality
-    'other_mortality_codes': [6, 7, 8, 9, 10],  # Codes representing other mortality
-}
-
 default_fofem_consume_dict = {
     'canopy_fuels': {
         'foliage_fofem': {
@@ -445,6 +440,7 @@ default_fofem_consume_dict = {
     'soil_heating': {
         'use_soil_heating': False,  # Use soil heating calculations (requires soil family assignments)
     },
+    'fofem_processing_units': 'SI',  # Output units/filename for the FOFEM consumption CSV (Options: 'SI', 'Imperial')
 }
 
 
@@ -491,7 +487,11 @@ def fuel_analyst(
     :param stand_summary_params: Dictionary containing stand summary parameters.
     :param woody_debris_params: Dictionary containing parameters for woody debris processing.
     :param conpyro_params: Dictionary containing ConPyro parameters.
-    :param fofem_consume_params: Dictionary containing FOFEM consumption parameters.
+    :param fofem_consume_params: Dictionary containing FOFEM consumption parameters, including
+        'fofem_processing_units' ('SI' or 'Imperial'; defaults to 'SI' when the key is absent,
+        for backward compatibility with dictionaries predating this option). Determines both the
+        units written into the FOFEM consumption DataFrame and its output filename (see
+        fofem_units.consume_filename()).
     :param gen_conpyro_df: Boolean indicating whether to generate the ConPyro DataFrame.
     :param gen_fofem_gui_app_tree_df: Boolean indicating whether to generate the FOFEM GUI app tree mortality DataFrame.
     :param gen_fofem_consume_df: Boolean indicating whether to generate the FOFEM consumption DataFrame.
@@ -564,6 +564,7 @@ def fuel_analyst(
     fbp_prep_df = None
     fofem_tree_df = None
     fofem_consume_df = None
+    fofem_processing_units = None
 
     # Process plot attributes
     plot_df, add_columns = pa.process_plot_attributes(os.path.join(in_dir, dir_dict.get('plot')),
@@ -647,6 +648,9 @@ def fuel_analyst(
     if gen_fofem_gui_app_tree_df:
         fofem_tree_df = fofem_attributes.gen_fofem_gui_app_tree_df(plot_df, master_tree_df)
     if gen_fofem_consume_df:
+        fofem_processing_units = fofem_units.validate_fofem_units(
+            fofem_consume_params.get('fofem_processing_units', 'SI')
+        )
         fofem_consume_df = fofem_attributes.gen_fofem_consumption_df(plot_df, fofem_consume_params)
 
     # ### PROCESS OUTPUTS
@@ -689,7 +693,7 @@ def fuel_analyst(
 
     # Save the FOFEM Consumption DataFrame to the output folder if it exists
     if fofem_consume_df is not None:
-        fofem_consume_df_path = os.path.join(out_dir, 'fofem_consume_df.csv')
+        fofem_consume_df_path = os.path.join(out_dir, fofem_units.consume_filename(fofem_processing_units))
         print(f'Saving the FOFEM Consumption DataFrame to: {fofem_consume_df_path}')
         helper.export_csv(fofem_consume_df, fofem_consume_df_path)
 

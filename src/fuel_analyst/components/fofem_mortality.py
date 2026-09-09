@@ -16,6 +16,18 @@ from . import error_handling, helper
 
 logger = logging.getLogger(__name__)
 
+# Explicit rename map for process_mortality()'s FOFEM-generated final-result physical columns.
+# Applied via DataFrame.rename(), which silently no-ops for keys absent from a given DataFrame
+# (e.g. 'mortality_crnsch'/'prob_mortality_crnsch' exist only in merged_tree_df, not
+# plot_fire_df). CRNSCH mortality probabilities aren't already self-evidently 0-1-scaled from
+# their bare names, unlike 'prop_dead_ba_crnsch' (kept as-is - its own 'prop_' prefix already
+# states the scale).
+_FINAL_RESULT_RENAME_MAP = {
+    'tree_dead_ba_crnsch': 'tree_dead_ba_crnsch_m2pha',
+    'mortality_crnsch': 'mortality_crnsch_prop',
+    'prob_mortality_crnsch': 'prob_mortality_crnsch_prop',
+}
+
 
 def _calc_plot_ba_killed(
         plot_fire_df: pd.DataFrame,
@@ -30,15 +42,18 @@ def _calc_plot_ba_killed(
     :param plot_id_col_name: Name of the unique ID column in plot_fire_df (default 'unique_id').
     :param tree_df: DataFrame containing tree data with fofem_tree_id_col_name column.
     :param fofem_tree_id_col_name: Name of the unique ID column in tree_df (default 'unique_id').
-    :return: DataFrame with added basal area killed columns.
+    :return: DataFrame with added basal area killed columns ('total_live_ba_m2pha',
+        'dead_ba_crnsch_m2pha', 'prop_dead_ba_crnsch').
     """
-    plot_fire_df['total_live_ba'] = plot_fire_df[plot_id_col_name].map(
+    plot_fire_df['total_live_ba_m2pha'] = plot_fire_df[plot_id_col_name].map(
         tree_df.groupby(fofem_tree_id_col_name)['ba_live_ha'].sum()
     )
-    plot_fire_df['dead_ba_crnsch'] = plot_fire_df[plot_id_col_name].map(
+    plot_fire_df['dead_ba_crnsch_m2pha'] = plot_fire_df[plot_id_col_name].map(
         tree_df.groupby(fofem_tree_id_col_name)['tree_dead_ba_crnsch'].sum()
     )
-    plot_fire_df['prop_dead_ba_crnsch'] = plot_fire_df['dead_ba_crnsch'] / plot_fire_df['total_live_ba']
+    plot_fire_df['prop_dead_ba_crnsch'] = (
+        plot_fire_df['dead_ba_crnsch_m2pha'] / plot_fire_df['total_live_ba_m2pha']
+    )
 
     return plot_fire_df
 
@@ -250,6 +265,13 @@ def process_mortality(
     # Sort DataFrames by plot_id_col_name and wx_date for easier comparison
     merged_tree_df = merged_tree_df.sort_values(by=[plot_id_col_name, 'wx_date']).reset_index(drop=True)
     plot_fire_df = plot_fire_df.sort_values(by=[plot_id_col_name, 'wx_date']).reset_index(drop=True)
+
+    # Unit-qualify FOFEM-generated physical columns in both final DataFrames/CSVs. Applied here,
+    # immediately before export/return, so both returned DataFrames and written CSVs expose the
+    # same schema. 'tree_dead_crnsch' (binary indicator), 'prop_dead_ba_crnsch' (name already
+    # states its 0-1 scale), and 'fire_severity' (category) are deliberately left unsuffixed.
+    merged_tree_df = merged_tree_df.rename(columns=_FINAL_RESULT_RENAME_MAP)
+    plot_fire_df = plot_fire_df.rename(columns=_FINAL_RESULT_RENAME_MAP)
 
     # Save results to output folder
     os.makedirs(out_dir, exist_ok=True)
