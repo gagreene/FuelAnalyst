@@ -25,8 +25,11 @@ def test_consume_filename_rejects_invalid_units():
 
 
 def test_infer_consume_units_reads_canonical_basenames():
+    # os.path.basename() only splits on the current OS's separator(s) - a literal
+    # Windows-style backslash path is not portable to POSIX CI runners, so both
+    # paths here use forward slashes only.
     assert fofem_units.infer_consume_units('/out/fofem_consume_si_df.csv') == 'SI'
-    assert fofem_units.infer_consume_units('C:\\out\\fofem_consume_imperial_df.csv') == 'Imperial'
+    assert fofem_units.infer_consume_units('/out/fofem_consume_imperial_df.csv') == 'Imperial'
 
 
 def test_infer_consume_units_rejects_old_ambiguous_filename():
