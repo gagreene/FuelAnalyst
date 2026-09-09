@@ -88,11 +88,14 @@ default_fire_modelling_dict = {
                                             #     Options: 'legacy', 'default', 'expanded'
         'model_soil_heating': False,        # If True, pass SoilFamily data to pyfofem soil-heating model
         'emissions_units': 'SI',            # Options: 'Imperial', 'SI'. Must match the unit system
-                                            #     of in_fofem_consume_csv_path (see fofem_units.py);
-                                            #     kept in sync manually with fuel_analyst()'s
-                                            #     fofem_processing_units - there is no runtime
-                                            #     cross-check, but the file's own name is validated
-                                            #     against this setting before any backend runs.
+                                            #     of in_fofem_consume_csv_path's own filename (see
+                                            #     fofem_units.py) - validated against it before any
+                                            #     backend runs. Set independently from, and not
+                                            #     automatically synced with, fuel_analyst()'s own
+                                            #     fofem_processing_units setting (a separate call,
+                                            #     possibly a separate process); it is this setting
+                                            #     and the consumption file it points to that must
+                                            #     agree, not the two dictionaries themselves.
         'force_flame_res_time_limits': True,  # Clip flame_res_time_sec to FOFEM/Burnup's valid range
                                               #     (10-200s) instead of letting Burnup silently drop
                                               #     out-of-range scenarios from the emissions estimate

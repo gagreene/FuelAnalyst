@@ -483,7 +483,7 @@ def process_emissions(
         emissions_units: str = 'SI',
         num_workers: int = 1,
         return_df: bool = False,
-) -> Union[None, str]:
+) -> Union[None, pd.DataFrame]:
     """
     Process emissions modelling with FOFEM.
 
@@ -503,7 +503,7 @@ def process_emissions(
         (see fofem_units.emissions_result_rename_map()), using the same map as the pyfofem
         backend so both backends expose the same final schema for a given unit system.
     :param num_workers: Number of workers for parallel processing
-    :param return_df: Whether to return a path to the final DataFrame with emissions results (True) or not (False).
+    :param return_df: Whether to return the final DataFrame with emissions results (True) or not (False).
     :return: None if return_df is False, otherwise the DataFrame containing the merged input data and
         FOFEM emissions results.
     """
