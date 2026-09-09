@@ -130,12 +130,16 @@ def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFra
     Calculate CFFBPS fuel types with the BCWFT2018 fuel-typing algorithm.
 
     :param df: DataFrame containing the fields required by BCWFT2018.
-    :param season: Season used for seasonal fuel-type assignments.
+    :param season: Season used for seasonal fuel-type assignments. Case-insensitive; normalized
+        to the lowercase 'growing'/'dormant' BCWFT2018's own verifyInputs() requires.
     :return: DataFrame containing calculated fuel types and modifiers.
     :raises ValueError: If any plot is missing a required user-supplied field (see
         _validate_user_supplied_fbp_fields()).
     """
-    _validate_user_supplied_fbp_fields(df)
+    # BCWFT2018's verifyInputs() only accepts the exact lowercase strings 'growing'/'dormant',
+    # but this function's own default and process_fbp_fuel_type()'s docstring both use
+    # 'Growing'/'Dormant' - normalize here so either casing works instead of crashing.
+    season = str(season).strip().lower()
 
     print('Calculating CFFBPS Fuel Types using BCWFT2018 fuel typing algorithm')
     bc_fuel_type = bcwft.FuelTyping()
@@ -184,6 +188,12 @@ def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFra
     fbp_df['VRI_LIVE_STEMS_PER_HA'] = fbp_df.stand_dens_tpha_live_sum
     fbp_df['VRI_DEAD_STEMS_PER_HA'] = fbp_df.stand_dens_tpha_dead_sum
     fbp_df['STAND_PERCENTAGE_DEAD'] = 100 * fbp_df.stand_ba_m2pha_dead_sum / fbp_df.stand_ba_m2pha_sum
+
+    # Validate required user-supplied fields only after PROJ_AGE_1's own defaulting above -
+    # a stand with no live trees legitimately defaults PROJ_AGE_1 to 0 regardless of its
+    # original value, so validating the raw input here would wrongly reject an unfilled
+    # PROJ_AGE_1 that the defaulting logic was always going to fix anyway.
+    _validate_user_supplied_fbp_fields(fbp_df)
 
     # Filter columns to only those needed for fuel typing
     fbp_df = fbp_df.reindex(columns=['unique_id'] + field_list)

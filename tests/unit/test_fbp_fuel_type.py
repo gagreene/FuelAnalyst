@@ -136,6 +136,37 @@ def test_calc_fbp_fuel_type_raises_before_processing_when_required_field_missing
         fbp_fuel_type._calc_fbp_fuel_type(df, season='growing')
 
 
+def test_calc_fbp_fuel_type_accepts_unfilled_proj_age_1_when_stand_has_no_live_trees():
+    """Regression: an earlier draft validated PROJ_AGE_1 before _calc_fbp_fuel_type()'s own
+    'assign stand age to 0 if no live trees' step ran, wrongly rejecting a plot whose
+    unfilled PROJ_AGE_1 that later step was always going to default to 0 anyway."""
+    df = pd.DataFrame(_minimal_fuel_typing_row(
+        stand_dens_tpha_live_sum=[0.0], PROJ_AGE_1=[pd.NA],
+    ))
+
+    result = fbp_fuel_type._calc_fbp_fuel_type(df, season='growing')
+
+    assert result.loc[0, 'fbp_fuel_type'] not in (None, 'NoMatchingFuelType_ERROR')
+
+
+@pytest.mark.parametrize('season', ['Growing', 'growing', 'GROWING', ' Growing '])
+def test_calc_fbp_fuel_type_normalizes_season_casing(season):
+    """Regression: BCWFT2018's verifyInputs() only accepts the exact lowercase strings
+    'growing'/'dormant', but this module's own default parameter value and
+    process_fbp_fuel_type()'s docstring both use 'Growing'/'Dormant'."""
+    df = pd.DataFrame(_minimal_fuel_typing_row())
+
+    result = fbp_fuel_type._calc_fbp_fuel_type(df, season=season)
+
+    assert result.loc[0, 'fbp_fuel_type'] not in (None, 'NoMatchingFuelType_ERROR')
+
+
+def test_calc_fbp_fuel_type_rejects_a_genuinely_invalid_season():
+    df = pd.DataFrame(_minimal_fuel_typing_row())
+    with pytest.raises(ValueError, match='season'):
+        fbp_fuel_type._calc_fbp_fuel_type(df, season='summer')
+
+
 def _minimal_fuel_typing_row(**overrides):
     """
     Build one minimal, valid row of _calc_fbp_fuel_type() input, with overrides applied.
