@@ -216,9 +216,10 @@ include their logging severity.
 
 - Parent/repeat folder and CSV names follow the exact Survey123 layout shown in
   the README and checked-in example data.
-- The authoritative Survey123 form definitions live in `docs/survey123/forms/`
-  (one folder per form); field sampling protocols will follow in
-  `docs/survey123/sampling_protocols/`.
+- The authoritative Survey123 form definitions live in
+  `docs/survey123/survey123_forms/` (one folder per form); paper/manual-entry
+  equivalents are in `docs/survey123/manual_entry_forms/`, and field sampling
+  protocols are in `docs/survey123/sampling_protocols/`.
 - `_date` accepts `MM/DD/YYYY HH:MM` or `MM/DD/YYYY HH:MM:SS AM/PM`.
   Unparseable dates raise `ValueError` with representative bad values.
 - `unique_id` is
