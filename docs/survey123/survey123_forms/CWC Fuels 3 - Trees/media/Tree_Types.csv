@@ -1,0 +1,97 @@
+Species,Species_Label,Type
+A,A - poplar spp,broadleaf
+AC,AC - poplar,broadleaf
+ACB,ACB - balsam poplar,broadleaf
+ACT,ACT - black cottonwood,broadleaf
+AT,AT - trembling aspen,broadleaf
+AX,AX - poplar hybrid,broadleaf
+D,D - alder,broadleaf
+DG,DG - green/sitka alder (n),broadleaf
+DM,DM - mountain alder (n),broadleaf
+DR,DR - red alder,broadleaf
+E,E - birch,broadleaf
+EA,EA - alaska paper birch,broadleaf
+EB,EB - scrub birch,broadleaf
+EP,EP - paper birch,broadleaf
+ES,ES - swamp birch,broadleaf
+EW,EW - water birch,broadleaf
+EX,EX - birch hybrid,broadleaf
+EXP,EXP - alaska paper x paper,broadleaf
+EXW,EXW - water x paper,broadleaf
+G,G - dogwood (n),broadleaf
+GP,GP - flowering dogwood (n),broadleaf
+GR,GR - red-osier dogwood,broadleaf
+M,M - maple,broadleaf
+MB,MB - bigleaf maple,broadleaf
+MR,MR - douglas maple (n),broadleaf
+MV,MV - vine maple (n),broadleaf
+Q,Q - oak,broadleaf
+QG,QG - garry oak,broadleaf
+RA,RA - arbutus (n),broadleaf
+UP,UP - pacific crab apple (malus fusca),broadleaf
+V,V - cherry (n),broadleaf
+VB,VB - bitter cherry (n),broadleaf
+VP,VP - pin cherry,broadleaf
+VW,VW - choke cherry,broadleaf
+W,W - willow,broadleaf
+WA,WA - barclay's willow,broadleaf
+WB,WB - bebb's willow,broadleaf
+WD,WD - grey-leaved willow,broadleaf
+WS,WS - scouler's willow,broadleaf
+WT,WT - tea-leaved willow,broadleaf
+XH,XH - Unknown hardwood,broadleaf
+ZH,ZH - Other hardwood,broadleaf
+B,B - true fir,conifer
+BA,BA - amabilis fir,conifer
+BB,BB - balsam fir,conifer
+BG,BG - grand fir,conifer
+BL,BL - subalpine fir,conifer
+BN,BN - noble fir,conifer
+C,C - cedar,conifer
+CW,CW - western red cedar,conifer
+FD,FD - douglas-fir,conifer
+FDC,FDC - douglas-fir (coast),conifer
+FDI,FDI - douglas-fir (interior),conifer
+H,H - hemlock,conifer
+HM,HM - mountain hemlock,conifer
+HW,HW - western hemlock,conifer
+HX,HX - hemlock hybrid,conifer
+HXM,HXM - western x mountain,conifer
+J,J - juniper (n),conifer
+JR,JR - rocky mountain juniper (n),conifer
+L,L - larch,conifer
+LA,LA - alpine larch,conifer
+LS,LS - siberian larch,conifer
+LT,LT - tamarack,conifer
+LW,LW - western larch,conifer
+P,P - pine,conifer
+PA,PA - whitebark pine,conifer
+PF,PF - limber pine,conifer
+PJ,PJ - jack pine,conifer
+PL,PL - lodgepole pine,conifer
+PLC,PLC - lodgepole pine (coast),conifer
+PLI,PLI - lodgepole pine (interior),conifer
+PR,PR - red pine,conifer
+PW,PW - western white pine,conifer
+PX,PX - pine hybrid,conifer
+PXJ,PXJ - lodgepole x jack,conifer
+PY,PY - yellow pine,conifer
+S,S - spruce,conifer
+SA,SA - norway spruce,conifer
+SB,SB - black spruce,conifer
+SE,SE - engelmann spruce,conifer
+SS,SS - sitka spruce,conifer
+SW,SW - white spruce,conifer
+SX,SX - spruce hybrid,conifer
+SXB,SXB - white x black,conifer
+SXE,SXE - engelmann x sitka,conifer
+SXL,SXL - white x sitka (picea x lutzii),conifer
+SXS,SXS - sitka x unknown hybrid,conifer
+SXW,SXW - white x engelmann,conifer
+SXX,SXX - white x engelmann x sitka,conifer
+T,T - yew,conifer
+TW,TW - western or pacific yew,conifer
+Y,Y - cypress,conifer
+YC,YC - yellow cedar,conifer
+XC,XC - Unknown conifer,conifer
+ZC,ZC - Other conifer,conifer
