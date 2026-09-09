@@ -57,18 +57,24 @@ External fire-behaviour and fire-effects calculations are separate downstream st
 ```mermaid
 flowchart LR
     A[Survey123 CSV exports] --> B[FuelAnalyst core processing]
-    B --> C[Master plot and tree tables]
-    B --> D[ConPyro and FBP preparation]
-    B --> E[FOFEM preparation]
+    B --> T[Master tree df]
+    B --> D[ConPyro df]
+    B --> C[Master fuel df]
+    B --> P[FBP prep df]
     D --> F
+    C --> F
+    P --> F
     subgraph CFIS["CFIS modelling only"]
         F[FBP fuel typing]
     end
     D --> G[Merge weather data]
-    F -.-> G
+    F --> G
     G --> H[ConPyro fire behaviour]
-    E --> I[FOFEM mortality and emissions]
-    H --> I
+    B --> E[FOFEM consumption prep]
+    T --> M[FOFEM mortality]
+    H --> M
+    H --> N
+    E --> N[FOFEM emissions]
 ```
 
 The normal sequence is:
