@@ -6,6 +6,7 @@ Created on Tue May 29, 8:30:00 2025
 """
 __author__ = ['Gregory A. Greene']
 
+import numbers
 import os
 import numpy as np
 import pandas as pd
@@ -14,29 +15,30 @@ from dateutil import parser
 from ..components import helper
 from .._vendor import bcwft2018 as bcwft
 
+# BCWFT2018's verifyInputs() only accepts str or None for these fields - unlike several other
+# fields it also accepts a bare NaN float for (e.g. BCLCS_LEVEL_1..5, INVENTORY_STANDARD_CD).
+# A plot recording fewer than 6 tallied species (the common case) gets a genuine NaN for the
+# unused SPECIES_CD_x ranks from trees.py's _calc_stand_type(); an unvegetated/unforested plot
+# can leave even SPECIES_CD_1 as NaN. Left uncoerced, that NaN reaches verifyInputs() untouched
+# and raises TypeError.
+_SPECIES_CD_FIELDS = [f'SPECIES_CD_{x}' for x in range(1, 7)]
 
-def _coerce_datetime_columns(df: pd.DataFrame, field_dict: dict) -> pd.DataFrame:
-    """
-    Coerce columns BCWFT2018 expects as datetime64[ns] to a timezone-naive dtype.
-
-    Accepts timezone-naive datetimes, timezone-aware datetimes (e.g., columns
-    sourced from a GeoPackage), and string dates, so any of these date
-    formats can be passed through to BCWFT2018 without a dtype-cast error.
-
-    :param df: DataFrame containing columns to coerce.
-    :param field_dict: Mapping of column name to the dtype string BCWFT2018 expects.
-    :return: Copy of df with datetime-typed columns coerced to timezone-naive
-        datetime64[ns]; other columns are unchanged.
-    """
-    df = df.copy()
-    for field, dtype in field_dict.items():
-        if field in df.columns and str(dtype).startswith('datetime64'):
-            df[field] = (
-                pd.to_datetime(df[field], errors='coerce', utc=True)
-                .dt.tz_localize(None)
-                .astype('datetime64[ns]')
-            )
-    return df
+# conpyro_attributes.py's _prep_fbp_df() intentionally leaves these as pd.NA placeholders for
+# the user to fill in manually (e.g. from BC VRI/BEC-zone GIS layers) before calling
+# process_fbp_fuel_type() - FuelAnalyst has no access to that external data itself.
+#
+# COAST_INTERIOR_CD and BEC_ZONE_CODE/BEC_SUBZONE are more than type-checked by BCWFT2018: its
+# decision tree branches on 'if self.COAST_INTERIOR_CD == "C": ... else: # "I"' throughout, so
+# any value other than the exact string 'C' silently becomes 'interior', and BEC_ZONE_CODE/
+# BEC_SUBZONE feed further branch/lookup logic keyed on the vendored becZones/becSubzones
+# lists. A typo or unrecognized code is never rejected by BCWFT2018 itself - it just produces a
+# silently wrong fuel type. PROJ_AGE_1 has the same problem for live stands: BCWFT2018 branches
+# on 'if self.PROJ_AGE_1 < 60: ... elif self.PROJ_AGE_1 <= 99: ... else: # > 99' - both
+# comparisons are False for a NaN age, so a missing age for a live stand silently falls into
+# the "over 99 years old" branch instead of raising anything.
+_REQUIRED_STRING_FIELDS = ['COAST_INTERIOR_CD', 'BEC_ZONE_CODE', 'BEC_SUBZONE']
+_REQUIRED_NUMERIC_FIELDS = ['PROJ_AGE_1']
+_COAST_INTERIOR_DOMAIN = ('C', 'I')
 
 
 def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFrame:
@@ -44,9 +46,17 @@ def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFra
     Calculate CFFBPS fuel types with the BCWFT2018 fuel-typing algorithm.
 
     :param df: DataFrame containing the fields required by BCWFT2018.
-    :param season: Season used for seasonal fuel-type assignments.
+    :param season: Season used for seasonal fuel-type assignments. Case-insensitive; normalized
+        to the lowercase 'growing'/'dormant' BCWFT2018's own verifyInputs() requires.
+    :raises ValueError: If any plot is missing a required user-supplied field (see
+        _validate_user_supplied_fbp_fields()).
     :return: DataFrame containing calculated fuel types and modifiers.
     """
+    # BCWFT2018's verifyInputs() only accepts the exact lowercase strings 'growing'/'dormant',
+    # but this function's own default and process_fbp_fuel_type()'s docstring both use
+    # 'Growing'/'Dormant' - normalize here so either casing works instead of crashing.
+    season = str(season).strip().lower()
+
     print('Calculating CFFBPS Fuel Types using BCWFT2018 fuel typing algorithm')
     bc_fuel_type = bcwft.FuelTyping()
     field_list = bc_fuel_type.fldList
@@ -89,11 +99,24 @@ def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFra
             ''
         )
     fbp_df['CROWN_CLOSURE'] = fbp_df.cc
-    # Assign stand age to 0 if no live trees
-    fbp_df['PROJ_AGE_1'] = np.where(fbp_df.stand_dens_tpha_live_sum == 0, 0, fbp_df.PROJ_AGE_1)
+
+    # Assign stand age to 0 if no live trees. Create the column first if it is absent
+    # entirely, so a completely missing PROJ_AGE_1 column defaults cleanly for a no-live-tree
+    # stand instead of raising AttributeError before validation gets a chance to run.
+    if 'PROJ_AGE_1' not in fbp_df.columns:
+        fbp_df['PROJ_AGE_1'] = pd.Series([None] * len(fbp_df), index=fbp_df.index, dtype=object)
+    fbp_df['PROJ_AGE_1'] = np.where(fbp_df.stand_dens_tpha_live_sum == 0, 0, fbp_df['PROJ_AGE_1'])
     fbp_df['VRI_LIVE_STEMS_PER_HA'] = fbp_df.stand_dens_tpha_live_sum
     fbp_df['VRI_DEAD_STEMS_PER_HA'] = fbp_df.stand_dens_tpha_dead_sum
     fbp_df['STAND_PERCENTAGE_DEAD'] = 100 * fbp_df.stand_ba_m2pha_dead_sum / fbp_df.stand_ba_m2pha_sum
+
+    # Normalize whitespace/casing on the user-supplied geographic fields, then validate all
+    # required user-supplied fields, only after PROJ_AGE_1's own defaulting above - a stand
+    # with no live trees legitimately defaults PROJ_AGE_1 to 0 regardless of its original
+    # value, so validating the raw input first would wrongly reject an unfilled PROJ_AGE_1
+    # that the defaulting logic was always going to fix anyway.
+    fbp_df = _normalize_user_supplied_fbp_fields(fbp_df)
+    _validate_user_supplied_fbp_fields(fbp_df, bc_fuel_type)
 
     # Filter columns to only those needed for fuel typing
     fbp_df = fbp_df.reindex(columns=['unique_id'] + field_list)
@@ -101,8 +124,13 @@ def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFra
     # Normalize date columns (timezone-naive, timezone-aware, or string) before casting
     fbp_df = _coerce_datetime_columns(fbp_df, field_dict)
 
+    # Replace missing species codes with None before casting; excluded from the astype()
+    # call below since casting 'None' to 'str' would turn it into the literal text 'None'
+    fbp_df = _coerce_missing_species_codes(fbp_df)
+    non_species_field_dict = {k: v for k, v in field_dict.items() if k not in _SPECIES_CD_FIELDS}
+
     # Ensure correct data types
-    fbp_df = fbp_df.astype(field_dict)
+    fbp_df = fbp_df.astype(non_species_field_dict)
 
     # Convert dataframe to list containing only the rows needed for fbp fuel typing
     dfList = fbp_df.reindex(columns=['unique_id'] + field_list).values.tolist()
@@ -125,6 +153,175 @@ def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFra
 
     return df
 
+
+def _coerce_datetime_columns(df: pd.DataFrame, field_dict: dict) -> pd.DataFrame:
+    """
+    Coerce columns BCWFT2018 expects as datetime64[ns] to a timezone-naive dtype.
+
+    Accepts timezone-naive datetimes, timezone-aware datetimes (e.g., columns
+    sourced from a GeoPackage), and string dates, so any of these date
+    formats can be passed through to BCWFT2018 without a dtype-cast error.
+
+    :param df: DataFrame containing columns to coerce.
+    :param field_dict: Mapping of column name to the dtype string BCWFT2018 expects.
+    :return: Copy of df with datetime-typed columns coerced to timezone-naive
+        datetime64[ns]; other columns are unchanged.
+    """
+    df = df.copy()
+    for field, dtype in field_dict.items():
+        if field in df.columns and str(dtype).startswith('datetime64'):
+            df[field] = (
+                pd.to_datetime(df[field], errors='coerce', utc=True)
+                .dt.tz_localize(None)
+                .astype('datetime64[ns]')
+            )
+    return df
+
+
+def _coerce_missing_species_codes(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Replace missing (NaN) SPECIES_CD_1..SPECIES_CD_6 values with None.
+
+    BCWFT2018's verifyInputs() only accepts str or None for these fields, not a bare NaN
+    float. Must run before the general field_dict-driven astype() cast in
+    _calc_fbp_fuel_type(): casting a column to 'str' converts both NaN and None into the
+    literal strings 'nan'/'None' rather than leaving None alone, so these columns are
+    coerced here and then excluded from that later cast.
+
+    :param df: DataFrame containing zero or more of the SPECIES_CD_1..SPECIES_CD_6 columns.
+    :return: Copy of df with NaN replaced by None in those columns; other columns unchanged.
+    """
+    df = df.copy()
+    present_cols = [col for col in _SPECIES_CD_FIELDS if col in df.columns]
+    # Cast to object first: .where(..., None) on a float64 column (the common case - a rank
+    # with zero non-null values across every row, e.g. no plot has a 6th species) coerces the
+    # replacement None back into NaN to match the column's existing float dtype, silently
+    # undoing the fix.
+    df[present_cols] = df[present_cols].astype(object)
+    df[present_cols] = df[present_cols].where(df[present_cols].notna(), None)
+    return df
+
+
+def _is_valid_stand_age(value) -> bool:
+    """
+    Check whether a PROJ_AGE_1 value is a valid, non-negative, finite real number.
+
+    Excludes bool explicitly, since Python's bool subclasses int and would otherwise pass an
+    isinstance(value, (int, float)) check. Checks pd.isna() before anything else, since
+    np.isfinite(pd.NA) returns pd.NA (not a plain bool) rather than raising, which would make
+    a direct boolean check on its result ambiguous.
+
+    :param value: Candidate PROJ_AGE_1 value from a single row.
+    :return: True if value is a real number (excluding bool), finite, and >= 0; False otherwise.
+    """
+    if pd.isna(value):
+        return False
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        return False
+    return bool(np.isfinite(float(value)) and value >= 0)
+
+
+def _normalize_user_supplied_fbp_fields(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Normalize whitespace and casing on the user-supplied geographic code fields.
+
+    COAST_INTERIOR_CD and BEC_ZONE_CODE are normalized to uppercase (matching BCWFT2018's own
+    'C'/'I' branch checks and its becZones domain); BEC_SUBZONE is normalized to lowercase
+    (matching its becSubzones domain). Only real string values are touched - missing
+    (None/pd.NA/NaN) and non-string values are left as-is so
+    _validate_user_supplied_fbp_fields() can report them accurately. Never maps an alias or
+    unknown value to a valid code; a typo remains a typo after normalization, only its
+    whitespace and casing change.
+
+    :param df: DataFrame containing zero or more of COAST_INTERIOR_CD/BEC_ZONE_CODE/BEC_SUBZONE.
+    :return: Copy of df with those columns' string values stripped and case-normalized;
+        other columns and non-string values are unchanged.
+    """
+    df = df.copy()
+
+    def _normalize(value, upper: bool):
+        """
+        Strip and case-normalize a single candidate geographic-code value.
+
+        :param value: Candidate cell value; only real strings are transformed.
+        :param upper: True to uppercase the stripped string, False to lowercase it.
+        :return: The normalized string, or value unchanged if it is not a string.
+        """
+        if not isinstance(value, str):
+            return value
+        stripped = value.strip()
+        return stripped.upper() if upper else stripped.lower()
+
+    for field in ('COAST_INTERIOR_CD', 'BEC_ZONE_CODE'):
+        if field in df.columns:
+            df[field] = df[field].apply(_normalize, upper=True)
+    if 'BEC_SUBZONE' in df.columns:
+        df['BEC_SUBZONE'] = df['BEC_SUBZONE'].apply(_normalize, upper=False)
+    return df
+
+
+def _validate_user_supplied_fbp_fields(df: pd.DataFrame, bc_fuel_type: bcwft.FuelTyping) -> None:
+    """
+    Raise a clear, upfront error for every plot with a missing or invalid manually-supplied
+    field, instead of letting BCWFT2018 raise a cryptic error, or silently pick a wrong branch,
+    for the first affected plot deep inside the per-plot loop.
+
+    COAST_INTERIOR_CD must be exactly 'C' or 'I'; BEC_ZONE_CODE and BEC_SUBZONE must be members
+    of BCWFT2018's own bc_fuel_type.becZones/becSubzones domains (not a hand-copied duplicate of
+    those lists, so this can never drift from the vendored implementation); values are checked
+    after _normalize_user_supplied_fbp_fields() has already stripped whitespace and normalized
+    casing. PROJ_AGE_1 must be a non-negative, finite real number (see _is_valid_stand_age()) -
+    checked after _calc_fbp_fuel_type()'s own no-live-tree default has already run, so a
+    genuinely unfilled age is only rejected for stands that actually have live trees.
+
+    These are all user-supplied fields (see conpyro_attributes.py's _prep_fbp_df()), not
+    something FuelAnalyst itself can compute, so an invalid value here always means the user's
+    own fill-in step missed a plot or contains a typo - it is never a FuelAnalyst bug to fix by
+    coercion, unlike the missing species codes _calc_fbp_fuel_type() also handles.
+
+    :param df: DataFrame with 'unique_id' and the fields BCWFT2018 requires already merged in.
+    :param bc_fuel_type: An already-constructed bcwft.FuelTyping() instance, reused here for its
+        becZones/becSubzones domains rather than constructing a second instance.
+    :raises ValueError: If 'unique_id' itself is absent, or if any plot has a missing/invalid
+        value for a required field - naming every affected field, its affected unique_id
+        values, and (where a value is present but invalid) the value itself.
+    :return: None.
+    """
+    if 'unique_id' not in df.columns:
+        raise ValueError("fbp_prep_df is missing the required 'unique_id' identity column.")
+
+    string_domains = {
+        'COAST_INTERIOR_CD': _COAST_INTERIOR_DOMAIN,
+        'BEC_ZONE_CODE': tuple(bc_fuel_type.becZones),
+        'BEC_SUBZONE': tuple(bc_fuel_type.becSubzones),
+    }
+
+    problems = {}
+    for field, domain in string_domains.items():
+        if field not in df.columns:
+            problems[field] = 'column is missing entirely'
+            continue
+        invalid_mask = ~df[field].apply(lambda value, dom=domain: isinstance(value, str) and value in dom)
+        if invalid_mask.any():
+            problems[field] = dict(zip(df.loc[invalid_mask, 'unique_id'], df.loc[invalid_mask, field]))
+
+    for field in _REQUIRED_NUMERIC_FIELDS:
+        if field not in df.columns:
+            problems[field] = 'column is missing entirely'
+            continue
+        invalid_mask = ~df[field].apply(_is_valid_stand_age)
+        if invalid_mask.any():
+            problems[field] = dict(zip(df.loc[invalid_mask, 'unique_id'], df.loc[invalid_mask, field]))
+
+    if problems:
+        details = '; '.join(f'{field}: {affected}' for field, affected in problems.items())
+        raise ValueError(
+            'fbp_prep_df has unfilled or invalid user-supplied field(s) required by BCWFT2018 '
+            '(fill these in manually from BC VRI/BEC-zone GIS data before calling '
+            f'process_fbp_fuel_type()): {details}.'
+        )
+
+
 def process_fbp_fuel_type(
         master_fuel_df_path: str,
         fbp_prep_df_path: str,
@@ -139,7 +336,7 @@ def process_fbp_fuel_type(
     :param fbp_prep_df_path: Path to the FBP preparation DataFrame CSV file.
     :param conpyro_df_path: Path to the ConPyro DataFrame CSV file to be updated with FBP fuel types.
     :param out_dir: Directory to save the updated ConPyro DataFrame CSV file with FBP fuel types.
-    :param season: Season for fuel typing ('Growing' or 'Dormant').
+    :param season: Season for fuel typing ('Growing' or 'Dormant'). Case-insensitive.
     :return: None. Writes an updated ConPyro CSV with an `_fbp` filename suffix.
     """
     # Columns to drop from the FBP preparation DataFrame
