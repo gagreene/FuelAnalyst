@@ -48,9 +48,9 @@ def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFra
     :param df: DataFrame containing the fields required by BCWFT2018.
     :param season: Season used for seasonal fuel-type assignments. Case-insensitive; normalized
         to the lowercase 'growing'/'dormant' BCWFT2018's own verifyInputs() requires.
-    :raises ValueError: If any plot has an ambiguous missing live-tree density (see
-        _validate_live_density()), or is missing a required user-supplied field (see
-        _validate_user_supplied_fbp_fields()).
+    :raises ValueError: If a required live-density column is missing entirely, any plot has an
+        ambiguous missing live-tree density (see _validate_live_density()), or any plot is
+        missing a required user-supplied field (see _validate_user_supplied_fbp_fields()).
     :return: DataFrame containing calculated fuel types and modifiers.
     """
     # BCWFT2018's verifyInputs() only accepts the exact lowercase strings 'growing'/'dormant',
@@ -76,15 +76,11 @@ def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFra
     fbp_df['BCLCS_LEVEL_1'] = 'V'
 
     # A plot with no live-tree records maps to NaN, not 0, in stand_dens_tpha_live_sum (trees.py's
-    # groupby-based summary has no live-tree group to map back). Confirm that NaN really means
-    # "all dead" using the total/dead density summaries before treating it the same as an exact
-    # zero; an uncorroborated NaN is ambiguous input, not a confirmed no-live-tree stand.
-    no_live_trees = _no_live_trees(
-        fbp_df['stand_dens_tpha_live_sum'],
-        fbp_df['stand_dens_tpha_sum'],
-        fbp_df['stand_dens_tpha_dead_sum'],
-    )
-    _validate_live_density(fbp_df['unique_id'], fbp_df['stand_dens_tpha_live_sum'], no_live_trees)
+    # groupby-based summary has no live-tree group to map back). _validate_live_density() confirms
+    # that NaN really means "all dead" using the total/dead density summaries before treating it
+    # the same as an exact zero, and raises for an uncorroborated NaN (ambiguous input, not a
+    # confirmed no-live-tree stand) before it reaches BCWFT2018.
+    no_live_trees = _validate_live_density(fbp_df)
 
     fbp_df['BCLCS_LEVEL_2'] = np.where(
         no_live_trees,
@@ -249,6 +245,13 @@ def _no_live_trees(
     dead density must both be present and equal before that NaN is interpreted as an all-dead
     stand; otherwise it remains missing data.
 
+    On a pandas nullable dtype (e.g. 'Float64'), live_density.eq(0) returns pd.NA rather than
+    False wherever live_density itself is NA, which would otherwise make the returned mask a
+    three-state Boolean: np.where() raises TypeError on an indeterminate value, and (were this
+    mask used directly to decide ambiguity) a nullable-dtype NA could silently bypass
+    _validate_live_density()'s .any() check instead of raising. fillna(False) on both operands
+    keeps this an ordinary two-state Boolean Series regardless of input dtype.
+
     :param live_density: Per-plot summed live-tree density in stems per hectare.
     :param total_density: Per-plot summed total tree density in stems per hectare.
     :param dead_density: Per-plot summed dead-tree density in stems per hectare.
@@ -261,7 +264,7 @@ def _no_live_trees(
         & dead_density.notna()
         & total_density.eq(dead_density)
     )
-    return live_density.eq(0) | confirmed_all_dead
+    return live_density.eq(0).fillna(False) | confirmed_all_dead.fillna(False)
 
 
 def _normalize_user_supplied_fbp_fields(df: pd.DataFrame) -> pd.DataFrame:
@@ -303,9 +306,17 @@ def _normalize_user_supplied_fbp_fields(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _validate_live_density(unique_id: pd.Series, live_density: pd.Series, no_live_trees: pd.Series) -> None:
+def _validate_live_density(df: pd.DataFrame) -> pd.Series:
     """
-    Reject a missing live-tree density that is not corroborated as a confirmed all-dead stand.
+    Validate the columns needed to classify live-tree density, then reject a missing live-tree
+    density that is not corroborated as a confirmed all-dead stand.
+
+    Column presence is checked here, before _no_live_trees() is called, rather than letting
+    _calc_fbp_fuel_type() access these columns directly: stand_dens_tpha_sum is a dependency this
+    validation introduces, and accessing it - or unique_id, needed to name affected plots -
+    directly on a DataFrame missing the column would otherwise raise a raw KeyError instead of
+    the same clear, upfront ValueError this module's other required-field validation already
+    uses.
 
     A missing stand_dens_tpha_live_sum value is not by itself proof of zero live trees - the same
     NaN can arise from a plot with no tree records, unjoined identifiers, missing/unrecognized
@@ -314,23 +325,37 @@ def _validate_live_density(unique_id: pd.Series, live_density: pd.Series, no_liv
     ambiguous input and must be rejected before it reaches BCWFT2018's per-plot processing, where
     it would otherwise silently produce a NaN stocking calculation.
 
-    :param unique_id: Per-plot identifier, used to name affected plots in the raised error.
-    :param live_density: Per-plot summed live-tree density in stems per hectare.
-    :param no_live_trees: Boolean Series from _no_live_trees(), true for an exact live-density
-        zero or a corroborated all-dead stand.
-    :raises ValueError: If any plot has a missing live density without corroborating total/dead
+    :param df: DataFrame expected to contain 'unique_id', 'stand_dens_tpha_live_sum',
+        'stand_dens_tpha_sum', and 'stand_dens_tpha_dead_sum'.
+    :raises ValueError: If any of those columns are missing entirely, naming every missing
+        column; or if any plot has a missing live density without corroborating total/dead
         evidence of an all-dead stand, naming every affected unique_id value.
-    :return: None.
+    :return: Boolean Series from _no_live_trees(), true for an exact live-density zero or a
+        corroborated all-dead stand.
     """
-    ambiguous = live_density.isna() & ~no_live_trees
+    required_columns = [
+        'unique_id', 'stand_dens_tpha_live_sum', 'stand_dens_tpha_sum', 'stand_dens_tpha_dead_sum',
+    ]
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    if missing_columns:
+        raise ValueError(
+            'fbp_prep_df is missing required column(s) needed to classify live-tree density: '
+            f'{missing_columns}.'
+        )
+
+    no_live_trees = _no_live_trees(
+        df['stand_dens_tpha_live_sum'], df['stand_dens_tpha_sum'], df['stand_dens_tpha_dead_sum'],
+    )
+    ambiguous = df['stand_dens_tpha_live_sum'].isna() & ~no_live_trees
     if ambiguous.any():
-        affected = unique_id.loc[ambiguous].tolist()
+        affected = df.loc[ambiguous, 'unique_id'].tolist()
         raise ValueError(
             'fbp_prep_df has plot(s) with a missing stand_dens_tpha_live_sum value that is not '
             'corroborated as a confirmed all-dead stand by equal, populated '
             'stand_dens_tpha_sum/stand_dens_tpha_dead_sum values. A missing live density alone '
             f'is not proof of zero live trees. Affected unique_id(s): {affected}.'
         )
+    return no_live_trees
 
 
 def _validate_user_supplied_fbp_fields(df: pd.DataFrame, bc_fuel_type: bcwft.FuelTyping) -> None:

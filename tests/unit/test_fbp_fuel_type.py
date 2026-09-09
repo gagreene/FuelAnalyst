@@ -238,6 +238,24 @@ def test_calc_fbp_fuel_type_raises_before_processing_when_required_field_missing
         fbp_fuel_type._calc_fbp_fuel_type(df, season='growing')
 
 
+def test_calc_fbp_fuel_type_raises_directly_when_stand_dens_tpha_sum_missing():
+    """stand_dens_tpha_sum is a dependency _validate_live_density() introduces; a DataFrame
+    missing it entirely must raise the same clear ValueError as any other missing required
+    column, not a raw KeyError from fbp_df['stand_dens_tpha_sum'] deep inside _no_live_trees()."""
+    df = pd.DataFrame(_minimal_fuel_typing_row()).drop(columns=['stand_dens_tpha_sum'])
+    with pytest.raises(ValueError, match='stand_dens_tpha_sum'):
+        fbp_fuel_type._calc_fbp_fuel_type(df, season='growing')
+
+
+def test_calc_fbp_fuel_type_raises_directly_when_unique_id_missing():
+    """unique_id is accessed by _validate_live_density() before _validate_user_supplied_fbp_fields()
+    ever runs its own identity-column check; a missing unique_id must still raise a clear
+    ValueError, not a raw KeyError."""
+    df = pd.DataFrame(_minimal_fuel_typing_row()).drop(columns=['unique_id'])
+    with pytest.raises(ValueError, match='unique_id'):
+        fbp_fuel_type._calc_fbp_fuel_type(df, season='growing')
+
+
 def test_calc_fbp_fuel_type_raises_for_ambiguous_missing_live_density(monkeypatch):
     """A missing live density with no total/dead corroboration is ambiguous input (e.g. no tree
     records, unjoined identifiers, missing tree statuses), not a confirmed all-dead stand, and
@@ -250,6 +268,27 @@ def test_calc_fbp_fuel_type_raises_for_ambiguous_missing_live_density(monkeypatc
     df = pd.DataFrame(_minimal_fuel_typing_row(
         stand_dens_tpha_live_sum=[np.nan], stand_dens_tpha_sum=[np.nan], stand_dens_tpha_dead_sum=[np.nan],
     ))
+    with pytest.raises(ValueError, match='stand_dens_tpha_live_sum'):
+        fbp_fuel_type._calc_fbp_fuel_type(df, season='growing')
+    assert calls == []
+
+
+def test_calc_fbp_fuel_type_raises_for_ambiguous_missing_live_density_in_nullable_float_dtype(monkeypatch):
+    """Regression: pandas' nullable 'Float64' dtype makes live_density.eq(0) return pd.NA rather
+    than a plain bool wherever live_density is NA. Before _no_live_trees() filled NA results to
+    False, this let an ambiguous missing live density silently bypass validation (a pd.NA-laden
+    ambiguous mask's .any() returns False) and reach np.where() as a three-state Boolean, raising
+    an unrelated TypeError instead of the intended ValueError."""
+    calls = []
+    monkeypatch.setattr(
+        bcwft2018.FuelTyping, 'getFuelType',
+        lambda self, season, *args: calls.append(args),
+    )
+    df = pd.DataFrame(_minimal_fuel_typing_row(
+        stand_dens_tpha_live_sum=[np.nan], stand_dens_tpha_sum=[np.nan], stand_dens_tpha_dead_sum=[np.nan],
+    ))
+    for col in ('stand_dens_tpha_live_sum', 'stand_dens_tpha_sum', 'stand_dens_tpha_dead_sum'):
+        df[col] = df[col].astype('Float64')
     with pytest.raises(ValueError, match='stand_dens_tpha_live_sum'):
         fbp_fuel_type._calc_fbp_fuel_type(df, season='growing')
     assert calls == []
@@ -426,6 +465,18 @@ def test_is_valid_stand_age_rejects_invalid_values(value):
     assert fbp_fuel_type._is_valid_stand_age(value) is False
 
 
+def test_no_live_trees_false_for_pandas_na_in_nullable_float_dtype():
+    """Regression: on pandas' nullable 'Float64' dtype, live_density.eq(0) returns pd.NA (not
+    False) wherever live_density is NA, which would otherwise make the returned mask a
+    three-state Boolean instead of the ordinary two-state mask callers rely on."""
+    result = fbp_fuel_type._no_live_trees(
+        pd.Series([pd.NA], dtype='Float64'),
+        pd.Series([pd.NA], dtype='Float64'),
+        pd.Series([pd.NA], dtype='Float64'),
+    )
+    assert result.tolist() == [False]
+
+
 def test_no_live_trees_false_for_positive_live_density():
     result = fbp_fuel_type._no_live_trees(
         pd.Series([500.0]), pd.Series([500.0]), pd.Series([0.0]),
@@ -558,6 +609,48 @@ def test_process_fbp_fuel_type_preserves_existing_assignment(tmp_path, monkeypat
         str(master_path), str(prep_path), str(conpyro_path), str(tmp_path), 'Growing'
     )
     assert pd.read_csv(tmp_path / 'conpyro_fbp.csv').loc[0, 'fbp_fuel_type'] == 'M1'
+
+
+def test_validate_live_density_raises_for_ambiguous_missing_live_density():
+    df = pd.DataFrame({
+        'unique_id': ['p1'],
+        'stand_dens_tpha_live_sum': [np.nan],
+        'stand_dens_tpha_sum': [np.nan],
+        'stand_dens_tpha_dead_sum': [np.nan],
+    })
+    with pytest.raises(ValueError, match='stand_dens_tpha_live_sum'):
+        fbp_fuel_type._validate_live_density(df)
+
+
+def test_validate_live_density_raises_when_a_required_column_is_missing():
+    df = pd.DataFrame({
+        'unique_id': ['p1'],
+        'stand_dens_tpha_live_sum': [500.0],
+        'stand_dens_tpha_dead_sum': [0.0],
+    })
+    with pytest.raises(ValueError, match='stand_dens_tpha_sum'):
+        fbp_fuel_type._validate_live_density(df)
+
+
+def test_validate_live_density_raises_when_unique_id_is_missing():
+    df = pd.DataFrame({
+        'stand_dens_tpha_live_sum': [np.nan],
+        'stand_dens_tpha_sum': [500.0],
+        'stand_dens_tpha_dead_sum': [500.0],
+    })
+    with pytest.raises(ValueError, match='unique_id'):
+        fbp_fuel_type._validate_live_density(df)
+
+
+def test_validate_live_density_returns_the_no_live_trees_mask_when_valid():
+    df = pd.DataFrame({
+        'unique_id': ['exact_zero', 'confirmed_all_dead', 'live'],
+        'stand_dens_tpha_live_sum': [0.0, np.nan, 500.0],
+        'stand_dens_tpha_sum': [0.0, 300.0, 500.0],
+        'stand_dens_tpha_dead_sum': [0.0, 300.0, 0.0],
+    })
+    result = fbp_fuel_type._validate_live_density(df)
+    assert result.tolist() == [True, True, False]
 
 
 def test_validate_user_supplied_fbp_fields_accepts_fully_populated_row(bc_fuel_type):
