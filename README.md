@@ -70,7 +70,7 @@ flowchart LR
     D --> G[Merge weather data]
     F --> G
     G --> H[ConPyro fire behaviour]
-    B --> E[FOFEM consumption prep]
+    B --> E[FOFEM consumption df]
     T --> M[FOFEM mortality]
     H --> M
     H --> N
