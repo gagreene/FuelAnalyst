@@ -15,6 +15,7 @@ from csv import reader as CSV
 import concurrent.futures
 from typing import Union
 
+from . import fofem_units
 from . import helper
 from . import fwis_moisture_content as mc
 from pyfofem import pyfofem as fofem, TOTAL_DURATION_CONSUMED_VARS, EQUATION_VARS, \
@@ -33,7 +34,9 @@ default_season_start_dict = {
     'Fall': '0915',
     'Winter': '1115',
 }
-FOFEM_DIR = os.path.join(pkg_dir, 'dependencies', 'pyfofem', 'src', 'pyfofem', 'supporting_data', 'FOFEM6.7')
+# Environment variable override for _get_fofem_dir(), for use from an installed (non-editable)
+# fuel_analyst package that has no dependencies/pyfofem source checkout to resolve a path from.
+_FOFEM_DIR_ENV_VAR = 'FUEL_ANALYST_FOFEM_DIR'
 CONSUMPTION_VARS = fofem.DEFAULT_CONSUMPTION_VARS
 
 
@@ -142,6 +145,49 @@ def _restore_plot_id(df: pd.DataFrame, plotid_map: dict) -> pd.DataFrame:
     """
     df['#PlotId'] = df['#PlotId'].map(plotid_map).fillna(df['#PlotId'])
     return df
+
+
+def _get_fofem_dir() -> str:
+    """
+    Resolve the legacy FOFEM6.7 executable/support directory.
+
+    Checked lazily from _run_fofem() rather than at import time, so importing this module never
+    requires a source checkout. Checks the FUEL_ANALYST_FOFEM_DIR environment variable first, then
+    falls back to a path relative to the repository root. This backend depends on the
+    dependencies/pyfofem submodule being present in a source checkout; an installed
+    (non-editable) fuel_analyst package must set the environment variable instead.
+
+    :return: Absolute path to the FOFEM6.7 directory.
+    :raises FileNotFoundError: If neither the environment variable nor the source-checkout-relative
+        path resolves to an existing directory.
+    """
+    override = os.environ.get(_FOFEM_DIR_ENV_VAR)
+    if override:
+        if not os.path.isdir(override):
+            raise FileNotFoundError(
+                f'{_FOFEM_DIR_ENV_VAR} is set to "{override}", but that directory does not exist.'
+            )
+        return override
+
+    try:
+        repo_root = helper.get_repo_root(os.path.dirname(__file__))
+    except FileNotFoundError as error:
+        raise FileNotFoundError(
+            'Could not resolve the legacy FOFEM6.7 executable/support directory: no source '
+            'checkout found and the FUEL_ANALYST_FOFEM_DIR environment variable is not set. '
+            'This backend requires either the dependencies/pyfofem submodule in a source '
+            'checkout, or FUEL_ANALYST_FOFEM_DIR pointing at an equivalent directory.'
+        ) from error
+
+    fofem_dir = os.path.join(
+        repo_root, 'dependencies', 'pyfofem', 'src', 'pyfofem', 'supporting_data', 'FOFEM6.7'
+    )
+    if not os.path.isdir(fofem_dir):
+        raise FileNotFoundError(
+            f'Resolved FOFEM6.7 directory does not exist: {fofem_dir}. Ensure the '
+            f'dependencies/pyfofem submodule is checked out, or set {_FOFEM_DIR_ENV_VAR}.'
+        )
+    return fofem_dir
 
 
 def _get_merged_consumption_df(
@@ -276,13 +322,45 @@ def _get_season(df: pd.DataFrame, season_start_dict: dict = None) -> pd.DataFram
     return df
 
 
-def _model_emissions(row: dict, out_dir: str, consume_model: str) -> tuple:
+def _convert_consume_row_to_imperial(row_consume_df: pd.DataFrame, emissions_units: str) -> pd.DataFrame:
+    """
+    Convert a single-row FOFEM consumption DataFrame to the Imperial units the legacy fof_gui
+    executable requires, rounded to its expected batch-file precision.
+
+    The intermediate consumption CSV's column names and order are fixed and unsuffixed
+    regardless of emissions_units (see fofem_units.py); only the load/depth values themselves
+    differ. This keeps the exact existing column set and order - it never adds, removes, or
+    duplicates a column.
+
+    :param row_consume_df: Single-row consumption DataFrame with the fixed, unsuffixed FOFEM
+        column names, holding values in the unit system given by emissions_units.
+    :param emissions_units: Unit system of row_consume_df's values ('SI' or 'Imperial').
+    :return: A new DataFrame with the same columns/order; load and DuffDepth values converted to
+        Imperial (if emissions_units is 'SI') and rounded to 2 decimals; other columns unchanged.
+    """
+    row_consume_df = row_consume_df.copy()
+    physical_cols = fofem_units.FOFEM_LOAD_COLUMNS + fofem_units.FOFEM_DEPTH_COLUMNS
+    if emissions_units == 'SI':
+        row_consume_df[fofem_units.FOFEM_LOAD_COLUMNS] = (
+            row_consume_df[fofem_units.FOFEM_LOAD_COLUMNS] * fofem_units.LOAD_CONV_FACTOR
+        )
+        row_consume_df[fofem_units.FOFEM_DEPTH_COLUMNS] = (
+            row_consume_df[fofem_units.FOFEM_DEPTH_COLUMNS] * fofem_units.DEPTH_CONV_FACTOR
+        )
+    row_consume_df[physical_cols] = row_consume_df[physical_cols].round(2)
+    return row_consume_df
+
+
+def _model_emissions(row: dict, out_dir: str, consume_model: str, emissions_units: str) -> tuple:
     """
     Model emissions using FOFEM with Burnup-In.brn files for a given row of fire behavior and weather data.
 
     :param row: Dict of merged DataFrame row containing fire behavior and weather data for a single plot.
     :param out_dir: Output directory for Burnup-In.brn files.
     :param consume_model: FOFEM consumption model ('C' or 'S').
+    :param emissions_units: Unit system of row's FOFEM consumption values ('SI' or 'Imperial').
+        The fof_gui executable itself always requires Imperial input; SI values are converted
+        immediately before being written to the batch file (see _convert_consume_row_to_imperial()).
     :return: Tuple (list of FOFEM results, output emission directory).
     """
     # Get unique identifier for the multiprocessing worker
@@ -312,6 +390,10 @@ def _model_emissions(row: dict, out_dir: str, consume_model: str) -> tuple:
         row_consume_df = pd.DataFrame(
             [row]
         ).loc[:, :'remove_hereafter'].drop(columns=['remove_hereafter'])
+
+        # fof_gui requires Imperial input regardless of emissions_units; convert here (a no-op
+        # beyond rounding when already Imperial), immediately before writing the batch file
+        row_consume_df = _convert_consume_row_to_imperial(row_consume_df, emissions_units)
 
         # Save Consume data to file
         out_consume = _create_consume_file(
@@ -347,10 +429,11 @@ def _run_fofem(out_dir: str, out_consume: str, consume_model: str) -> list:
     out_run = os.path.join(out_dir, f'fofemConsumedEmissionsDF_Temp-Run.csv')
     out_err = os.path.join(out_dir, f'fofemConsumedEmissionsDF_Temp-Err.txt')
 
-    # Get all files in FOFEM_DIR and copy to out_dir if they don't already exist
-    # (to avoid issues with multiple workers trying to read the same files in FOFEM_DIR)
-    for filename in os.listdir(FOFEM_DIR):
-        src_file = os.path.join(FOFEM_DIR, filename)
+    # Get all files in the FOFEM6.7 directory and copy to out_dir if they don't already exist
+    # (to avoid issues with multiple workers trying to read the same files concurrently)
+    fofem_dir = _get_fofem_dir()
+    for filename in os.listdir(fofem_dir):
+        src_file = os.path.join(fofem_dir, filename)
         dst_file = os.path.join(out_dir, filename)
         if not os.path.exists(dst_file):
             shutil.copy(src_file, dst_file)
@@ -397,25 +480,41 @@ def process_emissions(
         fofem_consume_csv_path: str,
         out_dir: str,
         model_soil_heating: bool = False,
+        emissions_units: str = 'SI',
         num_workers: int = 1,
         return_df: bool = False,
-) -> Union[None, str]:
+) -> Union[None, pd.DataFrame]:
     """
     Process emissions modelling with FOFEM.
 
     :param plot_wx_fire_csv_path: Path to CSV file containing plot weather and fire data.
     :param plot_id_col_name: Name of the unique ID column in the stand fire severity CSV used for merging
         (e.g., 'unique_id').
-    :param fofem_consume_csv_path: Path to FOFEM consumption CSV file.
+    :param fofem_consume_csv_path: Path to FOFEM consumption CSV file. Its filename must be one of
+        the canonical, unit-bearing names from fofem_units.consume_filename() and must match
+        emissions_units.
     :param out_dir: Output directory for Burnup-In.brn files.
     :param model_soil_heating: Whether to use FOFEM soil heating consumption model (True) or not (False).
+    :param emissions_units: Unit system of the values in fofem_consume_csv_path ('SI' or
+        'Imperial'). The fof_gui executable itself always requires Imperial input and always
+        returns Imperial output; SI is supported by converting values immediately before/after
+        the executable runs (see _convert_consume_row_to_imperial()). Also determines the unit
+        suffixes applied to physical result columns in the final analyst-facing DataFrame and CSV
+        (see fofem_units.emissions_result_rename_map()), using the same map as the pyfofem
+        backend so both backends expose the same final schema for a given unit system.
     :param num_workers: Number of workers for parallel processing
-    :param return_df: Whether to return a path to the final DataFrame with emissions results (True) or not (False).
+    :param return_df: Whether to return the final DataFrame with emissions results (True) or not (False).
     :return: None if return_df is False, otherwise the DataFrame containing the merged input data and
         FOFEM emissions results.
     """
     # Ensure output directory exists
     os.makedirs(out_dir, exist_ok=True)
+
+    # Validate the configured units and the input file's unit-bearing filename before merging or
+    # starting any workers, so this public component is safe to call directly (not only via
+    # run_conpyro(), which performs the same check on its own behalf before dispatching here).
+    emissions_units = fofem_units.validate_fofem_units(emissions_units)
+    fofem_units.validate_consume_units(fofem_consume_csv_path, emissions_units)
 
     # Assign FOFEM consumption model based on whether soil heating is being modeled
     global CONSUMPTION_VARS
@@ -458,12 +557,14 @@ def process_emissions(
         records = merged_df.to_dict(orient='records')
         out_dirs = [out_dir] * len(merged_df)
         consume_models = [consume_model] * len(merged_df)
+        emissions_units_list = [emissions_units] * len(merged_df)
         if _TQDM_PROCESS_MAP_AVAILABLE:
             results = process_map(
                 _model_emissions,
                 records,
                 out_dirs,
                 consume_models,
+                emissions_units_list,
                 max_workers=num_workers,
                 desc='Emissions',
                 chunksize=1,
@@ -471,14 +572,15 @@ def process_emissions(
         else:
             with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
                 results = list(tqdm.tqdm(
-                    executor.map(_model_emissions, records, out_dirs, consume_models),
+                    executor.map(_model_emissions, records, out_dirs, consume_models, emissions_units_list),
                     total=len(records),
                     desc='Emissions',
                 ))
     else:
         print('\tProcessing Emissions (via BURNUP model)...')
         results = [
-            _model_emissions(row, out_dir, consume_model) for row in tqdm.tqdm(merged_df.to_dict(orient='records'), desc='Emissions')
+            _model_emissions(row, out_dir, consume_model, emissions_units)
+            for row in tqdm.tqdm(merged_df.to_dict(orient='records'), desc='Emissions')
         ]
 
     # Unpack results
@@ -488,7 +590,7 @@ def process_emissions(
     for out_emission_dir in set(out_emission_dirs):
         shutil.rmtree(out_emission_dir)
 
-    # Convert FOFEM results to DataFrame
+    # Convert FOFEM results to DataFrame (fof_gui always returns Imperial values)
     fofem_results_df = pd.DataFrame(fofem_consume_results, columns=CONSUMPTION_VARS)
     helper.export_csv(fofem_results_df, os.path.join(out_dir, 'fofem_results_df_temp.csv'))
 
@@ -497,7 +599,32 @@ def process_emissions(
     helper.export_csv(merged_df, os.path.join(out_dir, 'merged_df_temp.csv'))
 
     # Append to merged_df
-    final_df = pd.concat([merged_df.reset_index(drop=True), fofem_results_df], axis=1)
+    final_df = pd.concat([merged_df.reset_index(drop=True), fofem_results_df.reset_index(drop=True)], axis=1)
+
+    # fof_gui always returns Imperial-unit results; when SI is configured, convert the
+    # analyst-facing result back to SI so both backends expose the same final unit system.
+    # Coerce to numeric first, since fofem_consume_results rows may contain raw CSV strings
+    # (or an 'Error: ...' filler string on a failed row, which becomes NaN here, not a crash).
+    load_result_cols = [c for c in fofem_units.EMISSIONS_LOAD_RESULT_FIELDS if c in final_df.columns]
+    depth_result_cols = [c for c in fofem_units.EMISSIONS_DEPTH_RESULT_FIELDS if c in final_df.columns]
+    gas_result_cols = [c for c in fofem_units.EMISSIONS_GAS_RESULT_FIELDS if c in final_df.columns]
+    for col in load_result_cols + depth_result_cols + gas_result_cols:
+        final_df[col] = pd.to_numeric(final_df[col], errors='coerce')
+    if emissions_units == 'SI':
+        final_df[load_result_cols] = final_df[load_result_cols] / fofem_units.LOAD_CONV_FACTOR
+        final_df[depth_result_cols] = final_df[depth_result_cols] / fofem_units.DEPTH_CONV_FACTOR
+        # Mirrors pyfofem's own SI/Imperial emissions_factor convention (emission_calcs.py's
+        # unit_conv: SI 1.0, Imperial 2.0) applied to the legacy executable's Imperial output,
+        # since fof_gui implements the same underlying FOFEM emissions methodology pyfofem
+        # reproduces. Not independently verified against fof_gui.exe itself (a compiled legacy
+        # binary); per the plan, the two backends' SI-vs-Imperial values are validated within
+        # each backend, not required to numerically match each other.
+        final_df[gas_result_cols] = final_df[gas_result_cols] / 2.0
+
+    # Unit-qualify pyfofem-compatible physical result column names in the final analyst-facing
+    # DataFrame/CSV only, using the same map as the pyfofem backend so both backends produce the
+    # same final schema for a given unit system; the temp exports above keep the raw names.
+    final_df = final_df.rename(columns=fofem_units.emissions_result_rename_map(emissions_units))
 
     # Restore original PlotId values in final_df
     final_df = _restore_plot_id(final_df, plotid_map)
@@ -525,7 +652,7 @@ if __name__ == '__main__':
 
     # Get stand fire and fofem consume csv paths
     _plot_wx_fire_csv_path = os.path.join(_in_fire_data_dir, 'fofem_severity_results.csv')
-    _fofem_consume_csv_path = os.path.join(_in_fofem_consume_dir, 'fofem_consume_df.csv')
+    _fofem_consume_csv_path = os.path.join(_in_fofem_consume_dir, fofem_units.consume_filename('SI'))
     _plot_id_col_name = 'unique_id'
 
     # Process emissions modelling

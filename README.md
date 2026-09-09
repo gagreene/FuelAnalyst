@@ -57,18 +57,24 @@ External fire-behaviour and fire-effects calculations are separate downstream st
 ```mermaid
 flowchart LR
     A[Survey123 CSV exports] --> B[FuelAnalyst core processing]
-    B --> C[Master plot and tree tables]
-    B --> D[ConPyro and FBP preparation]
-    B --> E[FOFEM preparation]
+    B --> T[Master tree df]
+    B --> D[ConPyro df]
+    B --> C[Master fuel df]
+    B --> P[FBP prep df]
     D --> F
+    C --> F
+    P --> F
     subgraph CFIS["CFIS modelling only"]
         F[FBP fuel typing]
     end
     D --> G[Merge weather data]
-    F -.-> G
+    F --> G
     G --> H[ConPyro fire behaviour]
-    E --> I[FOFEM mortality and emissions]
-    H --> I
+    B --> E[FOFEM consumption df]
+    T --> M[FOFEM mortality]
+    H --> M
+    H --> N
+    E --> N[FOFEM emissions]
 ```
 
 The normal sequence is:
@@ -193,7 +199,10 @@ fuel_analyst(
 )
 ```
 
-This generates model input tables but does not execute ConPyro or FOFEM.
+This generates model input tables but does not execute ConPyro or FOFEM. The FOFEM consumption
+table's output units and filename (`fofem_consume_si_df.csv` or `fofem_consume_imperial_df.csv`)
+are set by `fofem_consume_params`'s `fofem_processing_units` key (default `'SI'`); see
+[Units](#units) and [Configuration](#configuration).
 
 ## Input data
 
@@ -257,7 +266,64 @@ All four component-form folders are required when `gen_conpyro_df=True` because 
 
 FuelAnalyst calculations are primarily metric. Examples include centimetres for measured diameters, metres for heights and transects, trees per hectare, square metres per hectare, kilograms per square metre, and kilograms per cubic metre.
 
-FOFEM preparation tables convert required fields to FOFEM-compatible U.S. units. Do not assume that every generated CSV uses the same units; consult the result-field reference before downstream analysis.
+`fofem_gui_app_tree_mortality_df.csv` (the standalone FOFEM GUI's tree-mortality input) is always
+written in the FOFEM GUI application's own required Imperial units, since that legacy `.TRE`
+import format has no metric mode; its column names are FOFEM's own field names, not FuelAnalyst's
+naming convention. The FOFEM consumption table (`fofem_consume_si_df.csv` or
+`fofem_consume_imperial_df.csv`) and the final FOFEM mortality and emissions result tables written
+by `run_conpyro()` default to SI but can be configured to Imperial; see
+[Configuration](#configuration) for the `fofem_processing_units`/`emissions_units` settings that
+control this. The FOFEM consumption table's own column names and order are fixed regardless of
+units - only its values and filename change; the final result tables carry an explicit unit
+suffix on every physical column instead. Do not assume every generated CSV uses the same units;
+consult the result-field reference and the tables below before downstream analysis.
+
+#### Units and column-name abbreviations
+
+Physical result columns separate the variable name from its unit with an underscore
+(`PM25F_gpm2`), using `p` inside an abbreviation to mean "per" (`kgpm2`, not `kg_m2`). Identifiers,
+dates, categorical labels, equation codes, and boolean/binary flags never carry a unit suffix.
+`_pct` denotes a 0-100 scale value; `_prop` denotes a 0-1 scale value.
+
+The tables below list every unit abbreviation FuelAnalyst's first-party code actually emits or
+accepts in a column name; abbreviations not listed are not currently used.
+
+##### SI units
+
+| Suffix | Meaning | Quantity | Example column |
+| --- | --- | --- | --- |
+| `m` | metres | Length/depth | `fuel_bed_depth_m` |
+| `cm` | centimetres | Length/depth | `stand_duff_depth_cm` |
+| `m2pha` | square metres per hectare | Basal area per hectare | `stand_ba_m2pha_broadleaf_sum` |
+| `m3pha` | cubic metres per hectare | Volume per hectare (intermediate; not carried into `master_fuel_df.csv`) | `woody_volume_m3pha` |
+| `kgpm3` | kilograms per cubic metre | Bulk density | `stand_cbd_kgpm3_live` |
+| `kgpm2` | kilograms per square metre | Fuel load | `stand_foliage_fofem_kgpm2_sum` |
+| `tpha` | trees per hectare | Tree density | `stand_dens_tpha_sum` |
+| `gpm2` | grams per square metre | FOFEM SI smoke-emission mass | `PM25F_gpm2` |
+| `mps` | metres per second | Speed | `instand_ws_mps` |
+| `kWpm` | kilowatts per metre | Fireline intensity | `stand_fire_intensity_kWpm_mean` |
+| `degC` | degrees Celsius | Temperature (FOFEM soil-heating results; always Celsius, not converted by `emissions_units`) | `Lay0_degC` |
+| `sec` | seconds | Duration | `flame_res_time_sec` |
+| `min` | minutes | Duration | `flame_res_time_min` |
+| `pct` | percent (0-100 scale) | Various | `plot_slope_pct` |
+| `prop` | proportion (0-1 scale) | Various | `prob_mortality_crnsch_prop` |
+
+##### Imperial units
+
+| Suffix | Meaning | Quantity | Example column |
+| --- | --- | --- | --- |
+| `in` | inches | Depth | `DufDepPre_in` |
+| `tpac` | US short tons per acre (not metric tonnes) | Fuel load | `LitPre_tpac` |
+| `lbpac` | pounds per acre | FOFEM Imperial smoke-emission mass | `PM25F_lbpac` |
+| `pct` | percent (0-100 scale) | Various | shared with SI |
+| `prop` | proportion (0-1 scale) | Various | shared with SI |
+| `sec` | seconds | Duration | shared with SI (unit-system-independent) |
+
+Only two output contracts use Imperial values at all: the standalone FOFEM GUI's mortality
+preparation file (always Imperial, native FOFEM field names, not this suffix convention) and the
+configurable FOFEM consumption/emissions tables described above. No other Imperial length, area,
+or speed abbreviation (`ft`, `ac`, `tpa`, `mph`, `Btu`, `degF`, etc.) is currently emitted or
+accepted anywhere in first-party FuelAnalyst code.
 
 ## Outputs
 
@@ -271,7 +337,7 @@ The output directory mirrors processed form folders and may contain these top-le
 | `conpyro_df.csv` | `gen_conpyro_df=True` | Prepared ConPyro input attributes |
 | `fbp_prep_df.csv` | `gen_conpyro_df=True` | Additional attributes required by BC FBP fuel typing |
 | `fofem_gui_app_tree_mortality_df.csv` | `gen_fofem_gui_app_tree_df=True` | Tree-mortality input formatted for the standalone FOFEM GUI application |
-| `fofem_consume_df.csv` | `gen_fofem_consume_df=True` | FOFEM consumption and emissions input table |
+| `fofem_consume_si_df.csv` or `fofem_consume_imperial_df.csv` | `gen_fofem_consume_df=True` | FOFEM consumption and emissions input table; filename encodes `fofem_processing_units` (default SI) |
 
 Processed copies of each Survey123 parent table are written under their corresponding numbered output folders. Detailed repeat-table outputs may also be generated by individual components.
 
@@ -378,11 +444,16 @@ run_conpyro(
     out_dir="results/conpyro",
     in_conpyro_csv_path="results/weather/conpyro_df_wx.csv",
     in_tree_csv_path="results/fuel_analyst/master_tree_df.csv",
-    in_fofem_consume_csv_path="results/fuel_analyst/fofem_consume_df.csv",
+    in_fofem_consume_csv_path="results/fuel_analyst/fofem_consume_si_df.csv",
 )
 ```
 
 The default modelling configuration runs ConPyro, FOFEM mortality, and pyFOFEM emissions. Install both optional dependency groups before using this default. ConPyro input must already include required weather fields such as `ws`, `wd`, `ffmc`, `dmc`, and `bui`; some model choices additionally require `temp`, `rh`, `wx_date`, `time`, or model-selection columns.
+
+`in_fofem_consume_csv_path` must be one of `fuel_analyst()`'s two unit-bearing filenames, and
+must match `default_fire_modelling_dict['fofem_emissions']['emissions_units']` (default `'SI'`);
+`run_conpyro()` validates this before running either FOFEM emissions backend and raises a clear
+error on a mismatch rather than silently misinterpreting the file.
 
 Every completed `run_conpyro()` call also writes `run_conpyro_errors.csv`.
 
@@ -393,9 +464,8 @@ Default dictionaries are defined in:
 - `fuel_analyst.fuel_analyst.default_stand_summary_dict`
 - `fuel_analyst.fuel_analyst.default_woody_debris_dict`
 - `fuel_analyst.fuel_analyst.default_conpyro_dict`
-- `fuel_analyst.fuel_analyst.default_fofem_mortality_dict`
-- `fuel_analyst.fuel_analyst.default_fofem_consume_dict`
-- `fuel_analyst.run_conpyro.default_fire_modelling_dict`
+- `fuel_analyst.fuel_analyst.default_fofem_consume_dict` (includes `fofem_processing_units`, default `'SI'`)
+- `fuel_analyst.run_conpyro.default_fire_modelling_dict` (includes `fofem_emissions.emissions_units`, default `'SI'`)
 
 Use a deep copy before changing nested settings:
 

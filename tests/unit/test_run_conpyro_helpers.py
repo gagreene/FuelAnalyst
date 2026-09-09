@@ -138,3 +138,24 @@ def test_run_conpyro_writes_error_report_with_multiple_weather_dates(tmp_path, m
     assert error_report_path.is_file()
     report = pd.read_csv(error_report_path, keep_default_na=False)
     assert (report['unique_id'] == 'A').sum() == 1
+
+
+def test_model_fofem_emissions_rejects_units_filename_mismatch_before_any_backend_import(tmp_path):
+    """_model_fofem_emissions() must validate emissions_units against the consumption CSV's
+    unit-bearing filename before importing/running either backend - confirmed here by using a
+    consumption CSV path that doesn't even exist, since the ValueError must fire first."""
+    from fuel_analyst.components import fofem_units
+
+    df = pd.DataFrame({'unique_id': ['A'], 'wx_date': [20250101]})
+    with pytest.raises(ValueError, match='SI.*Imperial|Imperial.*SI'):
+        module._model_fofem_emissions(
+            df=df,
+            fire_csv_path=str(tmp_path / 'unused_fire.csv'),
+            fofem_emissions_params={
+                'run_model': True, 'plot_id_col_name': 'unique_id', 'emissions_units': 'Imperial',
+            },
+            in_fofem_consume_csv_path=str(tmp_path / fofem_units.consume_filename('SI')),
+            out_dir=str(tmp_path),
+            conpyro_params={'plot_id_col_name': 'unique_id'},
+            num_workers=1,
+        )
