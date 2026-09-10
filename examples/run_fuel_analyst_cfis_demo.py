@@ -57,10 +57,10 @@ FBP_PREP_DF_PATH = os.path.join(EXAMPLES_DIR, 'data', 'fbp_fuel_typing', 'fbp_pr
 #: weather --stage merge` and copy the resulting output here.
 WEATHER_MERGED_PATH = os.path.join(EXAMPLES_DIR, 'data', 'weather', 'conpyro_df_wx.csv')
 
-#: CFIS-only requirement (see module docstring): a literal time of day, since the
-#: committed weather dataset has no per-scenario time-of-day value to pull from CSV.
-#: 1400 (2pm) is a representative peak-burn-period time, not survey- or plot-specific.
-CFIS_TIME_HHMM = 1400
+#: CFIS-only requirement (see module docstring): a literal time of day of the weather
+# observations. The weather data are representative of 12 noon LST.
+#: 1200 (12pm)
+CFIS_TIME_HHMM = 1200
 
 
 def main() -> None:
