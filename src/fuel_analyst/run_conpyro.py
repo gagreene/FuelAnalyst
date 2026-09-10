@@ -406,9 +406,15 @@ def _single_run_fire_behavior(args):
         temp=subset_df['temp'].values,
         rh=subset_df['rh'].values,
         cc=subset_df['canopy_cover'].values,
-        site_elev=subset_df['elevation'].values,
-        stn_elev=subset_df['elevation'].values,
-        elevation=subset_df['elevation'].values,
+        # Cast to float64 explicitly: an all-whole-number elevation column reads as int64
+        # from CSV, and ConPyro's own validate_numeric() preserves that dtype when wrapping
+        # it in a numpy.ma.MaskedArray. CFIS's calc_correction_fm() (only reachable via
+        # cfo_model=10, never exercised by the default cfo_model) then calls .filled(np.nan)
+        # on it, which numpy refuses for an int64 array regardless of whether any value is
+        # actually masked, raising 'TypeError: Cannot convert fill_value nan to dtype int64'.
+        site_elev=subset_df['elevation'].to_numpy(dtype=float),
+        stn_elev=subset_df['elevation'].to_numpy(dtype=float),
+        elevation=subset_df['elevation'].to_numpy(dtype=float),
         lat=subset_df['lat'].values,
         long=subset_df['long'].values,
         d0=None,
