@@ -403,15 +403,20 @@ def _single_run_fire_behavior(args):
         dead_branch_fl=subset_df['dead_branch_fl_midstry'].values,
         fmc=(input_params['fmc'] if input_params['fmc'] != 'use_csv' else subset_df['fmc'].values.astype(float)),
         time=time,
-        temp=subset_df['temp'].values,
-        rh=subset_df['rh'].values,
+        # temp, rh, and elevation are cast to float64 explicitly: an all-whole-number column
+        # reads as int64 from CSV, and ConPyro's own validate_numeric() preserves that dtype
+        # when wrapping it in a numpy.ma.MaskedArray. CFIS's Rothermel-MC helpers - only
+        # reachable via cfo_model=10, never exercised by the default cfo_model - then call
+        # .filled(np.nan) on it (get_temp_index()/get_rh_index() for temp/rh,
+        # get_elevation_class() for site_elev/stn_elev), which numpy refuses for an int64
+        # array regardless of whether any value is actually masked, raising 'TypeError:
+        # Cannot convert fill_value nan to dtype int64'. aspect/slope/canopy_cover use the
+        # same masked-array pattern but fill with 0 (valid for any numeric dtype), so they
+        # don't need this cast; every other ConPyro input is never passed to .filled() at all
+        # in the vendored package (confirmed by inspection), so isn't at risk either.
+        temp=subset_df['temp'].to_numpy(dtype=float),
+        rh=subset_df['rh'].to_numpy(dtype=float),
         cc=subset_df['canopy_cover'].values,
-        # Cast to float64 explicitly: an all-whole-number elevation column reads as int64
-        # from CSV, and ConPyro's own validate_numeric() preserves that dtype when wrapping
-        # it in a numpy.ma.MaskedArray. CFIS's calc_correction_fm() (only reachable via
-        # cfo_model=10, never exercised by the default cfo_model) then calls .filled(np.nan)
-        # on it, which numpy refuses for an int64 array regardless of whether any value is
-        # actually masked, raising 'TypeError: Cannot convert fill_value nan to dtype int64'.
         site_elev=subset_df['elevation'].to_numpy(dtype=float),
         stn_elev=subset_df['elevation'].to_numpy(dtype=float),
         elevation=subset_df['elevation'].to_numpy(dtype=float),
