@@ -237,13 +237,28 @@ def _get_filtered_raster_paths(
     Filter and sort raster file paths for a given variable based on a specified year range.
     Assumes filenames look like: {var}YYYYMMDD.tif so it works for nrcan data.
 
+    Fails fast with a clear error naming the variable/directory/year range if the variable's
+    directory doesn't exist or contains no matching rasters, rather than silently returning an
+    empty list - os.walk() on a nonexistent directory raises nothing on its own, and an empty
+    raster list previously reached _extract_weather()'s parallel-chunking logic, which divides
+    by the (nonzero) worker count to compute chunk_size; with zero raster_date_items that
+    division floors to 0, and range(0, 0, 0) raises Python's own unconditional
+    'range() arg 3 must not be zero' ValueError - a confusing failure with no indication the
+    real problem is a missing/empty weather directory.
+
     :param var: Variable name (e.g. "fwi", "isi")
     :param start_year: First year to include (inclusive)
     :param end_year: Last year to include (inclusive)
     :param dir_map: Dictionary mapping variable names to their corresponding dir paths
     :return: List of file paths to rasters for the specified variable and year range
+    :raises FileNotFoundError: If the variable's directory doesn't exist, or exists but contains
+        no rasters matching '{var}YYYYMMDD.tif' within [start_year, end_year].
     """
     dir = dir_map[var]
+    if not os.path.isdir(dir):
+        raise FileNotFoundError(
+            f"Weather variable directory for '{var}' not found: {dir}"
+        )
     paths = []
     for root, dirs, files in os.walk(dir):
         for fn in files:
@@ -253,6 +268,11 @@ def _get_filtered_raster_paths(
             year = int(date_str[:4])
             if start_year <= year <= end_year:
                 paths.append(os.path.join(root, fn))
+    if not paths:
+        raise FileNotFoundError(
+            f"No raster files matching '{var}YYYYMMDD.tif' found for variable '{var}' in "
+            f'{dir} for years {start_year}-{end_year}.'
+        )
     paths.sort(key=lambda p: os.path.basename(p)[len(var):-4])
     return paths
 
