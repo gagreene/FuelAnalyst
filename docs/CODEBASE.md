@@ -216,6 +216,10 @@ include their logging severity.
 
 - Parent/repeat folder and CSV names follow the exact Survey123 layout shown in
   the README and checked-in example data.
+- The authoritative Survey123 form definitions live in
+  `docs/survey123/survey123_forms/` (one folder per form); paper/manual-entry
+  equivalents are in `docs/survey123/manual_entry_forms/`, and field sampling
+  protocols are in `docs/survey123/sampling_protocols/`.
 - `_date` accepts `MM/DD/YYYY HH:MM` or `MM/DD/YYYY HH:MM:SS AM/PM`.
   Unparseable dates raise `ValueError` with representative bad values.
 - `unique_id` is
@@ -230,8 +234,14 @@ include their logging severity.
 
 Missing component folders are skipped. If any plot selected the missing form,
 FuelAnalyst logs a warning for each affected plot; a missing unselected form is
-silent. `gen_conpyro_df=True` is stricter and raises `FileNotFoundError` unless
-all four component-form folders are present.
+silent. The three generation flags are stricter and raise `FileNotFoundError`
+naming the missing form(s) before any processing starts, rather than a raw
+`KeyError`/`AttributeError` mid-pipeline: `gen_conpyro_df=True` requires all
+four component-form folders; `gen_fofem_gui_app_tree_df=True` requires Trees
+(it is built entirely from `master_tree_df`); `gen_fofem_consume_df=True`
+requires Trees, Plants and Regeneration, and Woody Debris (crown foliage/
+branches, herb/shrub loads and substrate codes, and litter/duff/coarse woody
+loads respectively) but not Canopy Cover.
 
 `keep_columns` remains additive: skipped or unselected components do not add
 their result columns to `master_fuel_df.csv`.
@@ -342,6 +352,19 @@ configuration value is `"use_csv"`. Missing requirements raise a descriptive
 The default fire-model configuration enables ConPyro, FOFEM mortality, and
 pyFOFEM emissions. Consequently, the default call also requires tree and FOFEM
 consumption input paths plus the `conpyro` and `fofem` optional dependencies.
+
+`examples/data/weather/conpyro_df_wx.csv` is a checked-in, real weather-merged
+demo input (2005-2024 NRCAN weather for the 20 example plots), tracked via Git
+LFS. `examples/run_fuel_analyst_conpyro_demo.py` is the primary standalone
+demo — `fuel_analyst()` then `run_conpyro()` (default `cfo_model`) against
+committed data alone, no NRCAN archive access needed.
+`examples/run_fuel_analyst_cfis_demo.py` is the same, but for the CFIS
+(`cfo_model=10`) crown-fire model, which additionally requires a real FBP
+fuel type (`examples/data/fbp_fuel_typing/fbp_prep_df.csv`, user-filled
+BEC/VRI fields) and a literal `time`. The narrower, advanced
+`examples/weather_pipeline/run_weather_conpyro_pipeline.py` regenerates the
+committed weather-merged file itself (`--stage weather`/`--stage merge`)
+against fresh/real NRCAN weather.
 
 ### Run-scoped reporting
 

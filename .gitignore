@@ -62,6 +62,8 @@ credentials.json
 *.tar.gz
 *.csv
 !models/photoload/data/*.csv
+!docs/survey123/**/*.csv
+!examples/data/weather/*.csv
 
 # Testing data (keep sample data in supporting_data only)
 src/fuel_analyst/tests/results/

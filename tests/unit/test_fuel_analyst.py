@@ -10,7 +10,13 @@ from fuel_analyst.fuel_analyst import _find_id_mismatches, default_fofem_consume
 
 def _write_minimal_plot_attributes(in_dir):
     """
-    Write the smallest valid single-plot Plot Attributes CSV, no other forms selected.
+    Write the smallest valid single-plot Plot Attributes CSV, no forms selected.
+
+    Also creates empty Trees, Plants and Regeneration, and Woody Debris form directories
+    (present but with no plot selecting them) so gen_fofem_consume_df=True's upfront
+    form-presence gate passes without exercising real per-form processing - these tests
+    stub out gen_fofem_consumption_df() itself and only care about filename/units
+    resolution, not real FOFEM inputs.
 
     :param in_dir: Directory to build the '1_Plot_Attributes/survey_0.csv' fixture under.
     :return: None.
@@ -20,9 +26,12 @@ def _write_minimal_plot_attributes(in_dir):
     pd.DataFrame({
         'GlobalID': ['g1'], 'ParentGlobalID': [None],
         'treatment_area': ['A'], 'treatment_unit': ['U'], 'treatment_type': ['Pre'],
-        'plot_id': [1], '_date': ['01/01/2025 10:00'], 'form_select': ['woody'],
+        'plot_id': [1], '_date': ['01/01/2025 10:00'], 'form_select': ['none'],
         'plot_slope_units': ['percent'], 'plot_slope': [10.0],
     }).to_csv(plot_dir / 'survey_0.csv', index=False)
+    (in_dir / '2_Plants_Regeneration').mkdir()
+    (in_dir / '3_Trees').mkdir()
+    (in_dir / '5_Woody_Debris').mkdir()
 
 
 def test_find_id_mismatches_is_ordered_deduplicated_and_bidirectional():
@@ -43,6 +52,36 @@ def test_fuel_analyst_requires_all_forms_for_conpyro(tmp_path):
     with pytest.raises(FileNotFoundError, match='All Survey123 forms'):
         fuel_analyst(
             str(tmp_path / 'input'), str(tmp_path / 'output'), 'Byram', gen_conpyro_df=True
+        )
+    assert root_logger.handlers == original_handlers
+    assert root_logger.level == original_level
+
+
+def test_fuel_analyst_requires_trees_for_fofem_gui_app_tree_df(tmp_path):
+    root_logger = logging.getLogger('fuel_analyst')
+    original_handlers = list(root_logger.handlers)
+    original_level = root_logger.level
+    (tmp_path / 'input').mkdir()
+    with pytest.raises(FileNotFoundError, match='Trees form is required'):
+        fuel_analyst(
+            str(tmp_path / 'input'), str(tmp_path / 'output'), 'Byram',
+            gen_fofem_gui_app_tree_df=True,
+        )
+    assert root_logger.handlers == original_handlers
+    assert root_logger.level == original_level
+
+
+def test_fuel_analyst_requires_trees_plants_and_woody_for_fofem_consume_df(tmp_path):
+    root_logger = logging.getLogger('fuel_analyst')
+    original_handlers = list(root_logger.handlers)
+    original_level = root_logger.level
+    (tmp_path / 'input').mkdir()
+    with pytest.raises(
+        FileNotFoundError, match='Trees, Plants and Regeneration, and Woody Debris'
+    ):
+        fuel_analyst(
+            str(tmp_path / 'input'), str(tmp_path / 'output'), 'Byram',
+            gen_fofem_consume_df=True,
         )
     assert root_logger.handlers == original_handlers
     assert root_logger.level == original_level
