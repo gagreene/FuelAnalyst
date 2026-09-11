@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]          # FuelAnalyst_Workshop
 sys.path[:0] = [
     str(ROOT / "Upstream_dependencies" / "conpyro" / "src"),
-    str(ROOT / "Upstream_dependencies"),
+    str(ROOT / "FuelAnalyst" / "dependencies" / "pyfofem" / "src"),
 ]
 from conpyro import conpyro
 import flame_components as fc
