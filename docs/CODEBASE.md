@@ -234,8 +234,14 @@ include their logging severity.
 
 Missing component folders are skipped. If any plot selected the missing form,
 FuelAnalyst logs a warning for each affected plot; a missing unselected form is
-silent. `gen_conpyro_df=True` is stricter and raises `FileNotFoundError` unless
-all four component-form folders are present.
+silent. The three generation flags are stricter and raise `FileNotFoundError`
+naming the missing form(s) before any processing starts, rather than a raw
+`KeyError`/`AttributeError` mid-pipeline: `gen_conpyro_df=True` requires all
+four component-form folders; `gen_fofem_gui_app_tree_df=True` requires Trees
+(it is built entirely from `master_tree_df`); `gen_fofem_consume_df=True`
+requires Trees, Plants and Regeneration, and Woody Debris (crown foliage/
+branches, herb/shrub loads and substrate codes, and litter/duff/coarse woody
+loads respectively) but not Canopy Cover.
 
 `keep_columns` remains additive: skipped or unselected components do not add
 their result columns to `master_fuel_df.csv`.

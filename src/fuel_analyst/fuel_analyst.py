@@ -550,7 +550,34 @@ def fuel_analyst(
         )
         woody_debris_params['woody_debris_classes'].update(conpyro_params['woody_debris_classes'])
 
+    if gen_fofem_gui_app_tree_df:
+        # Verify Trees is present: gen_fofem_gui_app_tree_df() is built entirely from
+        # master_tree_df, which is only produced when the Trees form is processed.
+        missing_forms = [
+            form for form in ['trees']
+            if not os.path.exists(os.path.join(in_dir, dir_dict.get(form)))
+        ]
+        if missing_forms:
+            raise FileNotFoundError(
+                f'The Trees form is required to generate the FOFEM GUI app tree mortality '
+                f'DataFrame. The following forms are missing:\n{missing_forms}.'
+            )
+
     if gen_fofem_consume_df:
+        # Verify Trees, Plants and Regeneration, and Woody Debris are present: crown foliage/
+        # branches come from Trees, herb/shrub loads and dom_substrate/fofem_shrub_group come
+        # from Plants and Regeneration, and litter/duff/coarse woody loads come from Woody
+        # Debris. Canopy Cover is not required by gen_fofem_consumption_df().
+        missing_forms = [
+            form for form in ['trees', 'plants', 'woody']
+            if not os.path.exists(os.path.join(in_dir, dir_dict.get(form)))
+        ]
+        if missing_forms:
+            raise FileNotFoundError(
+                f'Trees, Plants and Regeneration, and Woody Debris are all required to generate '
+                f'the FOFEM consumption DataFrame. The following forms are missing:\n{missing_forms}.'
+            )
+
         stand_summary_params.update(
             {k: v for k, v in fofem_consume_params['canopy_fuels'].items() if k != 'woody_debris_classes'}
         )
