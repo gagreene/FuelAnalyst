@@ -38,6 +38,20 @@ def test_get_filtered_raster_paths_filters_years_and_sorts_dates(tmp_path):
     assert [Path(path).name for path in result] == ['fwi20250101.tif', 'fwi20250102.tif']
 
 
+def test_get_filtered_raster_paths_raises_clear_error_for_missing_directory(tmp_path):
+    missing_dir = tmp_path / 'fwi'
+    with pytest.raises(FileNotFoundError, match='directory.*not found'):
+        _get_filtered_raster_paths('fwi', 2025, 2025, {'fwi': str(missing_dir)})
+
+
+def test_get_filtered_raster_paths_raises_clear_error_when_no_files_match_year_range(tmp_path):
+    folder = tmp_path / 'fwi'
+    folder.mkdir()
+    (folder / 'fwi20240101.tif').touch()
+    with pytest.raises(FileNotFoundError, match='No raster files matching'):
+        _get_filtered_raster_paths('fwi', 2025, 2025, {'fwi': str(folder)})
+
+
 def test_weather_directory_mapping_and_selection():
     mapping = _get_wx_directories('weather')
     assert mapping['fwi'].replace('\\', '/') == 'weather/fwi'
