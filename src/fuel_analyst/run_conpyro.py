@@ -14,6 +14,15 @@ from typing import Optional
 from .components import error_handling
 from .components import fofem_units
 from .components import helper
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]          # FuelAnalyst_Workshop
+sys.path[:0] = [
+    str(ROOT / "Upstream_dependencies" / "conpyro" / "src"),
+    str(ROOT / "FuelAnalyst" / "dependencies" / "pyfofem" / "src"),
+]
 from conpyro import conpyro
 import flame_components as fc
 import tqdm
