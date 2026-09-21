@@ -1,3 +1,6 @@
+[submodule "dependencies/conpyro"]
+	path = dependencies/conpyro
+	url = https://github.com/gagreene/conpyro.git
 [submodule "dependencies/BC_CFFBPS_FuelTyping_Tool"]
 	path = dependencies/BC_CFFBPS_FuelTyping_Tool
 	url = https://github.com/gagreene/BC_CFFBPS_FuelTyping_Tool.git

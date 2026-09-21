@@ -210,6 +210,7 @@ def merge_weather_data(
         plot_df['_tmp_key'] = 1
         wx_df['_tmp_key'] = 1
         merged_df = plot_df.merge(wx_df, on='_tmp_key').drop('_tmp_key', axis=1)
+
     # Change FBP fuel types to match season of weather data (if applicable)
     if 'fbp_fuel_type' in merged_df.columns:
         merged_df['month_day'] = pd.to_datetime(merged_df['wx_date']).dt.strftime('%m%d').astype(int)

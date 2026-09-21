@@ -133,10 +133,6 @@ def _calc_fbp_fuel_type(df: pd.DataFrame, season: str = 'Growing') -> pd.DataFra
     # Filter columns to only those needed for fuel typing
     fbp_df = fbp_df.reindex(columns=['unique_id'] + field_list)
 
-    ## drop 
-    species_cols = ['SPECIES_CD_1', 'SPECIES_CD_2', 'SPECIES_CD_3', 'SPECIES_CD_4', 'SPECIES_CD_5', 'SPECIES_CD_6']
-    fbp_df[species_cols] = fbp_df[species_cols].fillna('')
-
     # Normalize date columns (timezone-naive, timezone-aware, or string) before casting
     fbp_df = _coerce_datetime_columns(fbp_df, field_dict)
 
