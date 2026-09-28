@@ -55,7 +55,7 @@ conpyro = [
     "flame-components>=0.1.1,<0.2",
 ]
 fofem = [
-    "pyfofem @ git+https://github.com/gagreene/pyfofem.git",
+    "pyfofem-fire-effects>=0.1.1,<0.2",
 ]
 all = [
     "fuel-analyst[conpyro,fofem,photoload]",

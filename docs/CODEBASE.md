@@ -63,7 +63,13 @@ FuelAnalyst uses a standard `src` package layout and is installable with
 The package supports Python 3.11 through 3.14, tested on Windows, Linux, and
 macOS. The `conpyro` extra installs the bounded `flame-components>=0.1.1,<0.2`
 distribution from PyPI; ConPyro itself is currently installed from its GitHub
-repository.
+repository. The `fofem` extra installs the bounded `pyfofem-fire-effects>=0.1.1,<0.2`
+distribution from PyPI (imports as `pyfofem`, matching the prior GitHub checkout's
+import name) and needs no Git checkout for the Python-backed `model_select='pyfofem'`
+emissions/mortality path. The legacy `model_select='fof_gui'` batch backend still
+resolves its FOFEM 6.7 executable/support files from the `dependencies/pyfofem`
+submodule checkout (or `FUEL_ANALYST_FOFEM_DIR`); that submodule is retained for that
+backend until it migrates to the standalone FOFEM 6.9.4 application.
 
 ## Public API
 

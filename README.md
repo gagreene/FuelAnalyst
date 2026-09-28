@@ -88,7 +88,7 @@ The normal sequence is:
 ## Requirements
 
 - Python 3.11 through 3.14
-- Git, if cloning the repository or installing ConPyro or PyFOFEM from GitHub
+- Git, if cloning the repository or installing ConPyro from GitHub
 - A Survey123 export matching the expected form and repeat-table structure
 
 The base installation includes NumPy, pandas, SciPy, scikit-learn, Matplotlib, GeoPandas, Rasterio, PyProj, Shapely, python-dateutil, tqdm, and joblib.
@@ -152,11 +152,18 @@ Install both sets:
 python -m pip install -e ".[conpyro,fofem]"
 ```
 
-The `conpyro` and `fofem` extras currently install ConPyro and pyFOFEM from their GitHub
-repositories and therefore require Git and network access. The `conpyro` extra installs
-the bounded `flame-components>=0.1.1,<0.2` distribution from PyPI. The repository retains
-other upstream projects as Git submodules for local dependency development; a recursive
-clone is only necessary if you intend to work directly on those checked-out sources.
+The `conpyro` extra currently installs ConPyro from its GitHub repository and therefore
+requires Git and network access; it also installs the bounded `flame-components>=0.1.1,<0.2`
+distribution from PyPI. The `fofem` extra installs the bounded
+`pyfofem-fire-effects>=0.1.1,<0.2` distribution from PyPI (no Git checkout needed) for the
+default `model_select='pyfofem'` emissions/mortality backend. The legacy
+`model_select='fof_gui'` backend is unaffected by the `fofem` extra: it still locates its
+FOFEM 6.7 executable and support files via the `dependencies/pyfofem` Git submodule checkout
+(or the `FUEL_ANALYST_FOFEM_DIR` environment variable), so that backend still requires a
+submodule checkout until it migrates to the standalone FOFEM 6.9.4 application. The
+repository retains other upstream projects as Git submodules for local dependency
+development; a recursive clone is only necessary if you intend to work directly on those
+checked-out sources.
 
 ### PhotoLoad model-development dependencies
 
