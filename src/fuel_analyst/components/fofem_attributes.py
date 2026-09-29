@@ -19,7 +19,15 @@ logger = logging.getLogger(__name__)
 
 def gen_fofem_gui_app_tree_df(df: pd.DataFrame, master_tree_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Generate a DataFrame formatted for FOFEM tree mortality modeling.
+    Generate a DataFrame formatted as a FOFEM 6.9.4 batch mortality (.tre) input file.
+
+    FuelAnalyst does not run tree mortality through the official FOFEM application itself;
+    this DataFrame is a hand-off point the analyst submits to their own FOFEM 6.9.4
+    installation (GUI or runfofem.exe, run type 2). Column names/order match the real
+    verified 6.9.4 .tre format exactly - notably 'PlotId' (no leading '#'), 'FlHt/ScHt', and
+    'FS', not the '# PlotId'/'FlHt_ScHt'/'FL_SH_ID' names used elsewhere in FuelAnalyst for
+    unrelated CSVs - confirmed by feeding this function's real output directly through the
+    bundled runfofem.exe (src/fuel_analyst/supporting_data/fofem_694).
 
     All output values use US units as required by FOFEM:
       - TreeExpansionFactor: trees/acre (input: trees/ha)
@@ -34,7 +42,7 @@ def gen_fofem_gui_app_tree_df(df: pd.DataFrame, master_tree_df: pd.DataFrame) ->
 
     :param df: DataFrame with plot-level data (must include 'unique_id', 'treatment_type', 'year').
     :param master_tree_df: DataFrame with processed tree-level data.
-    :return: DataFrame with FOFEM tree mortality variables.
+    :return: DataFrame with FOFEM tree mortality variables, ready to export as a 6.9.4 .tre input.
     """
     master_tree_df = fofem_mortality.filter_live_trees(
         master_tree_df, logger, 'fofem_attributes_missing_status_column'
@@ -46,7 +54,7 @@ def gen_fofem_gui_app_tree_df(df: pd.DataFrame, master_tree_df: pd.DataFrame) ->
 
     # Build DataFrame
     fofem_tree_df = pd.DataFrame({
-        '# PlotId': master_tree_df['unique_id'],
+        'PlotId': master_tree_df['unique_id'],
         'MonStatus': master_tree_df['unique_id'].map(treatment_dict),
         'MonOrder': master_tree_df['unique_id'].map(year_dict),
         'TreeSpecies': master_tree_df['spp_fofem'],
@@ -66,8 +74,8 @@ def gen_fofem_gui_app_tree_df(df: pd.DataFrame, master_tree_df: pd.DataFrame) ->
         'CKR': np.nan,
         'BeetleDamage': np.nan,
         'EquationType': 'CRNSCH',
-        'FlHt_ScHt': np.nan,
-        'FL_SH_ID': 'F',
+        'FlHt/ScHt': np.nan,
+        'FS': 'F',
         'Severity': np.nan
     })
 

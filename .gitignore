@@ -64,6 +64,8 @@ credentials.json
 !models/photoload/data/*.csv
 !docs/survey123/**/*.csv
 !examples/data/weather/*.csv
+!src/fuel_analyst/supporting_data/fofem_694/Emission_Factors.csv
+!src/fuel_analyst/supporting_data/fofem_694/FOF_SPP.CSV
 
 # Testing data (keep sample data in supporting_data only)
 src/fuel_analyst/tests/results/
@@ -103,3 +105,4 @@ docs/commit-message-*.md
 
 # Retained local dependency checkout; FuelAnalyst installs the PyPI package.
 dependencies/flame_components/
+dependencies/pyfofem/

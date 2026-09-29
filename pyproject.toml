@@ -89,4 +89,5 @@ markers = [
     "integration: tests interactions between FuelAnalyst components",
     "regression: preserves behavior for confirmed defects",
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "windows_fofem694: opt-in integration test against the real bundled FOFEM 6.9.4 runfofem.exe (Windows only; set FUEL_ANALYST_RUN_FOFEM694_TESTS=1 to enable)",
 ]

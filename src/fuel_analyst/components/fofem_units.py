@@ -47,6 +47,17 @@ EMISSIONS_LOAD_RESULT_FIELDS = [
     'BraPre', 'BraCon', 'BraPos',
     'FlaCon', 'SmoCon',  # total load consumed during the flaming/smoldering phase
 ]
+# The official FOFEM 6.9.4 runfofem.exe backend (fofem_gui_emissions.py) reports coarse woody
+# debris across eight sound/rotten size classes (3-6", 6-9", 9-20", 20"+) instead of pyfofem's
+# single combined sound/rotten pair above (DW1kSndPre/DW1kRotPre) - a genuine, intentional schema
+# difference between the two backends' emissions output, not a naming inconsistency to reconcile.
+# Verified against real runfofem.exe output (src/fuel_analyst/supporting_data/fofem_694).
+EMISSIONS_COARSE_WOODY_694_LOAD_RESULT_FIELDS = [
+    f'{size}{phase}'
+    for size in ('Snd3', 'Snd6', 'Snd9', 'Snd20', 'Rot3', 'Rot6', 'Rot9', 'Rot20')
+    for phase in ('Pre', 'Con', 'Pos')
+]
+EMISSIONS_LOAD_RESULT_FIELDS = EMISSIONS_LOAD_RESULT_FIELDS + EMISSIONS_COARSE_WOODY_694_LOAD_RESULT_FIELDS
 # Depths (cm or inches):
 EMISSIONS_DEPTH_RESULT_FIELDS = ['DufDepPre', 'DufDepCon', 'DufDepPos']
 # Durations (seconds, unit-system-independent):

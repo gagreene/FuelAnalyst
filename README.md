@@ -83,7 +83,7 @@ The normal sequence is:
 2. Optionally calculate FBP fuel types.
 3. Extract or supply weather records.
 4. Merge weather with the prepared ConPyro table.
-5. Optionally run ConPyro and FOFEM models.
+5. Run ConPyro and/or FOFEM models.
 
 ## Requirements
 
@@ -156,11 +156,14 @@ The `conpyro` extra currently installs ConPyro from its GitHub repository and th
 requires Git and network access; it also installs the bounded `flame-components>=0.1.1,<0.2`
 distribution from PyPI. The `fofem` extra installs the bounded
 `pyfofem-fire-effects>=0.1.1,<0.2` distribution from PyPI (no Git checkout needed) for the
-default `model_select='pyfofem'` emissions/mortality backend. The legacy
-`model_select='fof_gui'` backend is unaffected by the `fofem` extra: it still locates its
-FOFEM 6.7 executable and support files via the `dependencies/pyfofem` Git submodule checkout
-(or the `FUEL_ANALYST_FOFEM_DIR` environment variable), so that backend still requires a
-submodule checkout until it migrates to the standalone FOFEM 6.9.4 application. The
+default `model_select='pyfofem'` emissions backend. The `model_select='fof_gui'` backend runs
+the official USFS FOFEM 6.9.4 batch application (`runfofem.exe`) instead, bundled at
+`src/fuel_analyst/supporting_data/fofem_694` (or an alternate installation via the
+`FUEL_ANALYST_FOFEM_DIR` environment variable) - Windows only. A normal `pip install` wheel
+includes that directory's two reference CSVs but not `runfofem.exe` or its runtime DLLs, so a
+wheel-only install needs `FUEL_ANALYST_FOFEM_DIR` pointed at an external FOFEM 6.9.4
+installation for this backend (a clear error names the gap if it isn't set); a Git source
+checkout has the complete bundle and needs no override (see `docs/CODEBASE.md`). The
 repository retains other upstream projects as Git submodules for local dependency
 development; a recursive clone is only necessary if you intend to work directly on those
 checked-out sources.
