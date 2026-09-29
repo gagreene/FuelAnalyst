@@ -87,6 +87,11 @@ def test_process_emissions_consumption_mode_matches_direct_runfofem_output(tmp_p
     input_path = manual_dir / 'input.txt'
     with open(input_path, 'w', newline='\r\n') as f:
         f.write('#1k-SizeClass\n#ConsumptionEquation\n')
+        f.write(
+            f'#EFG-STFS {fofem_gui_emissions._EFG_STFS}\n'
+            f'#EFG-CWDRSC {fofem_gui_emissions._EFG_CWDRSC}\n'
+            f'#EFG-DuffRSC {fofem_gui_emissions._EFG_DUFFRSC}\n'
+        )
         f.write(f'#BurnUpFile {os.path.abspath(burnup_path)}\n')
         f.write('#PlotId,Litter\n')
         # Imperial-converted Litter (1.0 kg/m2 * LOAD_CONV_FACTOR), matching _CONSUME_ROW

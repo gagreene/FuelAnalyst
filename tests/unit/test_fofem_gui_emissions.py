@@ -49,10 +49,67 @@ def test_get_fofem_dir_raises_clear_error_when_bundle_missing_runfofem_exe(monke
         fofem_gui_emissions._get_fofem_dir()
 
 
-def test_ensure_worker_fofem_runtime_copies_required_and_optional_files(tmp_path):
+def _install_fake_runtime_package(monkeypatch, runtime_dir):
+    """
+    Register a fake importable fuel_analyst_fofem694_runtime module for
+    _get_fofem_dir()'s installed-runtime-package resolution tier, without needing the real
+    package installed.
+
+    :param monkeypatch: pytest monkeypatch fixture.
+    :param runtime_dir: Directory the fake module's get_runtime_dir() should return.
+    :return: None.
+    """
+    import sys
+    import types
+    fake_module = types.ModuleType('fuel_analyst_fofem694_runtime')
+    fake_module.get_runtime_dir = lambda: str(runtime_dir)
+    monkeypatch.setitem(sys.modules, 'fuel_analyst_fofem694_runtime', fake_module)
+
+
+def test_get_fofem_dir_resolves_installed_runtime_package_without_override(tmp_path, monkeypatch):
+    """Without FUEL_ANALYST_FOFEM_DIR, an installed fuel-analyst-fofem694-runtime package
+    takes priority over the source-checkout bundle."""
+    monkeypatch.delenv('FUEL_ANALYST_FOFEM_DIR', raising=False)
+    (tmp_path / fofem_gui_emissions._RUNFOFEM_EXE).write_text('x')
+    _install_fake_runtime_package(monkeypatch, tmp_path)
+
+    assert fofem_gui_emissions._get_fofem_dir() == str(tmp_path)
+
+
+def test_get_fofem_dir_env_var_override_takes_priority_over_runtime_package(tmp_path, monkeypatch):
+    override_dir = tmp_path / 'override'
+    override_dir.mkdir()
+    (override_dir / fofem_gui_emissions._RUNFOFEM_EXE).write_text('x')
+    monkeypatch.setenv('FUEL_ANALYST_FOFEM_DIR', str(override_dir))
+
+    runtime_dir = tmp_path / 'runtime_pkg'
+    runtime_dir.mkdir()
+    (runtime_dir / fofem_gui_emissions._RUNFOFEM_EXE).write_text('x')
+    _install_fake_runtime_package(monkeypatch, runtime_dir)
+
+    assert fofem_gui_emissions._get_fofem_dir() == str(override_dir)
+
+
+def test_get_fofem_dir_falls_back_to_bundle_when_runtime_package_incomplete(monkeypatch):
+    """An installed runtime package missing runfofem.exe itself must not be trusted; resolution
+    falls through to the source-checkout bundle instead of raising early."""
+    monkeypatch.delenv('FUEL_ANALYST_FOFEM_DIR', raising=False)
+    import sys
+    import types
+    fake_module = types.ModuleType('fuel_analyst_fofem694_runtime')
+    fake_module.get_runtime_dir = lambda: '/nonexistent/incomplete/runtime/dir'
+    monkeypatch.setitem(sys.modules, 'fuel_analyst_fofem694_runtime', fake_module)
+
+    result = fofem_gui_emissions._get_fofem_dir()
+    assert os.path.basename(os.path.normpath(result)) == 'fofem_694'
+
+
+def test_ensure_worker_fofem_runtime_copies_required_files(tmp_path):
+    """No Microsoft Visual C++ DLLs are copied - the redistributable is a documented,
+    separately-installed Windows prerequisite, not an app-local file FuelAnalyst manages."""
     fofem_dir = tmp_path / 'shared_bundle'
     fofem_dir.mkdir()
-    for name in fofem_gui_emissions._REQUIRED_FOFEM_RUNTIME_FILES + fofem_gui_emissions._OPTIONAL_FOFEM_RUNTIME_FILES:
+    for name in fofem_gui_emissions._REQUIRED_FOFEM_RUNTIME_FILES:
         (fofem_dir / name).write_text(f'content of {name}')
     worker_dir = tmp_path / 'worker'
     worker_dir.mkdir()
@@ -60,29 +117,10 @@ def test_ensure_worker_fofem_runtime_copies_required_and_optional_files(tmp_path
     result = fofem_gui_emissions._ensure_worker_fofem_runtime(str(worker_dir), str(fofem_dir))
 
     assert result == str(worker_dir)
-    for name in fofem_gui_emissions._REQUIRED_FOFEM_RUNTIME_FILES + fofem_gui_emissions._OPTIONAL_FOFEM_RUNTIME_FILES:
+    for name in fofem_gui_emissions._REQUIRED_FOFEM_RUNTIME_FILES:
         assert (worker_dir / name).read_text() == f'content of {name}'
     # Never written into the shared bundle itself
-    assert set(os.listdir(fofem_dir)) == set(
-        fofem_gui_emissions._REQUIRED_FOFEM_RUNTIME_FILES + fofem_gui_emissions._OPTIONAL_FOFEM_RUNTIME_FILES
-    )
-
-
-def test_ensure_worker_fofem_runtime_tolerates_missing_optional_dlls(tmp_path):
-    fofem_dir = tmp_path / 'shared_bundle'
-    fofem_dir.mkdir()
-    for name in fofem_gui_emissions._REQUIRED_FOFEM_RUNTIME_FILES:
-        (fofem_dir / name).write_text('x')
-    # No optional DLLs present in this bundle.
-    worker_dir = tmp_path / 'worker'
-    worker_dir.mkdir()
-
-    fofem_gui_emissions._ensure_worker_fofem_runtime(str(worker_dir), str(fofem_dir))
-
-    for name in fofem_gui_emissions._REQUIRED_FOFEM_RUNTIME_FILES:
-        assert (worker_dir / name).is_file()
-    for name in fofem_gui_emissions._OPTIONAL_FOFEM_RUNTIME_FILES:
-        assert not (worker_dir / name).exists()
+    assert set(os.listdir(fofem_dir)) == set(fofem_gui_emissions._REQUIRED_FOFEM_RUNTIME_FILES)
 
 
 def test_ensure_worker_fofem_runtime_raises_when_required_file_missing(tmp_path):
@@ -219,14 +257,17 @@ def test_write_consumption_input_writes_expected_switches_and_field_order_for_co
     lines = input_path.read_text().splitlines()
     assert lines[0] == '#1k-SizeClass'
     assert lines[1] == '#ConsumptionEquation'
-    assert lines[2] == f'#BurnUpFile {os.path.abspath(str(burnup_path))}'
-    assert lines[3] == '#PlotId,Litter'
-    fields = lines[4].split(',')
+    assert lines[2] == f'#EFG-STFS {fofem_gui_emissions._EFG_STFS}'
+    assert lines[3] == f'#EFG-CWDRSC {fofem_gui_emissions._EFG_CWDRSC}'
+    assert lines[4] == f'#EFG-DuffRSC {fofem_gui_emissions._EFG_DUFFRSC}'
+    assert lines[5] == f'#BurnUpFile {os.path.abspath(str(burnup_path))}'
+    assert lines[6] == '#PlotId,Litter'
+    fields = lines[7].split(',')
     assert fields[0] == 'p1'
     assert fields[1] == '1.11'  # Litter
     assert fields[-6:] == ['-1', '-1', '-1', '-1', '-1', '-1']  # six equation overrides last
     # No SoilFamily/SoilMoisture/AmbientTemp for a non-soil run
-    assert 'Loamy-Skeletal' not in lines[4]
+    assert 'Loamy-Skeletal' not in lines[7]
     assert len(fields) == len(fofem_gui_emissions._CONSUMPTION_FIELD_ORDER) + 6
 
 
@@ -236,12 +277,31 @@ def test_write_consumption_input_inserts_soil_fields_and_ambient_temp_before_equ
     fofem_gui_emissions._write_consumption_input(
         str(input_path), _make_consumption_row_series('S'), 'S', str(burnup_path),
     )
-    fields = input_path.read_text().splitlines()[4].split(',')
+    fields = input_path.read_text().splitlines()[7].split(',')
     expected_len = len(fofem_gui_emissions._CONSUMPTION_FIELD_ORDER) + len(fofem_gui_emissions._SOIL_FIELD_ORDER) + 1 + 6
     assert len(fields) == expected_len
     # SoilFamily, SoilMoisture, AmbientTemp appear immediately before the six equation overrides
     assert fields[-9:-6] == ['Loamy-Skeletal', '10.0', '23.5']
     assert fields[-6:] == ['-1', '-1', '-1', '-1', '-1', '-1']
+
+
+def test_write_consumption_input_writes_required_expanded_emission_factor_switches(tmp_path):
+    """Required by the runfofem.exe build verified 2026-09-29: their absence produces 'Input
+    File has a missing or invalid Expanded Emission Factor switch(es)' against that build."""
+    input_path = tmp_path / 'input.txt'
+    burnup_path = tmp_path / 'Burnup-In.brn'
+    for consume_model in ('C', 'S'):
+        fofem_gui_emissions._write_consumption_input(
+            str(input_path), _make_consumption_row_series(consume_model), consume_model, str(burnup_path),
+        )
+        lines = input_path.read_text().splitlines()
+        assert f'#EFG-STFS {fofem_gui_emissions._EFG_STFS}' in lines
+        assert f'#EFG-CWDRSC {fofem_gui_emissions._EFG_CWDRSC}' in lines
+        assert f'#EFG-DuffRSC {fofem_gui_emissions._EFG_DUFFRSC}' in lines
+        # Switches precede #BurnUpFile/#PlotId,Litter/the data row, matching the upstream
+        # sample input files' ordering (sampledata/ConE-In.txt, sampledata/Soil-In.txt).
+        assert lines.index('#ConsumptionEquation') < lines.index(f'#EFG-STFS {fofem_gui_emissions._EFG_STFS}')
+        assert lines.index(f'#EFG-DuffRSC {fofem_gui_emissions._EFG_DUFFRSC}') < lines.index('#PlotId,Litter')
 
 
 def _write_runfofem_output_csv(path, header_cols, plot_ids, data_row_values):
@@ -260,6 +320,55 @@ def _write_runfofem_output_csv(path, header_cols, plot_ids, data_row_values):
         f.write('Id,' + ','.join(['x'] * (len(header_cols) - 1)) + '\n')
         for plot_id, values in zip(plot_ids, data_row_values):
             f.write(f'"{plot_id}", ' + ', '.join(str(v) for v in values) + '\n')
+
+
+def test_run_runfofem_raises_actionable_error_on_missing_vcredist_dll(tmp_path, monkeypatch):
+    """A STATUS_DLL_NOT_FOUND exit code (missing Microsoft Visual C++ Redistributable) must
+    raise a specific, actionable message rather than the generic exit-code message."""
+    fofem_dir = tmp_path / 'fofem_dir'
+    fofem_dir.mkdir()
+    (fofem_dir / fofem_gui_emissions._RUNFOFEM_EXE).write_text('x')
+    worker_dir = tmp_path / 'worker'
+    worker_dir.mkdir()
+
+    class _FakeCompletedProcess:
+        returncode = -1073741515  # 0xC0000135, STATUS_DLL_NOT_FOUND, as a signed 32-bit int.
+        stdout = ''
+        stderr = ''
+
+    monkeypatch.setattr(
+        fofem_gui_emissions.subprocess, 'run', lambda *args, **kwargs: _FakeCompletedProcess()
+    )
+
+    with pytest.raises(RuntimeError, match='Visual C\\+\\+ Redistributable'):
+        fofem_gui_emissions._run_runfofem(
+            '0', str(tmp_path / 'in.txt'), str(tmp_path / 'out.txt'), str(tmp_path / 'err.txt'),
+            str(worker_dir), str(fofem_dir),
+        )
+
+
+def test_run_runfofem_reports_generic_exit_code_for_other_failures(tmp_path, monkeypatch):
+    """A non-zero exit code unrelated to STATUS_DLL_NOT_FOUND keeps the generic message."""
+    fofem_dir = tmp_path / 'fofem_dir'
+    fofem_dir.mkdir()
+    (fofem_dir / fofem_gui_emissions._RUNFOFEM_EXE).write_text('x')
+    worker_dir = tmp_path / 'worker'
+    worker_dir.mkdir()
+
+    class _FakeCompletedProcess:
+        returncode = 1
+        stdout = ''
+        stderr = 'some other failure'
+
+    monkeypatch.setattr(
+        fofem_gui_emissions.subprocess, 'run', lambda *args, **kwargs: _FakeCompletedProcess()
+    )
+
+    with pytest.raises(RuntimeError, match='exited with code 1'):
+        fofem_gui_emissions._run_runfofem(
+            '0', str(tmp_path / 'in.txt'), str(tmp_path / 'out.txt'), str(tmp_path / 'err.txt'),
+            str(worker_dir), str(fofem_dir),
+        )
 
 
 def test_parse_runfofem_output_drops_std_after_validating_plot_identity(tmp_path):

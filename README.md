@@ -156,17 +156,33 @@ The `conpyro` extra currently installs ConPyro from its GitHub repository and th
 requires Git and network access; it also installs the bounded `flame-components>=0.1.1,<0.2`
 distribution from PyPI. The `fofem` extra installs the bounded
 `pyfofem-fire-effects>=0.1.1,<0.2` distribution from PyPI (no Git checkout needed) for the
-default `model_select='pyfofem'` emissions backend. The `model_select='fof_gui'` backend runs
-the official USFS FOFEM 6.9.4 batch application (`runfofem.exe`) instead, bundled at
-`src/fuel_analyst/supporting_data/fofem_694` (or an alternate installation via the
-`FUEL_ANALYST_FOFEM_DIR` environment variable) - Windows only. A normal `pip install` wheel
-includes that directory's two reference CSVs but not `runfofem.exe` or its runtime DLLs, so a
-wheel-only install needs `FUEL_ANALYST_FOFEM_DIR` pointed at an external FOFEM 6.9.4
-installation for this backend (a clear error names the gap if it isn't set); a Git source
-checkout has the complete bundle and needs no override (see `docs/CODEBASE.md`). The
-repository retains other upstream projects as Git submodules for local dependency
-development; a recursive clone is only necessary if you intend to work directly on those
-checked-out sources.
+default `model_select='pyfofem'` emissions backend, which works on Windows, Linux, and macOS.
+
+The `model_select='fof_gui'` backend runs the official USFS FOFEM 6.9.4 batch application
+(`runfofem.exe`) instead - **Windows x64 only**. Install it as a separate, optional package,
+distinct from the `fofem` extra above:
+
+```shell
+python -m pip install fuel-analyst-fofem694-runtime
+```
+
+`fuel-analyst-fofem694-runtime` is a platform-specific wheel (`py3-none-win_amd64`) that
+carries the official executable and its two reference CSVs; it is never pulled in as a
+dependency of the main `fuel-analyst` package on any platform, so a Linux/macOS install (or a
+Windows install that never selects `fof_gui`) is unaffected. `runfofem.exe` also requires the
+[Microsoft Visual C++ Redistributable (x64)](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
+to be installed separately on the host - it is not bundled in either wheel. Without it,
+`runfofem.exe` fails to start and FuelAnalyst reports one clear error naming the missing
+runtime rather than a raw subprocess failure.
+
+`_get_fofem_dir()` resolves the runtime directory in order: the `FUEL_ANALYST_FOFEM_DIR`
+environment variable (an external FOFEM 6.9.4 installation, for overriding either of the
+paths below); the installed `fuel-analyst-fofem694-runtime` package; then, for a Git source
+checkout only, the bundled `src/fuel_analyst/supporting_data/fofem_694` directory. See
+`docs/CODEBASE.md` for the full resolution order and provenance details. The repository
+retains other upstream projects as Git submodules for local dependency development; a
+recursive clone is only necessary if you intend to work directly on those checked-out
+sources.
 
 ### PhotoLoad model-development dependencies
 
