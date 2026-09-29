@@ -159,8 +159,14 @@ distribution from PyPI. The `fofem` extra installs the bounded
 default `model_select='pyfofem'` emissions backend, which works on Windows, Linux, and macOS.
 
 The `model_select='fof_gui'` backend runs the official USFS FOFEM 6.9.4 batch application
-(`runfofem.exe`) instead - **Windows x64 only**. Install it as a separate, optional package,
-distinct from the `fofem` extra above:
+(`runfofem.exe`) instead - **Windows x64 only**. From a repository checkout, install its
+separate, optional runtime package with:
+
+```shell
+python -m pip install ./packages/fofem694-runtime
+```
+
+After the Windows runtime wheel is published to PyPI, it can instead be installed with:
 
 ```shell
 python -m pip install fuel-analyst-fofem694-runtime

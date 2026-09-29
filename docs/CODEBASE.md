@@ -82,8 +82,10 @@ immediate `FileNotFoundError` naming the gap before any row is processed if none
    `importlib.resources.files()` so it works regardless of install location. This is a
    separate, optional, Windows-only wheel (`py3-none-win_amd64`, forced via that project's own
    `setup.cfg`'s `[bdist_wheel] plat_name`), distinct from the main `fuel-analyst` wheel
-   (`py3-none-any`) and from the `fofem` extra above - `pip install fuel-analyst-fofem694-runtime`
-   separately. It bundles `runfofem.exe`, `Emission_Factors.csv`, `fof_spp.csv`, the upstream
+   (`py3-none-any`) and from the `fofem` extra above. Install it from a checkout with
+   `pip install ./packages/fofem694-runtime`, or use
+   `pip install fuel-analyst-fofem694-runtime` after its wheel is published. It bundles
+   `runfofem.exe`, `Emission_Factors.csv`, `fof_spp.csv`, the upstream
    `README.txt` and `doc/` (`LICENSE`, `Runfofem_User_Guide.pdf`, preserved byte-for-byte at
    their original relative paths per upstream's own request), and a generated `PROVENANCE.md`
    - but no Microsoft Visual C++ runtime DLLs; those are a documented, separately-installed

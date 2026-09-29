@@ -165,15 +165,19 @@ python -m pip install -e ".[conpyro,fofem]"
 The ConPyro package is currently downloaded from GitHub. Its Flame Components dependency
 is installed from PyPI as `flame-components>=0.1.1,<0.2`. The `fofem` extra installs the
 bounded `pyfofem-fire-effects>=0.1.1,<0.2` distribution from PyPI (imports as `pyfofem`),
-needing no Git checkout, and is the default `model_select='pyfofem'` emissions backend. The
-`model_select='fof_gui'` backend instead runs the official USFS FOFEM 6.9.4 batch application
-(`runfofem.exe`, Windows only), bundled at `src/fuel_analyst/supporting_data/fofem_694` in a
-Git source checkout. A normal `pip install` wheel includes that directory's reference CSVs but
-not `runfofem.exe`/its DLLs, so a wheel-only install needs `FUEL_ANALYST_FOFEM_DIR` pointed at
-an external FOFEM 6.9.4 installation for this backend. Tree mortality automation is
-always pyfofem's CRNSCH model; the official FOFEM application is only reachable for mortality
-via `fuel_analyst()`'s `gen_fofem_gui_app_tree_df=True` hand-off CSV, which you submit to your
-own FOFEM 6.9.4 installation yourself.
+needing no Git checkout, and is the default `model_select='pyfofem'` emissions backend.
+
+The `model_select='fof_gui'` backend runs the official USFS FOFEM 6.9.4 `runfofem.exe` on
+Windows x64. For an installed FuelAnalyst wheel, install the separate
+`fuel-analyst-fofem694-runtime` Windows wheel and the Microsoft Visual C++ Redistributable
+(x64). The runtime wheel contains the executable and its two CSVs; it does not bundle the
+Microsoft DLLs. A Git source checkout contains the tracked runtime bundle directly.
+`FUEL_ANALYST_FOFEM_DIR` can override either location with an equivalent FOFEM 6.9.4 batch
+directory. See [Official FOFEM runtime installation](README.md#installation) for details.
+
+Tree mortality automation always uses pyfofem's CRNSCH model. To use the official application
+for mortality separately, generate the hand-off CSV with
+`fuel_analyst(gen_fofem_gui_app_tree_df=True)` and submit it to the FOFEM 6.9.4 application.
 
 Before running ConPyro, merge weather fields into `conpyro_df.csv`. At minimum, the default workflow expects `ws`, `wd`, `ffmc`, `dmc`, `bui`, and `wx_date`; selected model settings may require additional fields.
 
