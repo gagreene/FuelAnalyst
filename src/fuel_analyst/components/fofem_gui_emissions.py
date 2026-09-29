@@ -56,7 +56,7 @@ _STATUS_DLL_NOT_FOUND = 0xC0000135
 # entirely. No Microsoft Visual C++ runtime DLLs are copied here (or bundled anywhere in
 # FuelAnalyst): the redistributable is a documented, separately-installed Windows prerequisite
 # (see docs/CODEBASE.md), not an app-local file this codebase provides or manages.
-_REQUIRED_FOFEM_RUNTIME_FILES = [_RUNFOFEM_EXE, 'Emission_Factors.csv', 'FOF_SPP.CSV']
+_REQUIRED_FOFEM_RUNTIME_FILES = [_RUNFOFEM_EXE, 'Emission_Factors.csv', 'fof_spp.csv']
 
 # Fixed 6.9.4 batch consumption/soil input field order, verified directly against runfofem.exe
 # (tests/manual/fofem694_no_install_smoke.ps1). Field names, not incidental DataFrame column
@@ -323,15 +323,12 @@ def _gen_plot_id(df: pd.DataFrame):
 def _get_fofem_dir() -> str:
     """
     Resolve the FOFEM 6.9.4 batch runtime directory (runfofem.exe, Emission_Factors.csv, and
-    FOF_SPP.CSV; no Microsoft Visual C++ runtime DLLs - the redistributable is a documented,
+    fof_spp.csv; no Microsoft Visual C++ runtime DLLs - the redistributable is a documented,
     separately-installed Windows prerequisite, not a file this codebase bundles or manages).
 
-    Checked eagerly at the top of process_emissions() rather than lazily per-row, and verifies
-    runfofem.exe itself is actually present in whichever directory is resolved, not just that
-    the directory exists - a directory that "exists" but lacks the executable would otherwise
-    only fail later, per-row, deep inside _model_emissions(), confusing when every row in a
-    batch fails the same way. Checking here instead gives one clear, immediate error before
-    any row is processed.
+    Checked eagerly at the top of process_emissions() rather than lazily per-row. Every
+    candidate must contain the executable and both CSVs, so incomplete installations fail
+    before any row is processed.
 
     Resolved in order:
       1. The FUEL_ANALYST_FOFEM_DIR environment variable, for an alternate/separately
@@ -350,7 +347,7 @@ def _get_fofem_dir() -> str:
 
     :return: Absolute path to the FOFEM 6.9.4 batch runtime directory.
     :raises FileNotFoundError: If none of the three resolution steps yields a directory that
-        actually contains runfofem.exe.
+        contains runfofem.exe and both required CSVs.
     """
     override = os.environ.get(_FOFEM_DIR_ENV_VAR)
     if override:
@@ -358,18 +355,20 @@ def _get_fofem_dir() -> str:
             raise FileNotFoundError(
                 f'{_FOFEM_DIR_ENV_VAR} is set to "{override}", but that directory does not exist.'
             )
-        if not os.path.isfile(os.path.join(override, _RUNFOFEM_EXE)):
+        missing = [name for name in _REQUIRED_FOFEM_RUNTIME_FILES
+                   if not os.path.isfile(os.path.join(override, name))]
+        if missing:
             raise FileNotFoundError(
-                f'{_FOFEM_DIR_ENV_VAR} is set to "{override}", but {_RUNFOFEM_EXE} is not '
-                f'present there. Point it at the directory containing the official FOFEM '
-                f'6.9.4 batch runtime.'
+                f'{_FOFEM_DIR_ENV_VAR} is set to "{override}", but required FOFEM 6.9.4 '
+                f'runtime files are missing there: {", ".join(missing)}.'
             )
         return override
 
     try:
         import fuel_analyst_fofem694_runtime
         runtime_dir = fuel_analyst_fofem694_runtime.get_runtime_dir()
-        if os.path.isfile(os.path.join(runtime_dir, _RUNFOFEM_EXE)):
+        if all(os.path.isfile(os.path.join(runtime_dir, name))
+               for name in _REQUIRED_FOFEM_RUNTIME_FILES):
             return runtime_dir
     except ImportError:
         pass
@@ -377,10 +376,13 @@ def _get_fofem_dir() -> str:
     bundled_dir = os.path.normpath(
         os.path.join(os.path.dirname(__file__), '..', 'supporting_data', 'fofem_694')
     )
-    if not os.path.isfile(os.path.join(bundled_dir, _RUNFOFEM_EXE)):
+    missing = [name for name in _REQUIRED_FOFEM_RUNTIME_FILES
+               if not os.path.isfile(os.path.join(bundled_dir, name))]
+    if missing:
         raise FileNotFoundError(
-            f'Could not resolve the FOFEM 6.9.4 batch runtime directory: {_RUNFOFEM_EXE} not '
-            f'found at {bundled_dir}, the fuel-analyst-fofem694-runtime package is not '
+            f'Could not resolve the FOFEM 6.9.4 batch runtime directory: required files '
+            f'{", ".join(missing)} are missing at {bundled_dir}, the '
+            f'fuel-analyst-fofem694-runtime package is not '
             f'installed (or is installed but incomplete), and the {_FOFEM_DIR_ENV_VAR} '
             f'environment variable is not set. On Windows, install the '
             f'fuel-analyst-fofem694-runtime package for this backend, or set '
@@ -538,8 +540,10 @@ def _model_emissions(row: dict, out_dir: str, consume_model: str, emissions_unit
     output_path = os.path.abspath(os.path.join(worker_dir, 'fofem_output.csv'))
     error_path = os.path.abspath(os.path.join(worker_dir, 'fofem_error.txt'))
     try:
-        # Inside the try block, not before it: a systemically broken fofem_dir (e.g. missing
-        # Emission_Factors.csv) then degrades this row the same way any other per-row failure
+        # Inside the try block, not before it: _get_fofem_dir() already validated fofem_dir has
+        # runfofem.exe and both required CSVs before any row was processed, so a failure here
+        # means the runtime disappeared or was corrupted mid-batch (e.g. concurrent deletion,
+        # antivirus quarantine) - this row degrades the same way any other per-row failure
         # does, rather than crashing the whole batch.
         _ensure_worker_fofem_runtime(worker_dir, fofem_dir)
 
@@ -687,8 +691,8 @@ def _run_runfofem(
     #BurnUpFile switch relative to the input file's directory, and does so incorrectly (a
     nonsensical concatenated path) when the input file argument itself is given as a relative
     path - verified directly against the bundled executable. FOFEM_DATA and PATH are both set
-    to fofem_dir so runfofem.exe can find Emission_Factors.csv/FOF_SPP.CSV and its own runtime
-    DLLs regardless of the caller's own environment.
+    to fofem_dir so runfofem.exe can find Emission_Factors.csv/fof_spp.csv regardless of the
+    caller's own environment. The Microsoft Visual C++ runtime must be installed separately.
 
     :param run_type: '0' (consumption/emissions), '1' (consumption/emissions/soil), or '2'
         (mortality).

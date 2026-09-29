@@ -12,7 +12,8 @@ _BUNDLE_FIXTURE_DIR = os.path.join(_REPO_ROOT, 'tests', 'test_data', 'fofem694')
 
 
 def test_get_fofem_dir_uses_env_var_override(tmp_path, monkeypatch):
-    (tmp_path / fofem_gui_emissions._RUNFOFEM_EXE).write_text('x')
+    for name in fofem_gui_emissions._REQUIRED_FOFEM_RUNTIME_FILES:
+        (tmp_path / name).write_text('x')
     monkeypatch.setenv('FUEL_ANALYST_FOFEM_DIR', str(tmp_path))
     assert fofem_gui_emissions._get_fofem_dir() == str(tmp_path)
 
@@ -28,6 +29,15 @@ def test_get_fofem_dir_rejects_env_var_override_missing_runfofem_exe(tmp_path, m
     must fail clearly, not be silently accepted."""
     monkeypatch.setenv('FUEL_ANALYST_FOFEM_DIR', str(tmp_path))
     with pytest.raises(FileNotFoundError, match='runfofem.exe'):
+        fofem_gui_emissions._get_fofem_dir()
+
+
+def test_get_fofem_dir_rejects_env_var_override_missing_species_csv(tmp_path, monkeypatch):
+    for name in ('runfofem.exe', 'Emission_Factors.csv'):
+        (tmp_path / name).write_text('x')
+    monkeypatch.setenv('FUEL_ANALYST_FOFEM_DIR', str(tmp_path))
+
+    with pytest.raises(FileNotFoundError, match='fof_spp.csv'):
         fofem_gui_emissions._get_fofem_dir()
 
 
@@ -70,7 +80,8 @@ def test_get_fofem_dir_resolves_installed_runtime_package_without_override(tmp_p
     """Without FUEL_ANALYST_FOFEM_DIR, an installed fuel-analyst-fofem694-runtime package
     takes priority over the source-checkout bundle."""
     monkeypatch.delenv('FUEL_ANALYST_FOFEM_DIR', raising=False)
-    (tmp_path / fofem_gui_emissions._RUNFOFEM_EXE).write_text('x')
+    for name in fofem_gui_emissions._REQUIRED_FOFEM_RUNTIME_FILES:
+        (tmp_path / name).write_text('x')
     _install_fake_runtime_package(monkeypatch, tmp_path)
 
     assert fofem_gui_emissions._get_fofem_dir() == str(tmp_path)
@@ -79,25 +90,28 @@ def test_get_fofem_dir_resolves_installed_runtime_package_without_override(tmp_p
 def test_get_fofem_dir_env_var_override_takes_priority_over_runtime_package(tmp_path, monkeypatch):
     override_dir = tmp_path / 'override'
     override_dir.mkdir()
-    (override_dir / fofem_gui_emissions._RUNFOFEM_EXE).write_text('x')
+    for name in fofem_gui_emissions._REQUIRED_FOFEM_RUNTIME_FILES:
+        (override_dir / name).write_text('x')
     monkeypatch.setenv('FUEL_ANALYST_FOFEM_DIR', str(override_dir))
 
     runtime_dir = tmp_path / 'runtime_pkg'
     runtime_dir.mkdir()
-    (runtime_dir / fofem_gui_emissions._RUNFOFEM_EXE).write_text('x')
+    for name in fofem_gui_emissions._REQUIRED_FOFEM_RUNTIME_FILES:
+        (runtime_dir / name).write_text('x')
     _install_fake_runtime_package(monkeypatch, runtime_dir)
 
     assert fofem_gui_emissions._get_fofem_dir() == str(override_dir)
 
 
-def test_get_fofem_dir_falls_back_to_bundle_when_runtime_package_incomplete(monkeypatch):
-    """An installed runtime package missing runfofem.exe itself must not be trusted; resolution
-    falls through to the source-checkout bundle instead of raising early."""
+def test_get_fofem_dir_falls_back_to_bundle_when_runtime_package_incomplete(tmp_path, monkeypatch):
+    """An installed runtime missing its species CSV falls back to the complete source bundle."""
     monkeypatch.delenv('FUEL_ANALYST_FOFEM_DIR', raising=False)
     import sys
     import types
     fake_module = types.ModuleType('fuel_analyst_fofem694_runtime')
-    fake_module.get_runtime_dir = lambda: '/nonexistent/incomplete/runtime/dir'
+    for name in ('runfofem.exe', 'Emission_Factors.csv'):
+        (tmp_path / name).write_text('x')
+    fake_module.get_runtime_dir = lambda: str(tmp_path)
     monkeypatch.setitem(sys.modules, 'fuel_analyst_fofem694_runtime', fake_module)
 
     result = fofem_gui_emissions._get_fofem_dir()
@@ -127,7 +141,7 @@ def test_ensure_worker_fofem_runtime_raises_when_required_file_missing(tmp_path)
     fofem_dir = tmp_path / 'shared_bundle'
     fofem_dir.mkdir()
     (fofem_dir / fofem_gui_emissions._RUNFOFEM_EXE).write_text('x')
-    # Emission_Factors.csv/FOF_SPP.CSV deliberately missing.
+    # Emission_Factors.csv/fof_spp.csv deliberately missing.
     worker_dir = tmp_path / 'worker'
     worker_dir.mkdir()
 

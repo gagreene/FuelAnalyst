@@ -39,10 +39,11 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
+# setup.py copies these assets from the tracked FuelAnalyst source bundle into build/lib.
 fuel_analyst_fofem694_runtime = [
     "runfofem.exe",
     "Emission_Factors.csv",
-    "FOF_SPP.CSV",
+    "fof_spp.csv",
     "README.txt",
     "PROVENANCE.md",
     "doc/LICENSE",

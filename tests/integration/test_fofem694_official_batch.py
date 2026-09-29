@@ -201,12 +201,8 @@ def test_process_emissions_equation_auto_selection_populates_real_values(tmp_pat
         assert result.loc[0, col] > 0
 
 
-def test_process_emissions_missing_fofem_data_reports_error_without_crashing(tmp_path, monkeypatch):
-    """A worker directory missing Emission_Factors.csv must fail that row without the failure
-    propagating as an unhandled exception out of process_emissions() - no FOFEM result columns
-    exist at all when every row in the batch fails this way (runfofem.exe's real 74/80/86-column
-    schema is discovered from its own output header, not hardcoded, so there is no fixed set of
-    columns to backfill with NaN when a row never produces output in the first place)."""
+def test_process_emissions_missing_fofem_data_fails_before_rows(tmp_path, monkeypatch):
+    """Reject an incomplete runtime before starting any model workers."""
     broken_dir = tmp_path / 'broken_fofem_dir'
     broken_dir.mkdir()
     real_dir = fofem_gui_emissions._get_fofem_dir()
@@ -216,19 +212,15 @@ def test_process_emissions_missing_fofem_data_reports_error_without_crashing(tmp
     monkeypatch.setenv('FUEL_ANALYST_FOFEM_DIR', str(broken_dir))
 
     consume_csv, fire_csv, out_dir = _write_inputs(tmp_path)
-    result = fofem_gui_emissions.process_emissions(
-        plot_wx_fire_csv_path=fire_csv,
-        plot_id_col_name='unique_id',
-        fofem_consume_csv_path=consume_csv,
-        out_dir=out_dir,
-        emissions_units='SI',
-        return_df=True,
-    )
-    assert len(result) == 1
-    assert result.loc[0, 'Litter'] == pytest.approx(1.0)  # input columns survive
-    assert 'LitPre_kgpm2' not in result.columns  # no fabricated FOFEM output for the failed row
-    assert 'fofem_gui_error' in result.columns
-    assert 'Emission_Factors.csv' in result.loc[0, 'fofem_gui_error']
+    with pytest.raises(FileNotFoundError, match='Emission_Factors.csv'):
+        fofem_gui_emissions.process_emissions(
+            plot_wx_fire_csv_path=fire_csv,
+            plot_id_col_name='unique_id',
+            fofem_consume_csv_path=consume_csv,
+            out_dir=out_dir,
+            emissions_units='SI',
+            return_df=True,
+        )
 
 
 def test_run_runfofem_invalid_input_raises_with_batch_error_message(tmp_path):

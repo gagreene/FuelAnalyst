@@ -3,8 +3,9 @@
 fuel-analyst-fofem694-runtime: the official USDA Forest Service FOFEM 6.9.4 batch runtime
 (runfofem.exe), Windows x64 only, for FuelAnalyst's model_select='fof_gui' emissions backend.
 
-Bundled here byte-for-byte from the verified upstream release; see PROVENANCE.md (installed
-alongside this module) for the source URL, retrieval date, and file hashes. doc/LICENSE
+The EXE, README, species CSV, and doc/ files are copied byte-for-byte from the verified
+upstream release. Emission_Factors.csv is FuelAnalyst's tested one-space-removed copy; see
+PROVENANCE.md (installed alongside this module) for the source URL, date, and hashes. doc/LICENSE
 states the software was developed by federal employees as part of official duties and is
 public domain - a different license than FuelAnalyst's own MIT-licensed code. The Microsoft
 Visual C++ Redistributable is a separately-installed Windows prerequisite this package does

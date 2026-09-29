@@ -72,8 +72,8 @@ invoked for mortality - see below). The `model_select='fof_gui'` batch backend
 Windows x64 only - and no longer depends on the `dependencies/pyfofem` submodule or the
 `pyfofem` package at all.
 
-`_get_fofem_dir()` resolves the runtime directory in this order, validating `runfofem.exe`'s
-actual presence at each tier (not just the directory's existence) and raising a clear,
+`_get_fofem_dir()` resolves the runtime directory in this order, validating `runfofem.exe`
+and both required CSVs at each tier (not just the directory's existence) and raising a clear,
 immediate `FileNotFoundError` naming the gap before any row is processed if none resolve:
 1. `FUEL_ANALYST_FOFEM_DIR` env var - an external FOFEM 6.9.4 installation, for any install
    type.
@@ -83,7 +83,7 @@ immediate `FileNotFoundError` naming the gap before any row is processed if none
    separate, optional, Windows-only wheel (`py3-none-win_amd64`, forced via that project's own
    `setup.cfg`'s `[bdist_wheel] plat_name`), distinct from the main `fuel-analyst` wheel
    (`py3-none-any`) and from the `fofem` extra above - `pip install fuel-analyst-fofem694-runtime`
-   separately. It bundles `runfofem.exe`, `Emission_Factors.csv`, `FOF_SPP.CSV`, the upstream
+   separately. It bundles `runfofem.exe`, `Emission_Factors.csv`, `fof_spp.csv`, the upstream
    `README.txt` and `doc/` (`LICENSE`, `Runfofem_User_Guide.pdf`, preserved byte-for-byte at
    their original relative paths per upstream's own request), and a generated `PROVENANCE.md`
    - but no Microsoft Visual C++ runtime DLLs; those are a documented, separately-installed
@@ -91,13 +91,13 @@ immediate `FileNotFoundError` naming the gap before any row is processed if none
 3. The bundled `src/fuel_analyst/supporting_data/fofem_694` directory - a Git source checkout
    only; it carries the same 7 files, tracked in Git, and needs no override.
 
-Both the bundle and the runtime package's copies are generated from the same pinned upstream
-release by `update_fofem_694_runtime.sh` (repo root), which downloads the exact pinned ZIP
-URL, verifies its SHA-256 before extracting anything, fails loudly on any upstream drift
-rather than silently adopting a changed release, and mirrors the same 7 files into both
-locations so they cannot go out of sync. `Emission_Factors.csv` is FuelAnalyst's own tested
+The tracked source bundle is updated from the pinned upstream release by
+`update_fofem_694_runtime.sh` (repo root), which downloads the exact pinned ZIP URL, verifies
+its SHA-256 before extracting anything, and fails loudly on upstream drift. The separate wheel
+copies its seven assets from that bundle during the build, so a fresh checkout has one source
+for both locations. `Emission_Factors.csv` is FuelAnalyst's own tested
 copy - one trailing space removed relative to upstream's copy of this file (otherwise causes
-a Python warning) - never overwritten by the update script; `FOF_SPP.CSV` is byte-identical to
+a Python warning) - never overwritten by the update script; `fof_spp.csv` is byte-identical to
 upstream's own copy. Bundling the official FOFEM binaries in a *published* PyPI wheel is a
 redistribution/licensing decision that has not been made for either wheel; resolve it
 explicitly before publishing to PyPI. `doc/LICENSE` states the software was developed by

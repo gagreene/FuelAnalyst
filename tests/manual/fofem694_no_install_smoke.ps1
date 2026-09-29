@@ -50,7 +50,7 @@ if ($IncludeRuntimeDlls) {
     $required += @('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
 }
 if ($IncludeMortality) {
-    $required += 'FOF_SPP.CSV'
+    $required += 'fof_spp.csv'
 }
 foreach ($name in $required) {
     if (-not (Test-Path -LiteralPath (Join-Path $BundleDir $name))) {

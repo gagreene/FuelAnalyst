@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Update the bundled official FOFEM 6.9.4 batch runtime
-# (src/fuel_analyst/supporting_data/fofem_694) from its verified upstream ZIP, then mirror the
-# same 7 files into packages/fofem694-runtime/src/fuel_analyst_fofem694_runtime/ so the two
-# copies never drift apart.
+# (src/fuel_analyst/supporting_data/fofem_694) from its verified upstream ZIP. The runtime
+# wheel copies its files from this tracked bundle during its build, so no second source copy
+# needs to be maintained.
 #
 # Downloads the exact pinned URL into a temporary location, verifies the ZIP's SHA-256 against
 # the pin below before extracting anything, then selects only the runtime files and original
-# documentation FuelAnalyst needs: runfofem.exe, README.txt, and doc/ (verbatim, at their
-# original relative paths). Deliberately does NOT copy the ZIP's Emission_Factors.csv (see
+# documentation FuelAnalyst needs: runfofem.exe, fof_spp.csv, README.txt, and doc/ (verbatim,
+# at their original relative paths). Deliberately does NOT copy the ZIP's Emission_Factors.csv (see
 # EMISSION_FACTORS_KNOWN_DIFF_NOTE below), samples, headers, .lib, SetENV.bat, or temp file,
 # and does not copy any Microsoft Visual C++ runtime DLL (none are present upstream anyway;
 # the VC++ runtime is a documented, separately-installed Windows prerequisite - see
@@ -20,7 +20,6 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 BUNDLE_DIR="$REPO_ROOT/src/fuel_analyst/supporting_data/fofem_694"
-RUNTIME_PKG_DIR="$REPO_ROOT/packages/fofem694-runtime/src/fuel_analyst_fofem694_runtime"
 
 UPSTREAM_URL="https://www.alturassolutions.com/SpatialFOFEM/runfofem.zip"
 # Pinned 2026-09-29. Update only after deliberately reviewing the new ZIP's contents (see
@@ -66,6 +65,7 @@ fi
 
 echo "Selecting runtime files into $BUNDLE_DIR ..."
 cp "$WORKDIR/extracted/bin/runfofem.exe" "$BUNDLE_DIR/runfofem.exe"
+cp "$WORKDIR/extracted/share/fofem/fof_spp.csv" "$BUNDLE_DIR/fof_spp.csv"
 cp "$WORKDIR/extracted/README.txt" "$BUNDLE_DIR/README.txt"
 mkdir -p "$BUNDLE_DIR/doc"
 cp "$WORKDIR/extracted/doc/LICENSE" "$BUNDLE_DIR/doc/LICENSE"
@@ -73,17 +73,16 @@ cp "$WORKDIR/extracted/doc/Runfofem_User_Guide.pdf" "$BUNDLE_DIR/doc/Runfofem_Us
 
 # EMISSION_FACTORS_KNOWN_DIFF_NOTE: FuelAnalyst keeps its own tested, warning-free
 # Emission_Factors.csv (one trailing space removed at byte offset 3156 relative to upstream's
-# share/fofem/Emission_Factors.csv) rather than overwriting it here. fof_spp.csv is verified
-# byte-identical to the bundle's existing FOF_SPP.CSV and is likewise never overwritten by
-# this script - both are validated below instead.
+# share/fofem/Emission_Factors.csv) rather than overwriting it here. The upstream species CSV
+# is copied under its original name above and both CSV hashes are validated below.
 actual_emission_factors_sha256="$(sha256sum "$BUNDLE_DIR/Emission_Factors.csv" | cut -d' ' -f1)"
 if [ "$actual_emission_factors_sha256" != "$EXPECTED_EMISSION_FACTORS_SHA256" ]; then
     echo "FATAL: bundled Emission_Factors.csv no longer matches its expected, tested hash." >&2
     exit 1
 fi
-actual_fof_spp_sha256="$(sha256sum "$BUNDLE_DIR/FOF_SPP.CSV" | cut -d' ' -f1)"
+actual_fof_spp_sha256="$(sha256sum "$BUNDLE_DIR/fof_spp.csv" | cut -d' ' -f1)"
 if [ "$actual_fof_spp_sha256" != "$EXPECTED_FOF_SPP_SHA256" ]; then
-    echo "FATAL: bundled FOF_SPP.CSV no longer matches its expected hash." >&2
+    echo "FATAL: upstream fof_spp.csv no longer matches its expected hash." >&2
     exit 1
 fi
 
@@ -101,9 +100,9 @@ cat > "$BUNDLE_DIR/PROVENANCE.md" <<EOF
   - Emission_Factors.csv: $actual_emission_factors_sha256 (FuelAnalyst's own tested copy - one
     trailing space removed at byte offset 3156 relative to upstream's copy of this file, which
     otherwise causes a Python warning; not overwritten by this script)
-  - FOF_SPP.CSV: $actual_fof_spp_sha256 (byte-identical to upstream's share/fofem/fof_spp.csv)
+  - fof_spp.csv: $actual_fof_spp_sha256 (byte-identical to upstream's share/fofem/fof_spp.csv)
 
-runfofem.exe, README.txt, and doc/ are copied byte-for-byte from the upstream ZIP by
+runfofem.exe, fof_spp.csv, README.txt, and doc/ are copied byte-for-byte from the upstream ZIP by
 update_fofem_694_runtime.sh. doc/LICENSE states the software was developed by federal
 employees as part of official duties and is public domain; it is not the same license as
 FuelAnalyst's own MIT-licensed code (see the repository root LICENSE file). The upstream
@@ -114,25 +113,17 @@ vcruntime140.dll, vcruntime140_1.dll) have been removed. The upstream ZIP contai
 all. The Microsoft Visual C++ Redistributable is a documented, separately-installed Windows
 prerequisite for running runfofem.exe - see docs/CODEBASE.md.
 
-Regenerate this file by rerunning update_fofem_694_runtime.sh from the repository root.
+Regenerate this file by rerunning update_fofem_694_runtime.sh from the repository root. The
+runtime wheel copies these selected files from this bundle during its build.
 EOF
-
-echo "Mirroring the same 7 files into $RUNTIME_PKG_DIR ..."
-mkdir -p "$RUNTIME_PKG_DIR/doc"
-cp "$BUNDLE_DIR/runfofem.exe" "$RUNTIME_PKG_DIR/runfofem.exe"
-cp "$BUNDLE_DIR/Emission_Factors.csv" "$RUNTIME_PKG_DIR/Emission_Factors.csv"
-cp "$BUNDLE_DIR/FOF_SPP.CSV" "$RUNTIME_PKG_DIR/FOF_SPP.CSV"
-cp "$BUNDLE_DIR/README.txt" "$RUNTIME_PKG_DIR/README.txt"
-cp "$BUNDLE_DIR/PROVENANCE.md" "$RUNTIME_PKG_DIR/PROVENANCE.md"
-cp "$BUNDLE_DIR/doc/LICENSE" "$RUNTIME_PKG_DIR/doc/LICENSE"
-cp "$BUNDLE_DIR/doc/Runfofem_User_Guide.pdf" "$RUNTIME_PKG_DIR/doc/Runfofem_User_Guide.pdf"
 
 echo
 echo "Done. Updated files in $BUNDLE_DIR:"
 echo "  runfofem.exe          $actual_exe_sha256"
+echo "  fof_spp.csv           $actual_fof_spp_sha256"
 echo "  README.txt            (verbatim from upstream)"
 echo "  doc/LICENSE           (verbatim from upstream)"
 echo "  doc/Runfofem_User_Guide.pdf (verbatim from upstream)"
 echo "  PROVENANCE.md         (regenerated)"
-echo "Unchanged (validated only): Emission_Factors.csv, FOF_SPP.CSV"
-echo "Mirrored into $RUNTIME_PKG_DIR"
+echo "Unchanged (validated only): Emission_Factors.csv"
+echo "Build the runtime wheel from this tracked bundle; no duplicate package assets are kept."

@@ -11,9 +11,9 @@
   - Emission_Factors.csv: c3d55f741673c3de8e0bfb5b1d062a23a5cf7aa251962222baaeaa6ec230aecd (FuelAnalyst's own tested copy - one
     trailing space removed at byte offset 3156 relative to upstream's copy of this file, which
     otherwise causes a Python warning; not overwritten by this script)
-  - FOF_SPP.CSV: 238dbf71f3ef7b874be452221982113dbb8067ffcfd84e7d9773ab10f2ed7f67 (byte-identical to upstream's share/fofem/fof_spp.csv)
+  - fof_spp.csv: 238dbf71f3ef7b874be452221982113dbb8067ffcfd84e7d9773ab10f2ed7f67 (byte-identical to upstream's share/fofem/fof_spp.csv)
 
-runfofem.exe, README.txt, and doc/ are copied byte-for-byte from the upstream ZIP by
+runfofem.exe, fof_spp.csv, README.txt, and doc/ are copied byte-for-byte from the upstream ZIP by
 update_fofem_694_runtime.sh. doc/LICENSE states the software was developed by federal
 employees as part of official duties and is public domain; it is not the same license as
 FuelAnalyst's own MIT-licensed code (see the repository root LICENSE file). The upstream
@@ -24,4 +24,5 @@ vcruntime140.dll, vcruntime140_1.dll) have been removed. The upstream ZIP contai
 all. The Microsoft Visual C++ Redistributable is a documented, separately-installed Windows
 prerequisite for running runfofem.exe - see docs/CODEBASE.md.
 
-Regenerate this file by rerunning update_fofem_694_runtime.sh from the repository root.
+Regenerate this file by rerunning update_fofem_694_runtime.sh from the repository root. The
+runtime wheel copies these selected files from this bundle during its build.

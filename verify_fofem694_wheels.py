@@ -25,6 +25,12 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent
 RUNTIME_PKG_DIR = REPO_ROOT / 'packages' / 'fofem694-runtime'
+SOURCE_BUNDLE_DIR = REPO_ROOT / 'src' / 'fuel_analyst' / 'supporting_data' / 'fofem_694'
+RUNTIME_SOURCE_DIR = RUNTIME_PKG_DIR / 'src' / 'fuel_analyst_fofem694_runtime'
+RUNTIME_ASSETS = (
+    'runfofem.exe', 'Emission_Factors.csv', 'fof_spp.csv', 'README.txt',
+    'PROVENANCE.md', 'doc/LICENSE', 'doc/Runfofem_User_Guide.pdf',
+)
 
 _FORBIDDEN_DLLS = {'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll'}
 
@@ -104,6 +110,7 @@ def main() -> int:
 
     :return: Process exit code (0 if every check passed, 1 otherwise).
     """
+    verify_source_bundle()
     with tempfile.TemporaryDirectory() as tmp:
         out_dir = Path(tmp)
         verify_main_wheel(out_dir)
@@ -205,21 +212,46 @@ def verify_runtime_wheel(out_dir: Path) -> None:
         else:
             _ok('Emission_Factors.csv matches FuelAnalyst\'s tested (space-removed) hash')
 
-    spp_key = _pkg_path('FOF_SPP.CSV')
+    spp_key = _pkg_path('fof_spp.csv')
     if spp_key not in contents:
         _fail(f'runtime wheel is missing {spp_key}')
     else:
         actual = _sha256(contents[spp_key])
         if actual != EXPECTED_FOF_SPP_SHA256:
-            _fail(f'FOF_SPP.CSV hash mismatch: {actual}')
+            _fail(f'fof_spp.csv hash mismatch: {actual}')
         else:
-            _ok('FOF_SPP.CSV matches expected hash (byte-identical to upstream fof_spp.csv)')
+            _ok('fof_spp.csv matches expected hash (byte-identical to upstream fof_spp.csv)')
 
     provenance_key = _pkg_path('PROVENANCE.md')
     if provenance_key not in contents:
         _fail(f'runtime wheel is missing {provenance_key}')
     else:
         _ok('PROVENANCE.md present')
+
+
+def verify_source_bundle() -> None:
+    """Verify that every runtime asset is tracked once, in the source bundle.
+
+    :return: None. Records failures if a clean Git checkout would lack an asset or if the
+        wheel project holds a duplicate source copy.
+    """
+    print('\n=== Tracked source bundle ===')
+    for relative_path in RUNTIME_ASSETS:
+        source = SOURCE_BUNDLE_DIR / relative_path
+        if not source.is_file():
+            _fail(f'source bundle is missing {source}')
+            continue
+        tracked = subprocess.run(
+            ['git', 'ls-files', '--error-unmatch', '--', str(source.relative_to(REPO_ROOT))],
+            cwd=REPO_ROOT, capture_output=True, text=True,
+        )
+        if tracked.returncode != 0:
+            _fail(f'source bundle asset is not tracked by Git: {source}')
+        else:
+            _ok(f'tracked: {relative_path}')
+        duplicate = RUNTIME_SOURCE_DIR / relative_path
+        if duplicate.exists():
+            _fail(f'runtime project contains a duplicate source asset: {duplicate}')
 
 
 if __name__ == '__main__':

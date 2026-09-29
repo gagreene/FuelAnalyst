@@ -65,7 +65,7 @@ credentials.json
 !docs/survey123/**/*.csv
 !examples/data/weather/*.csv
 !src/fuel_analyst/supporting_data/fofem_694/Emission_Factors.csv
-!src/fuel_analyst/supporting_data/fofem_694/FOF_SPP.CSV
+!src/fuel_analyst/supporting_data/fofem_694/fof_spp.csv
 
 # Testing data (keep sample data in supporting_data only)
 src/fuel_analyst/tests/results/
