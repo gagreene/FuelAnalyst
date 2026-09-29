@@ -163,8 +163,21 @@ python -m pip install -e ".[conpyro,fofem]"
 ```
 
 The ConPyro package is currently downloaded from GitHub. Its Flame Components dependency
-is installed from PyPI as `flame-components>=0.1.1,<0.2`. The pyFOFEM extra is also
-currently downloaded from GitHub.
+is installed from PyPI as `flame-components>=0.1.1,<0.2`. The `fofem` extra installs the
+bounded `pyfofem-fire-effects>=0.1.1,<0.2` distribution from PyPI (imports as `pyfofem`),
+needing no Git checkout, and is the default `model_select='pyfofem'` emissions backend.
+
+The `model_select='fof_gui'` backend runs the official USFS FOFEM 6.9.4 `runfofem.exe` on
+Windows x64. For an installed FuelAnalyst wheel, install the separate
+`fuel-analyst-fofem694-runtime` Windows wheel and the Microsoft Visual C++ Redistributable
+(x64). The runtime wheel contains the executable and its two CSVs; it does not bundle the
+Microsoft DLLs. A Git source checkout contains the tracked runtime bundle directly.
+`FUEL_ANALYST_FOFEM_DIR` can override either location with an equivalent FOFEM 6.9.4 batch
+directory. See [Official FOFEM runtime installation](README.md#installation) for details.
+
+Tree mortality automation always uses pyfofem's CRNSCH model. To use the official application
+for mortality separately, generate the hand-off CSV with
+`fuel_analyst(gen_fofem_gui_app_tree_df=True)` and submit it to the FOFEM 6.9.4 application.
 
 Before running ConPyro, merge weather fields into `conpyro_df.csv`. At minimum, the default workflow expects `ws`, `wd`, `ffmc`, `dmc`, `bui`, and `wx_date`; selected model settings may require additional fields.
 
@@ -218,9 +231,10 @@ Preparing `conpyro_df.csv` does not attach weather. Extract or supply weather da
 
 ### Installation of optional dependencies fails
 
-Confirm Git is installed and can access GitHub when installing the ConPyro or pyFOFEM
-extras. The core FuelAnalyst workflow does not require those optional dependencies, so you
-can omit the extras until model execution is needed.
+Confirm Git is installed and can access GitHub when installing the ConPyro extra (the
+`fofem` extra installs from PyPI and needs no Git). The core FuelAnalyst workflow does not
+require those optional dependencies, so you can omit the extras until model execution is
+needed.
 
 ## Next steps
 

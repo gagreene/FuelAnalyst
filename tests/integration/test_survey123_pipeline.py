@@ -46,8 +46,8 @@ def test_complete_survey123_pipeline_generates_owned_output_contracts(tmp_path):
     assert master['unique_id'].is_unique
     assert set(conpyro['unique_id']) == set(master['unique_id'])
     assert set(fbp['unique_id']) == set(master['unique_id'])
-    assert fofem_trees['# PlotId'].notna().all()
-    assert set(fofem_trees['# PlotId']) & set(master['unique_id'])
+    assert fofem_trees['PlotId'].notna().all()
+    assert set(fofem_trees['PlotId']) & set(master['unique_id'])
     assert 'treatment_unit_other' not in master.columns
     assert 'treatment_unit_other' not in fbp.columns
     assert (master.filter(regex='kgpm2').fillna(0) >= 0).all().all()

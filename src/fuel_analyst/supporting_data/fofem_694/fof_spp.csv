@@ -1,0 +1,629 @@
+# Nov 03 2023 for testing blank Brk -- Oct222024 added Thuja spp and JUSC2,,,,,,,,,,
+# FOFEM Mortality Species Equation File,,,,,,,,,,
+,,,,,,,,,,
+# This file is used in conjunction with the FOFEM tree mortality option,,,,,,,,,,
+# Seq = Sequence number - helps order file,,,,,,,,,,
+# Species = Species code,,,,,,,,,,
+# Sci-Name = Scientific name,,,,,,,,,,
+# Com-Name = Common name,,,,,,,,,,
+# Mort = Mortality equation identifiers,,,,,,,,,,
+#           Crown Scorch Equations (CRNSCH):   1 -> 99,,,,,,,,,,
+#           Bole Char Equations (BOLCHR):   100->110,,,,,,,,,,
+#           Crown Damage/Cambium/Beetle Equations (CRCABE):   2 alpha characters,,,,,,,,,,
+# Brk  = Bark Equation,,,,,,,,,,
+# Crn  = Crown Coefficient code used to calculate stand canopy cover,,,,,,,,,,
+# Reg  = Region,,,,,,,,,,
+#            IW -   Interior West,,,,,,,,,,
+#            PW - Pacific West,,,,,,,,,,
+#            NE - North East,,,,,,,,,,
+#            SE - South East,,,,,,,,,,
+#,,,,,,,,,,
+#Seq,Species,Sci-Name,Com-Name, Mort,Brk,Crn,IW,PW,NE,SE
+10,ABAM,Abies amabilis,Pacific silver fir,1,26,1,-1,2,-1,-1
+20,ABBA,Abies balsamea,Balsam fir,1,10,2,1,-1,3,4
+30,ABBAB,Abies balsamea,Balsam fir,1,10,2,1,-1,3,4
+40,ABBAP,Abies balsamea,Balsam fir,1,10,2,1,-1,3,4
+50,ABCO,Abies concolor,White fir,10,,2,1,2,-1,-1
+60,ABCO,Abies concolor,White fir,WF,,2,1,2,-1,-1
+70,ABCOC,Abies concolor,White fir,10,,2,1,2,-1,-1
+80,ABCOC,Abies concolor,White fir,WF,,2,1,2,-1,-1
+90,ABGR,Abies grandis,Grand fir,11,,3,1,2,-1,-1
+100,ABGR,Abies grandis,Grand fir,SF,,3,1,2,-1,-1
+110,ABGRG,Abies grandis,Grand fir,11,,3,1,2,-1,-1
+120,ABGRG,Abies grandis,Grand fir,SF,,3,1,2,-1,-1
+130,ABGRI,Abies grandis,Grand fir,11,,3,1,2,-1,-1
+140,ABGRI,Abies grandis,Grand fir,SF,,3,1,2,-1,-1
+150,ABGRI2,Abies grandis,Grand fir,11,,3,1,2,-1,-1
+160,ABGRI2,Abies grandis,Grand fir,SF,,3,1,2,-1,-1
+170,ABGRJ,Abies grandis,Grand fir,11,,3,1,2,-1,-1
+180,ABGRJ,Abies grandis,Grand fir,SF,,3,1,2,-1,-1
+190,ABISPP,Abies species,Firs,1,20,2,-1,-1,3,4
+200,ABLA,Abies lasiocarpa,Subalpine fir,11,,4,1,2,-1,-1
+210,ABLA,Abies lasiocarpa,Subalpine fir,SF,,4,1,2,-1,-1
+220,ABLAA,Abies lasiocarpa,Corkbark fir,11,,4,1,2,-1,-1
+230,ABLAA,Abies lasiocarpa,Corkbark fir,SF,,4,1,2,-1,-1
+240,ABLAL,Abies lasiocarpa,Subalpine fir,11,,4,1,2,-1,-1
+250,ABLAL,Abies lasiocarpa,Subalpine fir,SF,,4,1,2,-1,-1
+260,ABLO,Abies lowiana,Sierra white fir,10,,2,1,2,-1,-1
+270,ABLO,Abies lowiana,Sierra white fir,WF,,2,1,2,-1,-1
+280,ABMA,Abies magnifica,Red Fir,16,,5,1,2,-1,-1
+290,ABMA,Abies magnifica,Red Fir,RF,,5,1,2,-1,-1
+300,ABMAC,Abies magnifica,Shasta red fir,16,,5,1,2,-1,-1
+310,ABMAC,Abies magnifica,Shasta red fir,RF,,5,1,2,-1,-1
+320,ABMAM,Abies magnifica,California red fir,16,,5,1,2,-1,-1
+330,ABMAM,Abies magnifica,California red fir,RF,,5,1,2,-1,-1
+340,ABMAS,Abies magnifica,Shasta red fir,16,,5,1,2,-1,-1
+350,ABMAS,Abies magnifica,Shasta red fir,RF,,5,1,2,-1,-1
+360,ABMAS2,Abies magnifica,Shasta red fir,16,,5,1,2,-1,-1
+370,ABMAS2,Abies magnifica,Shasta red fir,RF,,5,1,2,-1,-1
+380,ABNO,Abies nobilis,Noble Fir,1,24,7,-1,2,-1,-1
+390,ABPR,Abies procera,Noble Fir,1,24,7,-1,2,-1,-1
+400,ACBA3,Acer barbatum,Southern sugar maple,1,8,21,-1,-1,-1,4
+410,ACBAL,Acer barbatum,Southern sugar maple,1,8,21,-1,-1,-1,4
+420,ACBAV,Acer barbatum,Southern sugar maple,1,8,21,-1,-1,-1,4
+430,ACESPP,Acer species,Maples,1,8,21,-1,-1,3,4
+440,ACLE,Acer leucoderme,Chalk maple,1,8,21,-1,-1,-1,4
+450,ACMA3,Acer macrophyllum,Bigleaf maple,1,3,21,-1,2,-1,-1
+460,ACNE12,Acer negundo,Boxelder,1,13,21,-1,-1,3,4
+470,ACNE2,Acer negundo,Boxelder,1,13,21,-1,-1,3,4
+480,ACNEA,Acer negundo,Arizona boxelder,1,13,21,-1,-1,3,4
+490,ACNEC,Acer negundo,California boxelder,1,13,21,-1,-1,3,4
+500,ACNEC2,Acer negundo,California boxelder,1,13,21,-1,-1,3,4
+510,ACNEI,Acer negundo,Boxelder,1,13,21,-1,-1,3,4
+520,ACNEL,Acer negundo,Boxelder,1,13,21,-1,-1,3,4
+530,ACNEN,Acer negundo,Boxelder,1,13,21,-1,-1,3,4
+540,ACNET,Acer negundo,Boxelder,1,13,21,-1,-1,3,4
+550,ACNEV,Acer negundo,Boxelder,1,13,21,-1,-1,3,4
+560,ACNEV2,Acer negundo,Boxelder,1,13,21,-1,-1,3,4
+570,ACNI5,Acer nigrum,Black maple,1,14,21,-1,-1,3,4
+580,ACNIP,Acer nigrum,Black maple,1,14,21,-1,-1,3,4
+590,ACPE,Acer pensylvanicum,Striped maple,1,24,21,-1,-1,3,4
+600,ACRU,Acer rubrum,Red maple,1,7,21,-1,-1,3,4
+610,ACRU,Acer rubrum,Red maple,100,,21,-1,-1,-1,4
+620,ACRUD,Acer rubrum,Drummond's maple,1,7,21,-1,-1,3,4
+630,ACRUD,Acer rubrum, Red maple,100,,21,-1,-1,-1,4
+640,ACRUD2,Acer rubrum,Drummond's maple,1,7,21,-1,-1,3,4
+650,ACRUD2,Acer rubrum, Red maple,100,,21,-1,-1,-1,4
+660,ACRUR,Acer rubrum,Red maple,1,7,21,-1,-1,3,4
+670,ACRUR,Acer rubrum, Red maple,100,,21,-1,-1,-1,4
+680,ACRUT,Acer rubrum,Red maple,1,7,21,-1,-1,3,4
+690,ACRUT, Acer rubrum, Red maple,100,,21,-1,-1,-1,4
+700,ACRUT2,Acer rubrum,Red maple,1,7,21,-1,-1,3,4
+710,ACRUT2,Acer rubrum, Red maple,100,,21,-1,-1,-1,4
+720,ACRUT3,Acer rubrum,Red maple,1,7,21,-1,-1,3,4
+730,ACRUT3,Acer rubrum, Red maple,100,,21,-1,-1,-1,4
+740,ACSA2,Acer saccharinum,Silver maple,1,10,21,-1,-1,3,4
+750,ACSA3,Acer saccharum,Sugar maple,1,12,21,-1,-1,3,4
+760,ACSAG,Acer saccharum,Sugar maple,1,12,21,-1,-1,3,4
+770,ACSAL3,Acer saccharinum,Silver maple,1,10,21,-1,-1,3,4
+780,ACSAO,Acer saccharum,Sugar maple,1,12,21,-1,-1,3,4
+790,ACSAR,Acer saccharum,Sugar maple,1,12,21,-1,-1,3,4
+800,ACSAS,Acer saccharum,Sugar maple,1,12,21,-1,-1,3,4
+810,ACSAS2,Acer saccharum,Sugar maple,1,12,21,-1,-1,3,4
+820,ACSAS4,Acer saccharum,Sugar maple,1,12,21,-1,-1,3,4
+830,ACSAW,Acer saccharinum,Silver maple,1,10,21,-1,-1,3,4
+840,ACSP2,Acer spicatum,Mountain maple,1,19,21,-1,-1,3,-1
+850,AEFL,Aesculus flava,Yellow buckeye,1,29,39,-1,-1,3,4
+860,AEGL,Aesculus glabra,Ohio buckeye,1,15,39,-1,-1,3,4
+870,AEGLA,Aesculus glabra,Ohio buckeye,1,15,39,-1,-1,3,4
+880,AEGLB,Aesculus glabra,Ohio buckeye,1,15,39,-1,-1,3,4
+890,AEGLG,Aesculus glabra,Ohio buckeye,1,15,39,-1,-1,3,4
+900,AEGLL,Aesculus glabra,Ohio buckeye,1,15,39,-1,-1,3,4
+910,AEGLM,Aesculus glabra,Ohio buckeye,1,15,39,-1,-1,3,4
+920,AEGLM2,Aesculus glabra,Ohio buckeye,1,15,39,-1,-1,3,4
+930,AEGLP,Aesculus glabra,Ohio buckeye,1,15,39,-1,-1,3,4
+940,AEGLS,Aesculus glabra,Ohio buckeye,1,15,39,-1,-1,3,4
+950,AEOC2,Aesculus octandra,Yellow buckeye,1,29,39,-1,-1,3,4
+960,AIAL,Ailanthus altissima,Ailanthus,1,29,39,-1,-1,3,4
+970,ALOR,Alnus rubra,Red alder,1,1,22,-1,2,-1,-1
+980,ALRH2,Alnus rhombifolia,White alder,1,1,23,-1,2,-1,-1
+990,ALRHB,Alnus rhombifolia,White alder,1,1,23,-1,2,-1,-1
+1000,ALRU2,Alnus rubra,Red alder,1,1,22,-1,2,-1,-1
+1010,AMAR3,Amelanchier arborea,Common serviceberry,1,29,39,-1,-1,3,4
+1020,AMARA3,Amelanchier arborea,Alabama serviceberry,1,29,39,-1,-1,3,4
+1030,AMARA4,Amelanchier arborea,Common serviceberry,1,29,39,-1,-1,3,4
+1040,AMARA5,Amelanchier arborea,Downy serviceberry,1,29,39,-1,-1,3,4
+1050,ARME,Arbutus menziesii,Pacific madrone,1,34,39,-1,2,-1,-1
+1060,BEAL2,Betula alleghaniensis,Yellow birch,1,10,24,-1,-1,3,4
+1070,BEALA,Betula alleghaniensis,Yellow birch,1,10,24,-1,-1,3,4
+1080,BEALF,Betula alleghaniensis,Yellow birch,1,10,24,-1,-1,3,4
+1090,BEALM,Betula alleghaniensis,Yellow birch,1,10,24,-1,-1,3,4
+1100,BELE,Betula lenta,Sweet birch,1,9,24,-1,-1,-1,4
+1110,BENI,Betula nigra,River Birch,1,8,24,-1,-1,3,4
+1120,BEOC2,Betula occidentalis,Water birch,1,1,24,-1,-1,3,4
+1130,BEOCI,Betula occidentalis,Water birch,1,1,24,-1,-1,3,4
+1140,BEPA,Betula papyrifera,Paper birch,1,1,24,-1,2,3,4
+1150,BEPAC,Betula papyrifera,Paper birch,1,1,24,-1,2,3,4
+1160,BEPAC2,Betula papyrifera,Mountian paper birch,1,1,24,-1,2,3,4
+1170,BEPAE,Betula papyrifera,Paper birch,1,1,24,-1,2,3,4
+1180,BEPAK,Betula papyrifera,Kenai birch,1,1,24,-1,2,3,4
+1190,BEPAM2,Betula papyrifera,Paper birch,1,1,24,-1,2,3,4
+1200,BEPAP,Betula papyrifera,Paper birch,1,1,24,-1,2,3,4
+1210,BEPAP,Betula papyrifera,Paper birch,1,1,24,-1,2,3,4
+1220,BEPAP2,Betula papyrifera,Paper birch,1,1,24,-1,2,3,4
+1230,BETSPP,Betula species,Birches,1,1,24,-1,2,3,4
+1240,CAAL27,Carya alba,Mockernut hickory,1,22,39,-1,-1,3,4
+1250,CAAM29,Castanea americana,American chestnut,1,19,39,-1,-1,3,-1
+1260,CAAQ2,Carya aquatica,Water hickory,1,19,39,-1,-1,3,4
+1270,CAAQA3,Carya aquatica,Water hickory,1,19,39,-1,-1,3,4
+1280,CACA18,Carpinus caroliniana,American hornbeam,1,9,39,-1,-1,3,4
+1290,CACA38,Carya carolinae-septentrionalis,Shagbark hi,1,19,39,-1,-1,3,4
+1300,CACAC2,Carpinus caroliniana,American hornbeam,1,9,39,-1,-1,3,4
+1310,CACAV,Carpinus caroliniana,American hornbeam,1,9,39,-1,-1,3,4
+1320,CACAV2,Carpinus caroliniana,American hornbeam,1,9,39,-1,-1,3,4
+1330,CACH6,Castanopsis chrysophylla,Giant chinkapin,1,24,25,-1,2,-1,-1
+1340,CACHM,Castanopsis chrysophylla,Giant chinkapin,1,24,25,-1,2,-1,-1
+1350,CACO15,Carya cordiformis,Bitternut hickory,1,16,39,-1,-1,3,4
+1360,CACOL3,Carya cordiformis,Bitternut hickory,1,16,39,-1,-1,3,4
+1370,CADE12,Castanea dentata,American chestnut,1,19,39,-1,-1,3,-1
+1380,CADE27,Calocedrus decurrens,Incense-cedar,12,,18,-1,2,-1,-1
+1390,CADE27,Calocedrus decurrens,Incense-cedar,IC,,18,-1,2,-1,-1
+1400,CAGL8,Carya glabra,Pignut hickory,1,16,39,-1,-1,3,4
+1410,CAGLG2,Carya glabra,Pignut hickory,1,16,39,-1,-1,3,4
+1420,CAGLH,Carya glabra,Pignut hickory,1,16,39,-1,-1,3,4
+1430,CAGLM,Carya glabra,Pignut hickory,1,16,39,-1,-1,3,4
+1440,CAIL2,Carya illinoinensis,Pecan,1,15,39,-1,-1,3,4
+1450,CALA21,Carya laciniosa,Shellbark hickory,1,22,39,-1,-1,3,4
+1460,CANO9,Callitropsis nootkatensis,Alaska cedar,1,2,8,-1,2,-1,-1
+1470,CAOV2,Carya ovata,Shagbark hickory,1,19,39,-1,-1,3,4
+1480,CAOVA,Carya ovata,Shagbark hickory,1,19,39,-1,-1,3,4
+1490,CAOVA,Carya ovata,Shagbark hickory,1,19,39,-1,-1,3,4
+1500,CAOVC,Carya ovata,Shagbark hickory,1,19,39,-1,-1,3,4
+1510,CAOVF,Carya ovata,Shagbark hickory,1,19,39,-1,-1,3,4
+1520,CAOVN,Carya ovata,Shagbark hickory,1,19,39,-1,-1,3,4
+1530,CAOVP,Carya ovata,Shagbark hickory,1,19,39,-1,-1,3,4
+1540,CARSPP,Carya species,Hickories,1,23,39,-1,-1,3,4
+1550,CATE9,Carya texana,Black hickory,1,19,39,-1,-1,-1,4
+1560,CATEA,Carya texana,Black hickory,1,19,39,-1,-1,-1,4
+1570,CATEV,Carya texana,Black hickory,1,19,39,-1,-1,-1,4
+1580,CATO6,Carya tomentosa,Mockernut hickory,1,22,39,-1,-1,3,4
+1590,CATOS,Carya tomentosa,Mockernut hickory,1,22,39,-1,-1,3,4
+1600,CATSPP,Catalpa species,Catalpas,1,16,39,-1,-1,-1,4
+1610,CECA4,Cercis canadensis,Eastern redbud,1,14,39,-1,-1,3,4
+1620,CECAC,Cercis canadensis,Eastern redbud,1,14,39,-1,-1,3,4
+1630,CECAM,Cercis canadensis,Mexican redbud,1,14,39,-1,-1,3,4
+1640,CECAM2,Cercis canadensis,Mexican redbud,1,14,39,-1,-1,3,4
+1650,CECAT,Cercis canadensis,Texas redbud,1,14,39,-1,-1,3,4
+1660,CECAT2,Cercis canadensis,Texas redbud,1,14,39,-1,-1,3,4
+1670,CELA,Celtis laevigata,Sugarberry,1,15,39,-1,-1,3,4
+1680,CELAA,Celtis laevigata,Sugarberry,1,15,39,-1,-1,3,4
+1690,CELAB,Celtis laevigata,Sugarberry,1,15,39,-1,-1,3,4
+1700,CELAB2,Celtis laevigata,Sugarberry,1,15,39,-1,-1,3,4
+1710,CELAL,Celtis laevigata,Sugarberry,1,15,39,-1,-1,3,4
+1720,CELAR,Celtis laevigata,Netleaf hackberry,1,15,39,-1,-1,3,4
+1730,CELAT8,Celtis laevigata,Texan sugarberry,1,15,39,-1,-1,3,4
+1740,CEOC,Celtis occidentalis,Common hackberry,1,14,24,-1,-1,3,4
+1750,CEOCC,Celtis occidentalis,Common hackberry,1,14,24,-1,-1,3,4
+1760,CEOCC3,Celtis occidentalis,Common hackberry,1,14,24,-1,-1,3,4
+1770,CEOCC4,Celtis occidentalis,Common hackberry,1,14,24,-1,-1,3,4
+1780,CEOCO2,Celtis occidentalis,Common hackberry,1,14,24,-1,-1,3,4
+1790,CEOCP,Celtis occidentalis,Common hackberry,1,14,24,-1,-1,3,4
+1800,CHCHC4,Chrysolepis chrysophylla,Giant chinkapin,1,24,25,-1,2,-1,-1
+1810,CHCHM,Chrysolepis chrysophylla,Giant chinkapin,1,24,25,-1,2,-1,-1
+1820,CHLA,Chamaecyparis lawsoniana,PortOrford-cedar,1,39,9,-1,2,-1,-1
+1830,CHNO,Chamaecyparis nootkatensis,Alaska-cedar,1,2,9,-1,2,-1,-1
+1840,CHTH2,Chamaecyparis thyoides,Atlantic white-cedar,1,4,9,-1,-1,3,4
+1850,CHTHH,Chamaecyparis thyoides,Atlantic white-cedar,1,4,9,-1,-1,3,4
+1860,COFL2,Cornus florida,Flowering dogwood,1,20,34,-1,-1,3,4
+1870,COFL2,Cornus florida,Flowering dogwood,101,,34,-1,-1,-1,4
+1880,CONU4,Cornus nuttallii,Pacific dogwood,1,35,34,-1,2,-1,-1
+1890,CORSPP,Cornus species,Dogwoods,1,10,34,-1,-1,3,4
+1900,CRASPP,Crataegus species,Hawthorns,1,35,35,-1,2,-1,-1
+1910,CRDO2,Crataegus douglasii,Black hawthorn,1,17,35,-1,-1,-1,4
+1920,CRDOD,Crataegus douglasii,Black hawthorn,1,17,35,-1,-1,-1,4
+1930,CUNO,Cupressus nootkatensis,Nootka Cypress,1,2,9,-1,2,-1,-1
+1940,CUTH,Cupressus thyoides,Atlantic white-cedar,1,4,9,-1,-1,3,4
+1950,CUTHH,Cupressus thyoides,Atlantic white-cedar,1,4,9,-1,-1,3,4
+1960,DIVI5,Diospyros virginiana,Persimmon,1,20,39,-1,-1,3,4
+1970,DIVIM2,Diospyros virginiana,Persimmon,1,20,39,-1,-1,3,4
+1980,DIVIP2,Diospyros virginiana,Persimmon,1,20,39,-1,-1,3,4
+1990,DIVIP3,Diospyros virginiana,Persimmon,1,20,39,-1,-1,3,4
+2000,DIVIV4,Diospyros virginiana,Persimmon,1,20,39,-1,-1,3,4
+2010,FAGR,Fagus grandifolia,American beech,1,4,39,-1,-1,3,4
+2020,FAGRC,Fagus grandifolia,American beech,1,4,39,-1,-1,3,4
+2030,FAGRH,Fagus grandifolia,American beech,1,4,39,-1,-1,3,4
+2040,FRAM2,Fraxinus americana,White ash,1,21,39,-1,-1,3,4
+2050,FRAMB,Fraxinus americana,White ash,1,21,39,-1,-1,3,4
+2060,FRAMC,Fraxinus americana,White ash,1,21,39,-1,-1,3,4
+2070,FRAMC2,Fraxinus americana,White ash,1,21,39,-1,-1,3,4
+2080,FRAMJ,Fraxinus americana,White ash,1,21,39,-1,-1,3,4
+2090,FRAMM,Fraxinus americana,White ash,1,21,39,-1,-1,3,4
+2100,FRASPP,Fraxinus species,Ashes,1,21,39,-1,-1,3,4
+2110,FRNI,Fraxinus nigra,Black ash,1,14,39,-1,-1,3,4
+2120,FRPE,Fraxinus pennsylvanica,Green ash,1,18,39,-1,-1,3,4
+2130,FRPEA,Fraxinus pennsylvanica,Green ash,1,18,39,-1,-1,3,4
+2140,FRPEI,Fraxinus pennsylvanica,Green ash,1,18,39,-1,-1,3,4
+2150,FRPEL,Fraxinus pennsylvanica,Green ash,1,18,39,-1,-1,3,4
+2160,FRPES,Fraxinus pennsylvanica,Green ash,1,18,39,-1,-1,3,4
+2170,FRPR,Fraxinus profunda,Pumpkin ash,1,16,39,-1,-1,3,4
+2180,FRQU,Fraxinus quadrangulata,Blue ash,1,9,39,-1,-1,3,4
+2190,GLTR,Gleditsia triacanthos,Honeylocust,1,17,39,-1,-1,3,4
+2200,GLTRI,Gleditsia triacanthos,Honeylocust,1,17,39,-1,-1,3,4
+2210,GOLA,Gordonia lasianthus,Loblolly bay,1,17,39,-1,-1,-1,4
+2220,GYDI,Gymnocladus dioicus,Kentucky coffeetree,1,10,39,-1,-1,3,4
+2230,HALSPP,Halesia species,Silverbells,1,17,39,-1,-1,-1,4
+2240,ILOP,Ilex opaca,American holly,1,21,39,-1,-1,3,4
+2250,ILOPA,Ilex opaca,American holly,1,21,39,-1,-1,3,4
+2260,ILOPO,Ilex opaca,American holly,1,21,39,-1,-1,3,4
+2270,JUCI,Juglans cinerea,Butternut,1,20,39,-1,-1,3,4
+2280,JUNI,Juglans nigra,Black walnut,1,20,39,-1,-1,3,4
+2290,JUNSPP,Juniperus species,Junipers/Redcedars,1,19,29,-1,-1,3,4
+2300,JUOC,Juniperus occidentalis,Western juniper,1,24,29,1,2,-1,-1
+2310,JUOCO,Juniperus occidentalis,Western juniper,1,24,29,1,2,-1,-1
+2313,JUSC2,Juniperus scopulorum,Rocky Mountain juniper,1,19,29,1,2,-1,-1
+2320,JUVI,Juniperus virginiana,Eastern redcedar,1,19,18,-1,-1,3,4
+2330,JUVIC,Juniperus virginiana,Eastern redcedar,1,19,18,-1,-1,3,4
+2340,JUVIC2,Juniperus virginiana,Eastern redcedar,1,19,18,-1,-1,3,4
+2350,JUVIS,Juniperus virginiana,Eastern redcedar,1,19,18,-1,-1,3,4
+2360,JUVIS,Juniperus virginiana,Southern redcedar,1,19,18,-1,-1,3,4
+2370,JUVIS3,Juniperus virginiana,Eastern redcedar,1,19,18,-1,-1,3,4
+2380,JUVIV,Juniperus virginiana,Southern redcedar,1,19,18,-1,-1,3,4
+2390,LALA,Larix laricina,Tamarack,1,10,14,-1,-1,3,4
+2400,LALAA5,Larix laricina,Tamarack,1,10,14,-1,-1,3,4
+2410,LALAA9,Larix laricina,Tamarack,1,10,14,-1,-1,3,4
+2420,LALY,Larix lyallii,Subalpine Larch,1,29,30,-1,2,-1,-1
+2430,LAOC,Larix occidentalis,Western Larch,14,,14,1,2,-1,-1
+2440,LAOC,Larix occidentalis,Western Larch,WL,,14,1,2,-1,-1
+2450,LIDE,Libocedrus decurrens,Incense-cedar,12,,18,-1,2,-1,-1
+2460,LIDE,Libocedrus decurrens,Incense-cedar,IC,,18,-1,2,-1,-1
+2470,LIDE3,Lithocarpus densiflorus,Tanoak,1,30,39,-1,2,-1,-1
+2480,LIDED2,Lithocarpus densiflorus,Tanoak,1,30,39,-1,2,-1,-1
+2490,LIDEE,Lithocarpus densiflorus,Tanoak,1,30,39,-1,2,-1,-1
+2500,LIST2,Liquidambar styraciflua,Sweetgum,1,34,39,-1,-1,3,4
+2510,LITU,Liriodendron tulipifera,Tuliptree,1,29,39,-1,-1,3,4
+2520,MAAC,Magnolia acuminata,Cucumber-tree,1,15,39,-1,-1,3,4
+2530,MAACC2,Magnolia acuminata,Cucumber-tree,1,15,39,-1,-1,3,4
+2540,MAACO,Magnolia acuminata,Cucumber-tree,1,15,39,-1,-1,3,4
+2550,MAACS,Magnolia acuminata,Cucumber-tree,1,15,39,-1,-1,3,4
+2560,MAGR4,Magnolia grandiflora,Southern magnolia,1,12,39,-1,-1,-1,4
+2570,MAGSPP,Magnolia species,Magnolias,1,18,39,-1,-1,3,4
+2580,MALPRU,Prunus species,Apples/Cherries,1,17,39,-1,-1,-1,4
+2590,MALSPP,Malus species,Apples,1,22,39,-1,-1,3,4
+2600,MAMA2,Magnolia macrophylla,Bigleaf magnolia,1,12,39,-1,-1,-1,4
+2610,MAPO,Maclura pomifera,Osage-orange,1,16,39,-1,-1,-1,4
+2620,MAVI2,Magnolia virginiana,Sweetbay,1,19,39,-1,-1,3,4
+2630,MAVIA2,Magnolia virginiana,Sweetbay,1,19,39,-1,-1,3,4
+2640,MAVIP,Magnolia virginiana,Sweetbay,1,19,39,-1,-1,3,4
+2650,MAVIT2,Magnolia virginiana,Sweetbay,1,19,39,-1,-1,3,4
+2660,MOAL,Morus alba,White mulberry,1,17,39,-1,-1,-1,4
+2670,MOALM,Morus alba,White mulberry,1,17,39,-1,-1,-1,4
+2680,MOALT,Morus alba,White mulberry,1,17,39,-1,-1,-1,4
+2690,MORSPP,Morus species,Mulberries,1,12,39,-1,-1,3,4
+2700,MORU2,Morus rubra,Red mulberry,1,17,39,-1,-1,-1,4
+2710,MORUR,Morus rubra,Red mulberry,1,17,39,-1,-1,-1,4
+2720,MORUT,Morus rubra,Red mulberry,1,17,39,-1,-1,-1,4
+2730,NYAQ2,Nyssa aquatica,Water tupelo,1,32,39,-1,-1,-1,4
+2740,NYBI,Nyssa biflora,Swamp tupelo,1,32,39,-1,-1,-1,4
+2750,NYBI,Nyssa sylvatica,Blackgum,102,,39,-1,-1,-1,4
+2760,NYOG,Nyssa ogeche,Ogeechee tupelo,1,32,39,-1,-1,-1,4
+2770,NYSSPP,Nyssa species,Tupelos,1,23,39,-1,-1,3,4
+2780,NYSY,Nyssa sylvatica,Blackgum,1,32,39,-1,-1,3,4
+2790,NYSY,Nyssa sylvatica,Blackgum,102,,39,-1,-1,-1,4
+2800,NYSYB,Nyssa sylvatica,Blackgum,102,,39,-1,-1,-1,4
+2810,NYSYC,Nyssa sylvatica,Blackgum,1,32,39,-1,-1,3,4
+2820,NYSYC,Nyssa sylvatica,Blackgum,102,,39,-1,-1,-1,4
+2830,NYSYD,Nyssa sylvatica,Blackgum,1,32,39,-1,-1,3,4
+2840,NYSYD,Nyssa sylvatica,Blackgum,102,,39,-1,-1,-1,4
+2850,NYSYT,Nyssa sylvatica,Blackgum,1,32,39,-1,-1,3,4
+2860,NYSYT,Nyssa sylvatica,Blackgum,102,,39,-1,-1,-1,4
+2870,NYSYU,Nyssa sylvatica,Blackgum,102,,39,-1,-1,-1,4
+2880,NYUR2,Nyssa sylvatica,Blackgum,102,,39,-1,-1,-1,4
+2890,OSVI,Ostrya virginiana,Hophornbeam,1,16,39,-1,-1,3,4
+2900,OSVIC,Ostrya virginiana,Chisos hophornbeam,1,16,39,-1,-1,3,4
+2910,OSVIL,Ostrya virginiana,Hophornbeam,1,16,39,-1,-1,3,4
+2920,OSVIV,Ostrya virginiana,Hophornbeam,1,16,39,-1,-1,3,4
+2930,OXAR,Oxydendrum arboreum,Sourwood,1,15,39,-1,-1,3,4
+2940,OXAR,Oxydendrum arboreum,Sourwood,103,,39,-1,-1,-1,4
+2950,PATO2,Paulownia tomentosa,Princesstree,1,29,39,-1,-1,3,4
+2960,PEBO,Persea borbonia,Redbay,1,17,39,-1,-1,-1,4
+2970,PIAB,Picea abies,Norway spruce,3,,10,-1,-1,3,4
+2980,PIAL,Pinus albicaulis,Whitebark pine,17,,31,1,2,-1,-1
+2990,PIAL,Pinus albicaulis,Whitebark pine,WP,,31,1,2,-1,-1
+3000,PIAT,Pinus attenuata,Knobcone pine,1,9,32,-1,2,-1,-1
+3010,PIBA2,Pinus banksiana,Jack pine,1,19,11,-1,-1,3,-1
+3020,PICL,Pinus clausa,Sand pine,1,14,11,-1,-1,-1,4
+3030,PICLI,Pinus clausa,Sand pine,1,14,11,-1,-1,-1,4
+3040,PICLI2,Pinus clausa,Sand pine,1,14,11,-1,-1,-1,4
+3050,PICO,Pinus contorta,Lodgepole pine,17,,11,1,2,-1,-1
+3060,PICO,Pinus contorta,Lodgepole pine,WP,,11,1,2,-1,-1
+3070,PICOB,Pinus contorta,Bolander beach pine,17,,11,1,2,-1,-1
+3080,PICOB,Pinus contorta,Bolander beach pine,WP,,11,1,2,-1,-1
+3090,PICOB2,Pinus contorta,Bolander beach pine,17,,11,1,2,-1,-1
+3100,PICOB2,Pinus contorta,Bolander beach pine,WP,,11,1,2,-1,-1
+3110,PICOC,Pinus contorta,Beach pine,17,,11,1,2,-1,-1
+3120,PICOC,Pinus contorta,Beach pine,WP,,11,1,2,-1,-1
+3130,PICOC2,Pinus contorta,Beach pine,17,,11,1,2,-1,-1
+3140,PICOC2,Pinus contorta,Beach pine,WP,,11,1,2,-1,-1
+3150,PICOL,Pinus contorta,Lodgepole pine,17,,11,1,2,-1,-1
+3160,PICOL,Pinus contorta,Lodgepole pine,WP,,11,1,2,-1,-1
+3170,PICOL2,Pinus contorta,Lodgepole pine,17,,11,1,2,-1,-1
+3180,PICOL2,Pinus contorta,Lodgepole pine,WP,,11,1,2,-1,-1
+3190,PICOM,Pinus contorta,Sierra lodgepole pine,17,,11,1,2,-1,-1
+3200,PICOM,Pinus contorta,Sierra lodgepole pine,WP,,11,1,2,-1,-1
+3210,PICOM4,Pinus contorta,Sierra lodgepole pine,17,,11,1,2,-1,-1
+3220,PICOM4,Pinus contorta,Sierra lodgepole pine,WP,,11,1,2,-1,-1
+3230,PICSPP,Picea species,Spruces,3,,10,-1,-1,3,4
+3240,PIEC2,Pinus echinata,Shortleaf pine,1,16,15,-1,-1,3,4
+3250,PIEL,Pinus elliottii,Slash pine,1,31,15,-1,-1,-1,4
+3260,PIELA,Pinus elliottii,Florida slash pine,1,31,15,-1,-1,-1,4
+3270,PIELA2,Pinus elliottii,Florida slash pine,1,31,15,-1,-1,-1,4
+3280,PIELD,Pinus elliottii,Florida slash pine,1,31,15,-1,-1,-1,4
+3290,PIELE2,Pinus elliottii,Slash pine,1,31,15,-1,-1,-1,4
+3300,PIEN,Picea engelmannii,Engelmann spruce,15,,10,1,2,-1,-1
+3310,PIEN,Picea engelmannii,Engelmann spruce,ES,,10,1,2,-1,-1
+3320,PIENE,Picea engelmannii,Engelmann spruce,15,,10,1,2,-1,-1
+3330,PIENE,Picea engelmannii,Engelmann spruce,ES,,10,1,2,-1,-1
+3340,PIENM,Picea engelmannii,Engelmann spruce,15,,10,1,2,-1,-1
+3350,PIENM,Picea engelmannii,Engelmann spruce,ES,,10,1,2,-1,-1
+3360,PIENM2,Picea engelmannii,Engelmann spruce,15,,10,1,2,-1,-1
+3370,PIENM2,Picea engelmannii,Engelmann spruce,ES,,10,1,2,-1,-1
+3380,PIFL2,Pinus flexilis,Limber pine,1,9,31,1,-1,-1,-1
+3390,PIFLA,Pinus flexilis,Limber pine,1,9,31,1,-1,-1,-1
+3400,PIFLA2,Pinus flexilis,Limber pine,1,9,31,1,-1,-1,-1
+3410,PIFLC,Pinus flexilis,Limber pine,1,9,31,1,-1,-1,-1
+3420,PIFLC2,Pinus flexilis,Limber pine,1,9,31,1,-1,-1,-1
+3430,PIGL,Picea glauca,White spruce,3,,10,1,2,3,-1
+3440,PIGL2,Pinus glabra,Spruce pine,1,14,11,-1,-1,-1,4
+3450,PIJE,Pinus jeffreyi,Jeffrey pine,19,,12,1,2,-1,-1
+3460,PIJE,Pinus jeffreyi,Jeffrey pine,PP,,12,1,2,-1,-1
+3470,PIJEK,Pinus jeffreyi,Jeffrey pine,PK,,12,1,2,-1,-1
+3480,PILA,Pinus lambertiana,Sugar pine,18,,13,1,2,-1,-1
+3490,PILA,Pinus lambertiana,Sugar pine,SP,,13,1,2,-1,-1
+3500,PIMA,Picea mariana,Black spruce,3,,10,-1,2,3,4
+3510,PIMAM4,Picea mariana,Black spruce,3,,10,-1,2,3,4
+3520,PIMO3,Pinus monticola,Western white pine,1,14,14,1,2,-1,-1
+3530,PINSPP,Pinus species,Pines,1,9,11,-1,-1,3,4
+3540,PIPA2,Pinus palustris,Longleaf pine,5,,15,-1,-1,-1,4
+3550,PIPO,Pinus ponderosa,Ponderosa pine,19,,15,1,2,-1,-1
+3560,PIPO,Pinus ponderosa,Ponderosa pine,PP,,15,1,2,-1,-1
+3570,PIPO_BH,Pinus ponderosa,Ponderosa Pine Black Hills,21,,15,1,-1,-1,-1
+3580,PIPO_BH,Pinus ponderosa,Ponderosa Pine Black Hills,PP,,15,1,-1,-1,-1
+3590,PIPOB,Pinus ponderosa,Ponderosa pine,19,,15,1,2,-1,-1
+3600,PIPOB,Pinus ponderosa,Ponderosa pine,PP,,15,1,2,-1,-1
+3610,PIPOB2,Pinus ponderosa,Ponderosa pine,19,,15,1,2,-1,-1
+3620,PIPOB2,Pinus ponderosa,Ponderosa pine,PP,,15,1,2,-1,-1
+3630,PIPOB3,Pinus ponderosa,Ponderosa pine,19,,15,1,2,-1,-1
+3640,PIPOB3,Pinus ponderosa,Ponderosa pine,PP,,15,1,2,-1,-1
+3650,PIPOB3K,Pinus ponderosa,Ponderosa pine,PK,,15,1,2,-1,-1
+3660,PIPOBK,Pinus ponderosa,Ponderosa pine,PK,,15,1,2,-1,-1
+3670,PIPOK,Pinus ponderosa,Ponderosa pine,PK,,15,1,2,-1,-1
+3680,PIPOP,Pinus ponderosa,Ponderosa pine,19,,15,1,2,-1,-1
+3690,PIPOP,Pinus ponderosa,Ponderosa pine,PP,,15,1,2,-1,-1
+3700,PIPOP2,Pinus ponderosa,Ponderosa pine,19,,15,1,2,-1,-1
+3710,PIPOP2,Pinus ponderosa,Ponderosa pine,PP,,15,1,2,-1,-1
+3720,PIPOP2K,Pinus ponderosa,Ponderosa pine,PK,,15,1,2,-1,-1
+3730,PIPOPK,Pinus ponderosa,Ponderosa pine,PK,,15,1,2,-1,-1
+3740,PIPOS,Pinus ponderosa,Ponderosa pine,19,,15,1,2,-1,-1
+3750,PIPOS,Pinus ponderosa,Ponderosa pine,PP,,15,1,2,-1,-1
+3760,PIPOS2,Pinus ponderosa,Ponderosa pine,19,,15,1,2,-1,-1
+3770,PIPOS2,Pinus ponderosa,Ponderosa pine,PP,,15,1,2,-1,-1
+3780,PIPOS2K,Pinus ponderosa,Ponderosa pine,PK,,15,1,2,-1,-1
+3790,PIPOSK,Pinus ponderosa,Ponderosa pine,PK,,15,1,2,-1,-1
+3800,PIPOW,Pinus ponderosa,Washoe pine,19,,15,1,2,-1,-1
+3810,PIPOW,Pinus ponderosa,Washoe pine,PP,,15,1,2,-1,-1
+3820,PIPOW2,Pinus ponderosa,Washoe pine,19,,15,1,2,-1,-1
+3830,PIPOW2,Pinus ponderosa,Washoe pine,PP,,15,1,2,-1,-1
+3840,PIPOW2K,Pinus ponderosa,Washoe pine,PK,,15,1,2,-1,-1
+3850,PIPOWK,Pinus ponderosa,Washoe pine,PK,,15,1,2,-1,-1
+3860,PIPU,Picea pungens,Blue spruce,3,,10,1,-1,-1,-1
+3870,PIPU5,Pinus pungens,Table mountain pine,1,19,11,-1,-1,3,4
+3880,PIPUA,Picea pungens,Blue spruce,3,,10,1,-1,-1,-1
+3890,PIPUG3,Picea pungens,Blue spruce,3,,10,1,-1,-1,-1
+3900,PIRE,Pinus resinosa,Red pine,1,22,11,-1,-1,3,4
+3910,PIRI,Pinus rigida,Pitch pine,1,24,11,-1,-1,3,4
+3920,PIRU,Picea rubens,Red spruce,3,,10,-1,-1,3,4
+3930,PISA2,Pinus sabiniana,Gray pine,1,12,15,-1,2,-1,-1
+3940,PISE,Pinus serotina,Pond pine,1,35,11,-1,-1,3,4
+3950,PISI,Picea sitchensis,Sitka spruce,3,,10,-1,2,-1,-1
+3960,PIST,Pinus strobus,Eastern white pine,1,24,14,-1,-1,3,4
+3970,PISY,Pinus sylvestris,Scots pine,1,9,11,-1,-1,3,4
+3980,PITA,Pinus taeda,Loblolly pine,1,30,15,-1,-1,3,4
+3990,PIVI2,Pinus virginiana,Virginia pine,1,12,11,-1,-1,3,4
+4000,PLOC,Platanus occidentalis,American sycamore,1,12,39,-1,-1,3,4
+4010,PLOCG,Platanus occidentalis,American sycamore,1,12,39,-1,-1,3,4
+4020,POBA2,Populus balsamifera,Balsam poplar,1,19,27,-1,-1,3,4
+4030,POBAB2,Populus balsamifera,Balsam poplar,1,19,27,-1,-1,3,4
+4040,POBAC2,Populus balsamifera,Balsam poplar,1,19,27,-1,-1,3,4
+4050,POBAC3,Populus balsamifera,Black cottonwood,1,23,27,-1,2,-1,-1
+4060,POBAF,Populus balsamifera,Balsam poplar,1,19,27,-1,-1,3,4
+4070,POBAL,Populus balsamifera,Balsam poplar,1,19,27,-1,-1,3,4
+4080,POBAM,Populus balsamifera,Balsam poplar,1,19,27,-1,-1,3,4
+4090,POBAS2,Populus balsamifera,Balsam poplar,1,19,27,-1,-1,3,4
+4100,POBAT,Populus balsamifera,Black cottonwood,1,23,27,-1,2,-1,-1
+4110,PODE3,Populus deltoides,Eastern cottonwood,1,19,27,-1,-1,3,4
+4120,PODEA,Populus deltoides,Eastern cottonwood,1,19,27,-1,-1,3,4
+4130,PODED,Populus deltoides,Eastern cottonwood,1,19,27,-1,-1,3,4
+4140,PODEM,Populus deltoides,Plains cottonwood,1,19,27,-1,-1,3,4
+4150,PODEM2,Populus deltoides,Eastern cottonwood,1,19,27,-1,-1,3,4
+4160,PODEO,Populus deltoides,Plains cottonwood,1,19,27,-1,-1,3,4
+4170,PODEP,Populus deltoides,Eastern cottonwood,1,19,27,-1,-1,3,4
+4180,PODEV,Populus deltoides,Eastern cottonwood,1,19,27,-1,-1,3,4
+4190,PODEW,Populus deltoides,Rio Grande cottonwood,1,19,27,-1,-1,3,4
+4200,PODEW3,Populus deltoides,Rio Grande cottonwood,1,19,27,-1,-1,3,4
+4210,POGR4,Populus grandidentata,Bigtooth aspen,1,18,26,-1,-1,3,4
+4220,POGRA2,Populus grandidentata,Bigtooth aspen,1,18,26,-1,-1,3,4
+4230,POGRM4,Populus grandidentata,Bigtooth aspen,1,18,26,-1,-1,3,4
+4240,POGRS,Populus grandidentata,Bigtooth aspen,1,18,26,-1,-1,3,4
+4250,POHE4,Populus heterophylla,Swamp cottonwood,1,29,27,-1,-1,3,4
+4260,POPSPP,Populus species,Poplars,1,17,27,-1,-1,3,4
+4270,POTR12,Populus tremuloides,Quaking aspen,4,,26,1,2,3,4
+4280,POTR15,Populus trichocarpa,Black cottonwood,1,23,27,-1,2,-1,-1
+4290,POTR5,Populus tremuloides,Quaking aspen,4,,26,1,2,3,4
+4300,POTR5,Populus tremuloides,Quaking aspen,4,,26,1,2,3,4
+4310,POTRA,Populus tremuloides,Quaking aspen,4,,26,1,2,3,4
+4320,POTRC,Populus trichocarpa,Black cottonwood,1,23,27,-1,2,-1,-1
+4330,POTRC2,Populus tremuloides,Quaking aspen,4,,26,1,2,3,4
+4340,POTRH,Populus trichocarpa,Black cottonwood,1,23,27,-1,2,-1,-1
+4350,POTRH2,Populus trichocarpa,Black cottonwood,1,23,27,-1,2,-1,-1
+4360,POTRI,Populus trichocarpa,Black cottonwood,1,23,27,-1,2,-1,-1
+4370,POTRM,Populus tremuloides,Quaking aspen,4,,26,1,2,3,4
+4380,POTRR,Populus tremuloides,Quaking aspen,4,,26,1,2,3,4
+4390,POTRV,Populus tremuloides,Quaking aspen,4,,26,1,2,3,4
+4400,PRAM,Prunus americana,American plum,1,19,39,-1,-1,3,-1
+4410,PREM,Prunus emarginata,Bitter cherry,1,35,36,-1,2,-1,-1
+4420,PREMC,Prunus emarginata,Bitter cherry,1,35,36,-1,2,-1,-1
+4430,PREME,Prunus emarginata,Bitter cherry,1,35,36,-1,2,-1,-1
+4440,PREMM,Prunus emarginata,Bitter cherry,1,35,36,-1,2,-1,-1
+4450,PRPE2,Prunus pensylvanica,Pin cherry,1,24,36,-1,-1,3,4
+4460,PRPEC,Prunus pensylvanica,Pin cherry,1,24,36,-1,-1,3,4
+4470,PRPEP,Prunus pensylvanica,Pin cherry,1,24,36,-1,-1,3,4
+4480,PRPES,Prunus pensylvanica,Pin cherry,1,24,36,-1,-1,3,4
+4490,PRSE2,Prunus serotina,Black cherry,1,9,36,-1,-1,3,4
+4500,PRSEE,Prunus serotina,Black cherry,1,9,36,-1,-1,3,4
+4510,PRSEE2,Prunus serotina,Black cherry,1,9,36,-1,-1,3,4
+4520,PRSER2,Prunus serotina,Black cherry,1,9,36,-1,-1,3,4
+4530,PRSES,Prunus serotina,Black cherry,1,9,36,-1,-1,3,4
+4540,PRSEV,Prunus serotina,Black cherry,1,9,36,-1,-1,3,4
+4550,PRUSPP,Prunus species,Cherries,1,29,36,-1,-1,3,4
+4560,PRVI,Prunus virginiana,Chokecherry,1,19,36,-1,-1,3,-1
+4570,PRVID,Prunus virginiana,Western chokecherry,1,19,36,-1,-1,3,-1
+4580,PRVID2,Prunus virginiana,Chokecherry,1,19,36,-1,-1,3,-1
+4590,PRVIM,Prunus virginiana,Black chokecherry,1,19,36,-1,-1,3,-1
+4600,PRVIM2,Prunus virginiana,Chokecherry,1,19,36,-1,-1,3,-1
+4610,PRVIV,Prunus virginiana,Chokecherry,1,19,36,-1,-1,3,-1
+4620,PSME,Pseudotsuga menziesii,Douglas-fir,20,,16,1,2,-1,-1
+4630,PSME,Pseudotsuga menziesii,Douglas-fir,DF,,16,1,2,-1,-1
+4640,PSMEF,Pseudotsuga menziesii,Douglas-fir,20,,16,1,2,-1,-1
+4650,PSMEF,Pseudotsuga menziesii,Douglas-fir,DF,,16,1,2,-1,-1
+4660,PSMEG,Pseudotsuga menziesii,Rocky Mtn Douglas-fir,20,,16,1,2,-1,-1
+4670,PSMEG,Pseudotsuga menziesii,Rocky Mtn Douglas-fir,DF,,16,1,2,-1,-1
+4680,PSMEM,Pseudotsuga menziesii,Douglas-fir,20,,16,1,2,-1,-1
+4690,PSMEM,Pseudotsuga menziesii,Douglas-fir,DF,,16,1,2,-1,-1
+4700,QUAG,Quercus agrifolia,California live oak,1,29,28,-1,2,-1,-1
+4710,QUAGA,Quercus agrifolia,California live oak,1,29,28,-1,2,-1,-1
+4720,QUAGO,Quercus agrifolia,Coastal live oak,1,29,28,-1,2,-1,-1
+4730,QUAL,Quercus alba,White oak,1,19,28,-1,-1,3,4
+4740,QUAL,Quercus alba,White oak,104,,28,-1,-1,-1,4
+4750,QUAL3,Quercus alba,White oak,104,,28,-1,-1,-1,4
+4760,QUALS,Quercus alba,White oak,1,19,28,-1,-1,3,4
+4770,QUALS,Quercus alba,White oak,104,,28,-1,-1,-1,4
+4780,QUALS2,Quercus alba,White oak,1,19,28,-1,-1,3,4
+4790,QUALS2,Quercus alba,White oak,104,,28,-1,-1,-1,4
+4800,QUBI,Quercus bicolor,Swamp white oak,1,24,28,-1,-1,3,4
+4810,QUCH2,Quercus chrysolepis,Canyon live oak,1,3,28,-1,2,-1,-1
+4820,QUCHC,Quercus chrysolepis,Canyon live oak,1,3,28,-1,2,-1,-1
+4830,QUCHN,Quercus chrysolepis,Canyon live oak,1,3,28,-1,2,-1,-1
+4840,QUCO2,Quercus coccinea,Scarlet oak,1,19,28,-1,-1,3,4
+4850,QUCO2,Quercus coccinea,Scarlet oak,105,,28,-1,-1,-1,4
+4860,QUCOC,Quercus coccinea,Scarlet oak,1,19,28,-1,-1,3,4
+4870,QUCOC,Quercus coccinea,Scarlet oak,105,,28,-1,-1,-1,4
+4880,QUCOT,Quercus coccinea,Scarlet oak,1,19,28,-1,-1,3,4
+4890,QUCOT,Quercus coccinea,Scarlet oak,105,,28,-1,-1,-1,4
+4900,QUDU,Quercus douglasii,Blue oak,1,12,28,-1,2,-1,-1
+4910,QUEL,Quercus ellipsoidalis,Northern pin oak,1,17,28,-1,-1,3,4
+4920,QUEN,Quercus engelmannii,Engelmann oak,1,33,28,-1,2,-1,-1
+4930,QUESPP,Quercus species,Oaks,1,24,28,-1,-1,3,4
+4940,QUFA,Quercus falcata,Southern red oak,1,23,28,-1,-1,3,4
+4950,QUFAT,Quercus falcata,Southern red oak,1,23,28,-1,-1,3,4
+4960,QUGA4,Quercus garryana,Oregon white oak,1,8,28,-1,2,-1,-1
+4970,QUGAG2,Quercus garryana,Oregon white oak,1,8,28,-1,2,-1,-1
+4980,QUGAS,Quercus garryana,Oregon white oak,1,8,28,-1,2,-1,-1
+4990,QUIM,Quercus imbricaria,Shingle oak,1,20,28,-1,-1,3,4
+5000,QUIN,Quercus incana,Bluejack oak,1,17,28,-1,-1,-1,4
+5010,QUKE,Quercus kelloggii,Califonia black oak,1,9,28,-1,2,-1,-1
+5020,QULA2,Quercus laevis,Turkey oak,1,16,28,-1,-1,-1,4
+5030,QULA3,Quercus laurifolia,Laurel oak,1,15,28,-1,-1,-1,4
+5040,QULO,Quercus lobata,Valley oak,1,22,28,-1,2,-1,-1
+5050,QULOA,Quercus lobata,Valley oak,1,22,28,-1,2,-1,-1
+5060,QULOI,Quercus lobata,Valley oak,1,22,28,-1,2,-1,-1
+5070,QULOT,Quercus lobata,Valley oak,1,22,28,-1,2,-1,-1
+5080,QULOW,Quercus lobata,Valley oak,1,22,28,-1,2,-1,-1
+5090,QULY,Quercus lyrata,Overcup oak,1,18,28,-1,-1,3,4
+5100,QUMA2,Quercus macrocarpa,Bur oak,1,21,28,-1,-1,3,4
+5110,QUMA3,Quercus marilandica,Blackjack oak,1,16,28,-1,-1,3,4
+5120,QUMA3,Quercus marilandica,Blackjack oak,106,,28,-1,-1,-1,4
+5130,QUMAA,Quercus marilandica,Blackjack oak,1,16,28,-1,-1,3,4
+5140,QUMAA,Quercus marilandica,Blackjack oak,106,,28,-1,-1,-1,4
+5150,QUMAA2,Quercus marilandica,Blackjack oak,1,16,28,-1,-1,3,4
+5160,QUMAA2,Quercus marilandica,Blackjack oak,106,,28,-1,-1,-1,4
+5170,QUMAD,Quercus macrocarpa,Bur oak,1,21,28,-1,-1,3,4
+5180,QUMAM,Quercus macrocarpa,Bur oak,1,21,28,-1,-1,3,4
+5190,QUMAM2,Quercus marilandica,Blackjack oak,1,16,28,-1,-1,3,4
+5200,QUMAM2,Quercus marilandica,Blackjack oak,106,,28,-1,-1,-1,4
+5210,QUMAO,Quercus macrocarpa,Bur oak,1,21,28,-1,-1,3,4
+5220,QUMI,Quercus michauxii,Swamp chestnut oak,1,25,28,-1,-1,3,4
+5230,QUMO4,Quercus montana,Chestnut oak,1,28,28,-1,-1,3,4
+5240,QUMO4,Quercus montana,Chestnut oak,107,,28,-1,-1,-1,4
+5250,QUMU,Quercus muehlenbergii,Chinkapin oak,1,21,28,-1,-1,3,4
+5260,QUNI,Quercus nigra,Water oak,1,15,28,-1,-1,3,4
+5270,QUNIH,Quercus nigra,Water oak,1,15,28,-1,-1,3,4
+5280,QUNU,Quercus nuttallii,Nuttall oak,1,9,28,-1,-1,-1,4
+5290,QUNUC,Quercus nuttallii,Nuttall oak,1,9,28,-1,-1,-1,4
+5300,QUPA2,Quercus palustris,Pin oak,1,20,28,-1,-1,3,4
+5310,QUPH,Quercus phellos,Willow oak,1,20,28,-1,-1,3,4
+5320,QUPR2,Quercus montana,Chestnut oak,1,28,28,-1,-1,3,4
+5330,QUPR4,Quercus michauxii,Swamp chestnut oak,1,25,28,-1,-1,3,4
+5340,QURU,Quercus rubra,Northern red oak,1,21,28,-1,-1,3,4
+5350,QURUA,Quercus rubra,Northern red oak,1,21,28,-1,-1,3,4
+5360,QURUB,Quercus rubra,Northern red oak,1,21,28,-1,-1,3,4
+5370,QURUR,Quercus rubra,Northern red oak,1,21,28,-1,-1,3,4
+5380,QUSH,Quercus shumardii,Shumard's k,1,16,28,-1,-1,3,4
+5390,QUSHS,Quercus shumardii,Shneck oak,1,16,28,-1,-1,3,4
+5400,QUSHS2,Quercus shumardii,Shumard oak,1,16,28,-1,-1,3,4
+5410,QUSHS3,Quercus shumardii,Shumard oak,1,16,28,-1,-1,3,4
+5420,QUST,Quercus stellata,Post oak,1,23,28,-1,-1,3,4
+5430,QUSTA2,Quercus stellata,Post oak,1,23,28,-1,-1,3,4
+5440,QUSTP2,Quercus stellata,Post oak,1,23,28,-1,-1,3,4
+5450,QUTE,Quercus texana,Texas red oak,1,9,28,-1,-1,-1,4
+5460,QUVE,Quercus velutina,Black oak,1,24,28,-1,-1,3,4
+5470,QUVE,Quercus velutina,Black oak,108,,28,-1,-1,-1,4
+5480,QUVEM,Quercus velutina,Black oak,1,24,28,-1,-1,3,4
+5490,QUVI,Quercus virginiana,Live oak,1,22,28,-1,-1,-1,4
+5500,QUWI2,Quercus wislizeni,Interior live oak,1,13,28,-1,2,-1,-1
+5510,QUWIF,Quercus wislizeni,Interior live oak,1,13,28,-1,2,-1,-1
+5520,QUWIW,Quercus wislizeni,Interior live oak,1,13,28,-1,2,-1,-1
+5530,ROPS,Robinia pseudoacacia,Black locust,1,28,39,-1,-1,3,4
+5540,RURU5,Acer rubrum, Red maple,100,,21,-1,-1,-1,4
+5550,SAAL5,Sassafras albidum,Sassafras,1,14,39,-1,-1,3,4
+5560,SAAL5,Sassafras albidum,Sassafras,109,,39,-1,-1,-1,4
+5570,SABE2,Salix bebbiana,Bebb willow,1,19,37,-1,-1,3,-1
+5580,SABED,Salix bebbiana,Bebb willow,1,19,37,-1,-1,3,-1
+5590,SABEL,Salix bebbiana,Bebb willow,1,19,37,-1,-1,3,-1
+5600,SABEP,Salix bebbiana,Bebb willow,1,19,37,-1,-1,3,-1
+5610,SABEP2,Salix bebbiana,Bebb willow,1,19,37,-1,-1,3,-1
+5620,SALSPP,Salix species,Willows,1,20,37,-1,2,3,4
+5630,SANI,Salix nigra,Black willow,1,19,37,-1,-1,3,4
+5640,SANIA2,Salix nigra,Black willow,1,19,37,-1,-1,3,4
+5650,SANIA2,Salix nigra,Black willow,1,19,37,-1,-1,3,4
+5660,SANIB,Salix nigra,Black willow,1,19,37,-1,-1,3,4
+5670,SANIB2,Salix nigra,Black willow,1,19,37,-1,-1,3,4
+5680,SANIF2,Salix nigra,Black willow,1,19,37,-1,-1,3,4
+5690,SANIL2,Salix nigra,Black willow,1,19,37,-1,-1,3,4
+5700,SANIL3,Salix nigra,Black willow,1,19,37,-1,-1,3,4
+5710,SANIM2,Salix nigra,Black willow,1,19,37,-1,-1,3,4
+5720,SEGI2,Sequoia gigantea,Giant sequoia,1,39,17,-1,2,-1,-1
+5730,SEGI3,Sequoia gigantea,Giant sequoia,1,39,17,-1,2,-1,-1
+5740,SESE3,Sequoia sempervirens,Redwood,1,39,17,-1,2,-1,-1
+5750,SOAM3,Sorbus americana,American mountain-ash,1,19,39,-1,-1,3,-1
+5760,TAAS,Taxodium ascendens,Pond cypress,1,21,39,-1,-1,-1,4
+5770,TABR2,Taxus brevifolia,Pacific yew,1,4,33,1,2,-1,-1
+5780,TADI2,Taxodium distichum,Bald cypress,1,4,39,-1,-1,3,4
+5790,TADII,Taxodium ascendens,Pond cypress,1,21,39,-1,-1,-1,4
+5800,TADIN,Taxodium ascendens,Pond cypress,1,21,39,-1,-1,-1,4
+5810,THOC2,Thuja occidentalis,arborvitae,1,4,18,-1,-1,3,4
+5820,THOCF,Thuja occidentalis,arborvitae,1,4,18,-1,-1,3,4
+5830,THOCM3,Thuja occidentalis,arborvitae,1,4,18,-1,-1,3,4
+5840,THOCN,Thuja occidentalis,arborvitae,1,4,18,-1,-1,3,4
+5850,THOCP3,Thuja occidentalis,arborvitae,1,4,18,-1,-1,3,4
+5860,THPL,Thuja plicata,Western redcedar,1,14,18,1,2,-1,-1
+5870,THUSPP,Thuja species,Arborvitae,1,12,18,-1,-1,3,4
+5880,TIAM,Tilia americana,American basswod,1,17,39,-1,-1,3,4
+5890,TIAMA,Tilia americana,American basswod,1,17,39,-1,-1,3,4
+5900,TIAMC,Tilia americana,Carolina basswod,1,17,39,-1,-1,3,4
+5910,TIAMH,Tilia americana,American basswod,1,29,39,-1,-1,3,4
+5920,TIAMN,Tilia americana,American basswod,1,17,39,-1,-1,3,4
+5930,TIHE,Tilia heterophylla,White basswood,1,29,39,-1,-1,3,4
+5940,TSCA,Tsuga canadensis,Eastern hemlock,1,18,19,-1,-1,3,4
+5950,TSHE,Tsuga heterophylla,Western hemlock,1,19,19,1,2,-1,-1
+5960,TSME,Tsuga mertensiana,Mountain hemlock,1,19,20,1,2,-1,-1
+5970,ULAL,Ulmus alata,Winged elm,1,10,39,-1,-1,3,4
+5980,ULAM,Ulmus americana,American elm,1,10,39,-1,-1,3,4
+5990,ULAMF2,Ulmus americana,American elm,1,10,39,-1,-1,3,4
+6000,ULMSPP,Ulmus species,Elms,1,18,39,-1,-1,3,4
+6010,ULPU,Ulmus pumila,Siberian elm,1,17,39,-1,-1,3,4
+6020,ULRA,Ulmus racemosa,Rock elm,1,12,39,-1,-1,3,4
+6030,ULRU,Ulmus rubra,Slippery elm,1,11,39,-1,-1,3,4
+6040,ULTH,Ulmus thomasii,Rock elm,1,12,39,-1,-1,3,4
+6050,UMCA,Umbellularia californica,California-laurel,1,5,39,-1,2,-1,-1
+6060,UMCAC,Umbellularia californica,California-laurel,1,5,39,-1,2,-1,-1
+6070,UMCAF,Umbellularia californica,California-laurel,1,5,39,-1,2,-1,-1

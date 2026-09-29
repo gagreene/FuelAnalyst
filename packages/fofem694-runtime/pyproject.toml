@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fuel-analyst-fofem694-runtime"
+version = "0.1.0"
+description = "Official USDA Forest Service FOFEM 6.9.4 batch runtime (runfofem.exe) for FuelAnalyst's model_select='fof_gui' emissions backend. Windows x64 only."
+readme = {file = "README.md", content-type = "text/markdown"}
+requires-python = ">=3.11"
+authors = [
+    {name = "Gregory A. Greene"},
+]
+keywords = ["fuel", "wildfire", "FOFEM", "runfofem"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+]
+# No install_requires: this is a data-only runtime package. It does not depend on
+# fuel-analyst and does not download anything at install time or at import time.
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/gagreene/FuelAnalyst"
+Repository = "https://github.com/gagreene/FuelAnalyst"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# setup.py copies these assets from the tracked FuelAnalyst source bundle into build/lib.
+fuel_analyst_fofem694_runtime = [
+    "runfofem.exe",
+    "Emission_Factors.csv",
+    "fof_spp.csv",
+    "README.txt",
+    "PROVENANCE.md",
+    "doc/LICENSE",
+    "doc/Runfofem_User_Guide.pdf",
+]

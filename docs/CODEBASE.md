@@ -63,7 +63,58 @@ FuelAnalyst uses a standard `src` package layout and is installable with
 The package supports Python 3.11 through 3.14, tested on Windows, Linux, and
 macOS. The `conpyro` extra installs the bounded `flame-components>=0.1.1,<0.2`
 distribution from PyPI; ConPyro itself is currently installed from its GitHub
-repository.
+repository. The `fofem` extra installs the bounded `pyfofem-fire-effects>=0.1.1,<0.2`
+distribution from PyPI (imports as `pyfofem`, matching the prior GitHub checkout's
+import name) and needs no Git checkout for the Python-backed `model_select='pyfofem'`
+emissions path (mortality automation is pyfofem-only; the official FOFEM app is never
+invoked for mortality - see below). The `model_select='fof_gui'` batch backend
+(`fofem_gui_emissions.py`) invokes the official USFS FOFEM 6.9.4 `runfofem.exe` directly -
+Windows x64 only - and no longer depends on the `dependencies/pyfofem` submodule or the
+`pyfofem` package at all.
+
+`_get_fofem_dir()` resolves the runtime directory in this order, validating `runfofem.exe`
+and both required CSVs at each tier (not just the directory's existence) and raising a clear,
+immediate `FileNotFoundError` naming the gap before any row is processed if none resolve:
+1. `FUEL_ANALYST_FOFEM_DIR` env var - an external FOFEM 6.9.4 installation, for any install
+   type.
+2. The installed `fuel-analyst-fofem694-runtime` package (`packages/fofem694-runtime/`) -
+   `import fuel_analyst_fofem694_runtime; .get_runtime_dir()`, resolved via
+   `importlib.resources.files()` so it works regardless of install location. This is a
+   separate, optional, Windows-only wheel (`py3-none-win_amd64`, forced via that project's own
+   `setup.cfg`'s `[bdist_wheel] plat_name`), distinct from the main `fuel-analyst` wheel
+   (`py3-none-any`) and from the `fofem` extra above. Install it from a checkout with
+   `pip install ./packages/fofem694-runtime`, or use
+   `pip install fuel-analyst-fofem694-runtime` after its wheel is published. It bundles
+   `runfofem.exe`, `Emission_Factors.csv`, `fof_spp.csv`, the upstream
+   `README.txt` and `doc/` (`LICENSE`, `Runfofem_User_Guide.pdf`, preserved byte-for-byte at
+   their original relative paths per upstream's own request), and a generated `PROVENANCE.md`
+   - but no Microsoft Visual C++ runtime DLLs; those are a documented, separately-installed
+   Windows prerequisite (see the Gotchas table), not bundled in either wheel.
+3. The bundled `src/fuel_analyst/supporting_data/fofem_694` directory - a Git source checkout
+   only; it carries the same 7 files, tracked in Git, and needs no override.
+
+The tracked source bundle is updated from the pinned upstream release by
+`update_fofem_694_runtime.sh` (repo root), which downloads the exact pinned ZIP URL, verifies
+its SHA-256 before extracting anything, and fails loudly on upstream drift. The separate wheel
+copies its seven assets from that bundle during the build, so a fresh checkout has one source
+for both locations. `Emission_Factors.csv` is FuelAnalyst's own tested
+copy - one trailing space removed relative to upstream's copy of this file (otherwise causes
+a Python warning) - never overwritten by the update script; `fof_spp.csv` is byte-identical to
+upstream's own copy. Bundling the official FOFEM binaries in a *published* PyPI wheel is a
+redistribution/licensing decision that has not been made for either wheel; resolve it
+explicitly before publishing to PyPI. `doc/LICENSE` states the software was developed by
+federal employees as part of official duties and is public domain - a different license than
+FuelAnalyst's own MIT-licensed code (root `LICENSE` file).
+
+Tree mortality is never run through the official FOFEM application automatically:
+`fofem_attributes.gen_fofem_gui_app_tree_df()` produces a `.tre`-format hand-off CSV
+(`fofem_gui_app_tree_mortality_df.csv`) that the analyst submits to their own FOFEM 6.9.4
+installation themselves (GUI or `runfofem.exe` run type 2); FuelAnalyst's own automated
+mortality modelling (`run_conpyro()`'s `fofem_mortality` step) always uses the pyfofem CRNSCH
+backend, which has no `model_select` option. The official batch mortality tool's own output
+is also plot-level aggregated (Density/BA/CanopyCover Pre-Post-Killed, `MortAvg`), not the
+per-tree probability pyfofem's backend produces - a different granularity, not a drop-in
+alternative, which is why it isn't wired into `run_conpyro()` as a `model_select` choice.
 
 ## Public API
 
