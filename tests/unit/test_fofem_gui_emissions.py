@@ -205,14 +205,16 @@ def test_convert_consume_row_to_imperial_does_not_add_or_remove_columns():
 
 def test_write_burnup_params_694_matches_verified_fixture_byte_for_byte(tmp_path):
     """The verified tests/test_data/fofem694/burnup_parameters_694.brn fixture used these exact
-    five dynamic values; regenerating with them must reproduce it byte-for-byte."""
+    five dynamic values; regenerating must reproduce its content with Windows CRLF."""
     out_path = tmp_path / 'burnup.brn'
     fofem_gui_emissions._write_burnup_params_694(
         str(out_path), intensity=500, ig_time=60, windspeed=2, depth=0.3, ambient_temp=20,
     )
     fixture_path = os.path.join(_BUNDLE_FIXTURE_DIR, 'burnup_parameters_694.brn')
     with open(fixture_path, 'rb') as f:
-        expected = f.read()
+        # Git can check out this text fixture with LF on Linux; the writer always
+        # emits CRLF for the Windows batch application on every platform.
+        expected = f.read().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
     with open(out_path, 'rb') as f:
         actual = f.read()
     assert actual == expected
@@ -334,6 +336,44 @@ def _write_runfofem_output_csv(path, header_cols, plot_ids, data_row_values):
         f.write('Id,' + ','.join(['x'] * (len(header_cols) - 1)) + '\n')
         for plot_id, values in zip(plot_ids, data_row_values):
             f.write(f'"{plot_id}", ' + ', '.join(str(v) for v in values) + '\n')
+
+
+@pytest.mark.parametrize('platform', ['win32', 'linux'])
+def test_run_runfofem_uses_platform_launcher(tmp_path, monkeypatch, platform):
+    """Windows runs the EXE directly; Linux launches Wine without Windows flags."""
+    fofem_dir = tmp_path / 'runtime with spaces'
+    fofem_dir.mkdir()
+    exe_path = fofem_dir / fofem_gui_emissions._RUNFOFEM_EXE
+    exe_path.write_text('x')
+    output_path = tmp_path / 'output.csv'
+    output_path.write_text('output')
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        return fofem_gui_emissions.subprocess.CompletedProcess(args, 0, '', '')
+
+    monkeypatch.setattr(fofem_gui_emissions.sys, 'platform', platform)
+    monkeypatch.setattr(fofem_gui_emissions.subprocess, 'run', fake_run)
+    if platform == 'win32':
+        monkeypatch.setattr(fofem_gui_emissions.subprocess, 'CREATE_NO_WINDOW', 0x08000000, raising=False)
+    else:
+        monkeypatch.delattr(fofem_gui_emissions.subprocess, 'CREATE_NO_WINDOW', raising=False)
+    monkeypatch.setenv('WINEPREFIX', str(tmp_path / 'prefix'))
+
+    fofem_gui_emissions._run_runfofem(
+        '2', str(tmp_path / 'input.tre'), str(output_path), str(tmp_path / 'error.txt'),
+        str(tmp_path), str(fofem_dir), extra_args=['S', '10'],
+    )
+
+    args, kwargs = calls[0]
+    expected_args = [str(exe_path), '2', str(tmp_path / 'input.tre'), str(output_path),
+                     str(tmp_path / 'error.txt'), 'S', '10']
+    assert args == (['wine'] + expected_args if platform == 'linux' else expected_args)
+    assert kwargs['creationflags'] == (0x08000000 if platform == 'win32' else 0)
+    assert kwargs['cwd'] == str(tmp_path)
+    assert kwargs['env']['FOFEM_DATA'] == str(fofem_dir)
+    assert kwargs['env']['WINEPREFIX'] == str(tmp_path / 'prefix')
 
 
 def test_run_runfofem_raises_actionable_error_on_missing_vcredist_dll(tmp_path, monkeypatch):

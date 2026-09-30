@@ -10,6 +10,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 from typing import Union
 
 import numpy as np
@@ -692,7 +693,9 @@ def _run_runfofem(
     nonsensical concatenated path) when the input file argument itself is given as a relative
     path - verified directly against the bundled executable. FOFEM_DATA and PATH are both set
     to fofem_dir so runfofem.exe can find Emission_Factors.csv/fof_spp.csv regardless of the
-    caller's own environment. The Microsoft Visual C++ runtime must be installed separately.
+    caller's own environment. On Linux, Wine must be on PATH and the Microsoft Visual
+    C++ runtime must be provisioned in the selected Wine prefix. Linux calls explicitly
+    invoke Wine rather than requiring a binfmt_misc handler or executable permission.
 
     :param run_type: '0' (consumption/emissions), '1' (consumption/emissions/soil), or '2'
         (mortality).
@@ -718,6 +721,8 @@ def _run_runfofem(
         )
 
     args = [exe_path, str(run_type), os.path.abspath(input_path), os.path.abspath(output_path), os.path.abspath(error_path)]
+    if sys.platform == 'linux':
+        args.insert(0, 'wine')
     if extra_args:
         args.extend(str(a) for a in extra_args)
 
@@ -731,7 +736,7 @@ def _run_runfofem(
         env=env,
         capture_output=True,
         text=True,
-        creationflags=subprocess.CREATE_NO_WINDOW,
+        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0,
     )
 
     real_errors = _read_runfofem_error_file(error_path)
