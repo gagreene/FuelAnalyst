@@ -70,7 +70,7 @@ emissions path (mortality automation is pyfofem-only; the official FOFEM app is 
 invoked for mortality - see below). The `model_select='fof_gui'` batch backend
 (`fofem_gui_emissions.py`) invokes the official USFS FOFEM 6.9.4 `runfofem.exe` directly
 on Windows x64 or explicitly through `wine` on Linux x64, and no longer depends
-on the `dependencies/pyfofem` submodule or the `pyfofem` package at all.
+on the `pyfofem` package at all.
 
 Linux execution requires Wine on PATH and an appropriate 64-bit Wine prefix,
 normally provisioned with `winetricks -q vcrun2022` - prefer fetching the latest

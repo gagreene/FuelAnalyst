@@ -25,7 +25,7 @@ except ImportError:
     _TQDM_PROCESS_MAP_AVAILABLE = False
 
 # Matches pyfofem's Burnup _FIRE_BOUNDS['ti'] (surface fire residence time,
-# seconds) -- dependencies/pyfofem/src/pyfofem/components/burnup.py. Below
+# seconds) -- pyfofem-fire-effects, src/pyfofem/components/burnup.py. Below
 # the min, Burnup hard-fails (BurnupError 11) and silently skips the
 # consumption/emissions merge; above the max, Burnup already clips
 # internally. Re-verify these against pyfofem if it's updated.

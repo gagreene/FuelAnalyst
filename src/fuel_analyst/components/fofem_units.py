@@ -30,7 +30,7 @@ _CONSUME_FILENAME_UNITS = {
 
 # Final emissions/consumption RESULT fields (pyfofem.run_fofem_emissions()'s return dict, per
 # emission_pipeline.py's build_emissions_result()), grouped by actual output dimension. Verified
-# directly against dependencies/pyfofem source, not the module's own (partially inaccurate, e.g.
+# directly against the pyfofem-fire-effects source, not the module's own (partially inaccurate, e.g.
 # 'Shurb-Equ' vs the EQUATION_VARS constant's 'Shrub-Equ') exported name lists. Loads (kg/m2 or
 # US short tons/acre):
 EMISSIONS_LOAD_RESULT_FIELDS = [
