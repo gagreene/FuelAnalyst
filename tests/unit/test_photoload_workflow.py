@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import io
 from pathlib import Path
 
 import numpy as np
@@ -31,11 +33,9 @@ from models.photoload.photoload.masks import (
     ridge_rescue_mask,
     ridge_rescue_sweep,
 )
+from models.photoload.photoload import source_pdf, workflow
 from models.photoload.photoload.workflow import (
     CALIBRATION_CSV,
-    EXPECTED_SOURCE_PDF_SHA256,
-    _sha256,
-    _validate_source_pdf,
     run_workflow,
 )
 
@@ -151,25 +151,25 @@ def test_run_workflow_rejects_unexpected_pdf_before_writing(tmp_path: Path) -> N
     assert not output_dir.exists()
 
 
-def test_source_pdf_digest_matches_documented_value() -> None:
-    """The stored report must match the exact production input."""
-    repository_root = Path(__file__).resolve().parents[2]
-    pdf_path = (
-        repository_root
-        / "docs"
-        / "reference"
-        / "rmrs_gtr190_Kean_and_Dickinson_2007.pdf"
+def test_source_pdf_download_rejects_changed_report(tmp_path: Path, monkeypatch) -> None:
+    """Discard a downloaded report if its digest differs from the reference."""
+    monkeypatch.setattr(source_pdf, "urlopen", lambda url, timeout: io.BytesIO(b"changed"))
+    destination = tmp_path / "report.pdf"
+
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        source_pdf.download_source_pdf(destination)
+
+    assert not destination.exists()
+
+
+def test_source_pdf_download_validates_and_returns_report(tmp_path: Path, monkeypatch) -> None:
+    """Accept a downloaded report only after digest validation."""
+    report = b"%PDF-1.4\nexample report"
+    monkeypatch.setattr(source_pdf, "urlopen", lambda url, timeout: io.BytesIO(report))
+    monkeypatch.setattr(
+        workflow, "EXPECTED_SOURCE_PDF_SHA256", hashlib.sha256(report).hexdigest()
     )
-    assert _sha256(pdf_path) == EXPECTED_SOURCE_PDF_SHA256
-    assert _validate_source_pdf(pdf_path) == EXPECTED_SOURCE_PDF_SHA256
+    destination = tmp_path / "report.pdf"
 
-
-def test_source_pdf_is_stored_at_the_documented_location() -> None:
-    """The production workflow's default source report must be in the repo."""
-    repository_root = Path(__file__).resolve().parents[2]
-    assert (
-            repository_root
-            / "docs"
-            / "reference"
-            / "rmrs_gtr190_Kean_and_Dickinson_2007.pdf"
-    ).is_file()
+    assert source_pdf.download_source_pdf(destination) == destination
+    assert destination.read_bytes() == report

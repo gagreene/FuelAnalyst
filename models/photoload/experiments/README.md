@@ -63,6 +63,9 @@ python -m pip install -e ".[photoload]"
 python models/photoload/experiments/run_range_experiment.py
 ```
 
+The script downloads and verifies the PhotoLoad report on each default run.
+Use `--pdf PATH` to supply a local copy when offline.
+
 The default output is the ignored `models/photoload/.work/range_experiment`
 directory. A different location can be supplied without editing source code:
 

@@ -4,18 +4,14 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from photoload import run_workflow
+from photoload.source_pdf import download_source_pdf
 
 
 MODEL_ROOT = Path(__file__).resolve().parent
 DEFAULT_OUTPUT_DIR = MODEL_ROOT / ".work"
-DEFAULT_PDF = (
-    MODEL_ROOT.parents[1]
-    / "docs"
-    / "reference"
-    / "rmrs_gtr190_Kean_and_Dickinson_2007.pdf"
-)
 
 
 def main() -> None:
@@ -34,11 +30,14 @@ def main() -> None:
     parser.add_argument(
         "--pdf",
         type=Path,
-        default=DEFAULT_PDF,
-        help=f"Source PhotoLoad PDF (default: {DEFAULT_PDF})",
+        help="Local PhotoLoad PDF (default: download from the US Forest Service)",
     )
     args = parser.parse_args()
-    run_workflow(pdf_path=args.pdf, output_dir=args.output_dir)
+    with TemporaryDirectory() as temporary_dir:
+        pdf_path = args.pdf or download_source_pdf(
+            Path(temporary_dir) / "rmrs_gtr190_Keane_and_Dickinson_2007.pdf"
+        )
+        run_workflow(pdf_path=pdf_path, output_dir=args.output_dir)
 
 
 if __name__ == "__main__":

@@ -14,9 +14,7 @@ This intentionally excludes FBP fuel typing and weather extraction/merge
 run_weather_conpyro_pipeline.py`` for those, and for regenerating the
 committed weather-merged dataset this script reads against fresh/real NRCAN
 weather. For a fuller, narrated walkthrough of the coding steps rather than
-a runnable demo, see the sibling ``Demo-WorkingWithConPyro`` tutorial repo
-(a standalone, Quarto/Jupyter-free version of that walkthrough is a planned
-follow-up, not yet built).
+a runnable demo, see ``examples/tutorial/FuelAnalyst_Tutorial.ipynb``.
 
 Runs ConPyro fire behavior and flame components, FOFEM mortality, and FOFEM
 emissions (via pyfofem) - the full default feature set from

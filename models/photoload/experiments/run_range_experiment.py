@@ -7,6 +7,7 @@ import json
 import math
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import matplotlib
 
@@ -31,15 +32,10 @@ from photoload.masks import (  # noqa: E402
     maximum_eligible_ridge_response,
     source_mask_variations,
 )
+from photoload.source_pdf import download_source_pdf  # noqa: E402
 from photoload.workflow import CALIBRATION_CSV  # noqa: E402
 
 DEFAULT_OUTPUT_DIR = MODEL_ROOT / ".work" / "range_experiment"
-DEFAULT_PDF = (
-        MODEL_ROOT.parents[1]
-        / "docs"
-        / "reference"
-        / "rmrs_gtr190_Kean_and_Dickinson_2007.pdf"
-)
 RIDGE_INCREMENT = 0.005
 SOURCE_LABELS = {
     "variation_1_cielab": "1. CIELAB",
@@ -343,9 +339,16 @@ def main() -> None:
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
-    parser.add_argument("--pdf", type=Path, default=DEFAULT_PDF)
+    parser.add_argument(
+        "--pdf", type=Path,
+        help="Local PhotoLoad PDF (default: download from the US Forest Service)",
+    )
     args = parser.parse_args()
-    run_experiments(args.pdf, args.output_dir)
+    with TemporaryDirectory() as temporary_dir:
+        pdf_path = args.pdf or download_source_pdf(
+            Path(temporary_dir) / "rmrs_gtr190_Keane_and_Dickinson_2007.pdf"
+        )
+        run_experiments(pdf_path, args.output_dir)
 
 
 def run_experiments(pdf_path: Path, output_dir: Path) -> None:

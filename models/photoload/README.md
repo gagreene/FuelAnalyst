@@ -5,8 +5,7 @@ PhotoLoad biomass equations reported by FuelAnalyst. The scientific methods
 are documented in
 [`methods/photoload_model_development.md`](methods/photoload_model_development.md).
 
-Starting from Keane and Dickinson's PhotoLoad report at
-[`docs/reference/rmrs_gtr190_Kean_and_Dickinson_2007.pdf`](../../docs/reference/rmrs_gtr190_Kean_and_Dickinson_2007.pdf),
+Starting from [Keane and Dickinson's PhotoLoad report](https://doi.org/10.2737/RMRS-GTR-190),
 the workflow extracts 81 appendix photographs, creates a common source mask,
 calculates morphology-group ensemble cover, fits origin-constrained candidate
 equations, applies the explicit multi-criteria choice for every species, and
@@ -43,8 +42,9 @@ different location can be supplied without editing source code:
 python models/photoload/run_pipeline.py --output-dir D:\analysis\photoload
 ```
 
-The bundled report is used by default. `--pdf PATH` can verify another copy.
-Its expected SHA-256 digest is
+The [US Forest Service PDF](https://research.fs.usda.gov/download/treesearch/26755.pdf)
+is downloaded to a temporary file on every default run. Use `--pdf PATH` to
+run with a local copy, including when offline. Both paths require SHA-256 digest
 `14eaeb69784e3f26dee23a67686fad9c86e50099aaca60bcc079f687d1c313c2`.
 
 Outputs are staged as follows:
