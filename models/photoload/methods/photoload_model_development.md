@@ -12,8 +12,8 @@ paper.
 
 The complete implementation is documented in the
 [`models/photoload` README](../README.md).
-The source publication is stored at
-[the bundled PhotoLoad report](../../../docs/reference/rmrs_gtr190_Kean_and_Dickinson_2007.pdf), and the
+The source publication is available as
+[the Keane and Dickinson PhotoLoad report](https://doi.org/10.2737/RMRS-GTR-190), and the
 81-image calibration fixture is stored at
 [`data/paper_calibration.csv`](../data/paper_calibration.csv).
 
@@ -306,9 +306,10 @@ python -m pip install -e ".[photoload]"
 python models/photoload/run_pipeline.py
 ```
 
-The default source is the bundled report and the default output is the ignored
-`models/photoload/.work` directory. Both the PDF and output path may be
-overridden explicitly. The stored report has SHA-256 digest
+The report is downloaded from the US Forest Service on each default run, and
+the default output is the ignored `models/photoload/.work` directory. A local
+PDF can be supplied with `--pdf`, and the output path can also be overridden.
+The expected report has SHA-256 digest
 `14eaeb69784e3f26dee23a67686fad9c86e50099aaca60bcc079f687d1c313c2`.
 
 The production run writes the extracted photographs, source masks, ensemble
