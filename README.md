@@ -159,7 +159,8 @@ distribution from PyPI. The `fofem` extra installs the bounded
 default `model_select='pyfofem'` emissions backend, which works on Windows, Linux, and macOS.
 
 The `model_select='fof_gui'` backend runs the official USFS FOFEM 6.9.4 batch application
-(`runfofem.exe`) instead - **Windows x64 only**. From a repository checkout, install its
+(`runfofem.exe`) instead. It runs on Windows x64 and on Linux x64 through Wine
+(validated with Wine 9.0 on Ubuntu 24.04). For Windows, install its
 separate, optional runtime package with:
 
 ```shell
@@ -180,6 +181,23 @@ Windows install that never selects `fof_gui`) is unaffected. `runfofem.exe` also
 to be installed separately on the host - it is not bundled in either wheel. Without it,
 `runfofem.exe` fails to start and FuelAnalyst reports one clear error naming the missing
 runtime rather than a raw subprocess failure.
+
+On Linux, install Wine and winetricks, then provision a 64-bit Wine prefix:
+
+```shell
+export WINEPREFIX="$HOME/.wine-fofem694"
+export WINEARCH=win64
+winetricks -q vcrun2022
+export FUEL_ANALYST_FOFEM_DIR="$(pwd)/src/fuel_analyst/supporting_data/fofem_694"
+```
+
+Run FuelAnalyst with these environment variables and `wine` on PATH. Use the
+source-checkout bundle above or an external FOFEM 6.9.4 bundle containing
+`runfofem.exe`, `Emission_Factors.csv`, and `fof_spp.csv`; the Windows runtime wheel
+cannot be installed on Linux. FuelAnalyst invokes Wine explicitly, so no
+`binfmt_misc` registration or executable permission on the EXE is required.
+See [Linux/Wine validation results](tests/manual/fofem694_linux_wine_validation_results.md)
+for the tested runtime version and results.
 
 `_get_fofem_dir()` resolves the runtime directory in order: the `FUEL_ANALYST_FOFEM_DIR`
 environment variable (an external FOFEM 6.9.4 installation, for overriding either of the

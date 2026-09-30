@@ -68,9 +68,19 @@ distribution from PyPI (imports as `pyfofem`, matching the prior GitHub checkout
 import name) and needs no Git checkout for the Python-backed `model_select='pyfofem'`
 emissions path (mortality automation is pyfofem-only; the official FOFEM app is never
 invoked for mortality - see below). The `model_select='fof_gui'` batch backend
-(`fofem_gui_emissions.py`) invokes the official USFS FOFEM 6.9.4 `runfofem.exe` directly -
-Windows x64 only - and no longer depends on the `dependencies/pyfofem` submodule or the
-`pyfofem` package at all.
+(`fofem_gui_emissions.py`) invokes the official USFS FOFEM 6.9.4 `runfofem.exe` directly
+on Windows x64 or explicitly through `wine` on Linux x64, and no longer depends
+on the `dependencies/pyfofem` submodule or the `pyfofem` package at all.
+
+Linux execution requires Wine on PATH and an appropriate 64-bit Wine prefix,
+normally provisioned with `winetricks -q vcrun2022`. `_run_runfofem()` preserves
+`WINEPREFIX`, prepends `wine` to the command on Linux, and sets Windows creation
+flags only on Windows. It requires neither execute permission on the EXE nor a
+`binfmt_misc` handler. Consumption, soil, and mortality hand-off integration
+tests passed on Ubuntu 24.04 with Wine 9.0; see
+`tests/manual/fofem694_linux_wine_validation_results.md`. The optional runtime
+wheel remains Windows-only; Linux uses the source bundle or an external bundle
+selected by `FUEL_ANALYST_FOFEM_DIR`.
 
 `_get_fofem_dir()` resolves the runtime directory in this order, validating `runfofem.exe`
 and both required CSVs at each tier (not just the directory's existence) and raising a clear,

@@ -102,6 +102,9 @@ mkdir -p "$APP_DIR" "$DATA_DIR"
 cp "$BUNDLE_DIR/runfofem.exe" "$APP_DIR/runfofem.exe"
 cp "$BUNDLE_DIR/Emission_Factors.csv" "$APP_DIR/Emission_Factors.csv"
 cp "$BUNDLE_DIR/fof_spp.csv" "$APP_DIR/fof_spp.csv"
+# FOFEM resolves its reference CSVs through FOFEM_DATA, not the executable's
+# directory. Use a Windows path so the batch application can read it under Wine.
+export FOFEM_DATA="$(winepath -w "$APP_DIR" | tr -d '\r\n')"
 cp "$BURNUP_FIXTURE" "$DATA_DIR/Burnup-Params.brn"
 if [ "$INCLUDE_MORTALITY" -eq 1 ]; then
     cp "$MORTALITY_FIXTURE" "$DATA_DIR/FFI_FOFEM_Sample.tre"
@@ -110,10 +113,11 @@ fi
 echo "=== Environment ==="
 echo "uname: $(uname -a)"
 echo "wine: $(wine --version)"
-echo "winetricks: $(winetricks --version 2>&1 | head -1)"
+echo "winetricks: $(winetricks --version 2>&1 | sed -n '/^[0-9]/p')"
 echo "WINEPREFIX: $WINEPREFIX"
 echo "WINEARCH: $WINEARCH"
 echo "Bundle dir: $BUNDLE_DIR"
+echo "FOFEM_DATA: $FOFEM_DATA"
 echo
 
 write_consumption_input() {
@@ -167,6 +171,9 @@ run_case() {
     if [ "$expect_failure" -eq 1 ]; then
         if [ "$rc" -ne 0 ] || [ ! -s "$output" ]; then
             echo "$name: FAIL AS EXPECTED (preflight, exit $rc) - runfofem.exe could not run correctly."
+            if [ -f "$error" ]; then
+                cat "$error"
+            fi
             return 0
         fi
         echo "$name: UNEXPECTEDLY SUCCEEDED before vcrun2022 provisioning (exit $rc)."
