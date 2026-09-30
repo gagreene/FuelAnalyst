@@ -15,12 +15,24 @@
 # tests/integration/test_fofem694_official_batch.py's
 # test_process_emissions_consumption_mode_matches_direct_runfofem_output for the source of the
 # consumption row. This script only proves runfofem.exe itself runs correctly under Wine; it
-# does not exercise FuelAnalyst's Python code - see the companion
-# fofem694_linux_wine_validation.md for the follow-up steps that do.
+# does not exercise FuelAnalyst's Python code - see fofem_gui_emissions.py's _run_runfofem()
+# and tests/integration/test_fofem694_official_batch.py for the real end-to-end path.
+#
+# By default this script downloads the latest winetricks script from GitHub (a single
+# dependency-free shell script) rather than trusting whatever distro package is on PATH.
+# Reason: Microsoft serves vc_redist.x86.exe/vc_redist.x64.exe from stable "evergreen" URLs
+# that it updates in place, so winetricks' pinned SHA-256 hashes for them go stale between
+# winetricks releases - and distro packaging lags further still. Verified directly: Ubuntu
+# 24.04's winetricks 20240105-2 and Ubuntu 26.04's winetricks 20250102-1build1 both reported a
+# hash mismatch for the same current Microsoft download, while upstream winetricks' git
+# master had the correct current hash both times (its own changelog comments confirm the file
+# genuinely hadn't changed since master's last update - the distro packages were simply behind
+# it, not Microsoft or Wine). See fofem694_linux_wine_validation_results.md in this branch's
+# git history for the exact downloaded/expected hash values from both hosts.
 #
 # Usage:
 #   bash tests/manual/fofem694_linux_wine_smoke.sh [--bundle-dir DIR] [--wineprefix DIR]
-#       [--skip-preflight] [--include-mortality] [--keep]
+#       [--skip-preflight] [--include-mortality] [--keep] [--use-system-winetricks]
 #
 #   --bundle-dir DIR       Directory with runfofem.exe/Emission_Factors.csv/fof_spp.csv.
 #                          Defaults to the repository's tracked
@@ -32,6 +44,10 @@
 #                          the pre-provisioning failure separately.
 #   --include-mortality    Also run the mortality (run type 2) case, requiring fof_spp.csv.
 #   --keep                 Do not delete the temporary work directory on exit (for inspection).
+#   --use-system-winetricks
+#                          Skip downloading latest winetricks and use whatever 'winetricks' is
+#                          already on PATH instead (e.g. for an offline/air-gapped host, or if
+#                          you specifically want to reproduce the distro-packaged behavior).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -40,6 +56,7 @@ WINEPREFIX_ARG=""
 SKIP_PREFLIGHT=0
 INCLUDE_MORTALITY=0
 KEEP=0
+USE_SYSTEM_WINETRICKS=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -48,6 +65,7 @@ while [ $# -gt 0 ]; do
         --skip-preflight) SKIP_PREFLIGHT=1; shift ;;
         --include-mortality) INCLUDE_MORTALITY=1; shift ;;
         --keep) KEEP=1; shift ;;
+        --use-system-winetricks) USE_SYSTEM_WINETRICKS=1; shift ;;
         *) echo "Unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -57,8 +75,8 @@ if ! command -v wine >/dev/null 2>&1; then
     echo "Debian/Ubuntu, which also pulls in wine-binfmt for transparent .exe execution)." >&2
     exit 1
 fi
-if ! command -v winetricks >/dev/null 2>&1; then
-    echo "FATAL: 'winetricks' is not on PATH. Install it first (e.g. 'sudo apt install winetricks')." >&2
+if [ "$USE_SYSTEM_WINETRICKS" -eq 1 ] && ! command -v winetricks >/dev/null 2>&1; then
+    echo "FATAL: 'winetricks' is not on PATH and --use-system-winetricks was given." >&2
     exit 1
 fi
 
@@ -88,6 +106,40 @@ else
     echo "Work directory (kept): $WORKDIR"
 fi
 
+WINETRICKS_URL="https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks"
+WINETRICKS_SOURCE=""
+if [ "$USE_SYSTEM_WINETRICKS" -eq 1 ]; then
+    WINETRICKS_BIN="winetricks"
+    WINETRICKS_SOURCE="system PATH (--use-system-winetricks)"
+else
+    WINETRICKS_BIN="$WORKDIR/winetricks"
+    if command -v curl >/dev/null 2>&1; then
+        DOWNLOAD_OK=0
+        curl -fsSL -o "$WINETRICKS_BIN" "$WINETRICKS_URL" && DOWNLOAD_OK=1
+    elif command -v wget >/dev/null 2>&1; then
+        DOWNLOAD_OK=0
+        wget -q -O "$WINETRICKS_BIN" "$WINETRICKS_URL" && DOWNLOAD_OK=1
+    else
+        echo "WARNING: neither curl nor wget found; cannot fetch latest winetricks." >&2
+        DOWNLOAD_OK=0
+    fi
+    if [ "$DOWNLOAD_OK" -eq 1 ] && [ -s "$WINETRICKS_BIN" ]; then
+        chmod +x "$WINETRICKS_BIN"
+        WINETRICKS_SOURCE="downloaded from $WINETRICKS_URL"
+    elif command -v winetricks >/dev/null 2>&1; then
+        echo "WARNING: could not download latest winetricks; falling back to the system copy" >&2
+        echo "on PATH, which may have a stale SHA-256 pin for Microsoft's vc_redist download" >&2
+        echo "(see this script's header comment)." >&2
+        WINETRICKS_BIN="winetricks"
+        WINETRICKS_SOURCE="system PATH (download failed, fell back)"
+    else
+        echo "FATAL: could not download latest winetricks and no system 'winetricks' is on" >&2
+        echo "PATH either. Install it first (e.g. 'sudo apt install winetricks') or ensure" >&2
+        echo "network access to $WINETRICKS_URL." >&2
+        exit 1
+    fi
+fi
+
 if [ -n "$WINEPREFIX_ARG" ]; then
     export WINEPREFIX="$WINEPREFIX_ARG"
 else
@@ -113,7 +165,7 @@ fi
 echo "=== Environment ==="
 echo "uname: $(uname -a)"
 echo "wine: $(wine --version)"
-echo "winetricks: $(winetricks --version 2>&1 | sed -n '/^[0-9]/p')"
+echo "winetricks: $("$WINETRICKS_BIN" --version 2>&1 | sed -n '/^[0-9]/p') ($WINETRICKS_SOURCE)"
 echo "WINEPREFIX: $WINEPREFIX"
 echo "WINEARCH: $WINEARCH"
 echo "Bundle dir: $BUNDLE_DIR"
@@ -220,7 +272,7 @@ fi
 echo
 
 echo "=== Provisioning: winetricks vcrun2022 ==="
-winetricks -q vcrun2022
+"$WINETRICKS_BIN" -q vcrun2022
 echo "Provisioned."
 echo
 
@@ -259,7 +311,7 @@ fi
 echo "=== Summary ==="
 echo "Wine: $(wine --version)"
 echo "WINEARCH: $WINEARCH"
-echo "vcrun2022: provisioned via winetricks"
+echo "vcrun2022: provisioned via winetricks ($WINETRICKS_SOURCE)"
 echo "Consumption: $([ "$consumption_ok" -eq 1 ] && echo PASS || echo FAIL)"
 echo "Soil: $([ "$soil_ok" -eq 1 ] && echo PASS || echo FAIL)"
 if [ "$INCLUDE_MORTALITY" -eq 1 ]; then

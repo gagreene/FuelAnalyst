@@ -191,13 +191,21 @@ winetricks -q vcrun2022
 export FUEL_ANALYST_FOFEM_DIR="$(pwd)/src/fuel_analyst/supporting_data/fofem_694"
 ```
 
+**Prefer the latest `winetricks` script over your distro's packaged version** for the
+`vcrun2022` step above (`curl -fsSL -o winetricks https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks && chmod +x winetricks && ./winetricks -q vcrun2022`).
+Microsoft serves the Visual C++ Redistributable from a stable URL that it updates in place,
+so `winetricks`' pinned SHA-256 hash for it goes stale between `winetricks` releases, and
+distro packaging lags further still - verified directly on both Ubuntu 24.04 and 26.04, whose
+packaged `winetricks` both reported a hash mismatch that the current upstream script did not.
+`tests/manual/fofem694_linux_wine_smoke.sh` does this automatically by default.
+
 Run FuelAnalyst with these environment variables and `wine` on PATH. Use the
 source-checkout bundle above or an external FOFEM 6.9.4 bundle containing
 `runfofem.exe`, `Emission_Factors.csv`, and `fof_spp.csv`; the Windows runtime wheel
 cannot be installed on Linux. FuelAnalyst invokes Wine explicitly, so no
-`binfmt_misc` registration or executable permission on the EXE is required.
-See [Linux/Wine validation results](tests/manual/fofem694_linux_wine_validation_results.md)
-for the tested runtime version and results.
+`binfmt_misc` registration or executable permission on the EXE is required. Validated
+end to end (FuelAnalyst's real opt-in test suite against the actual bundled EXE) on
+Ubuntu 24.04.5 LTS with Wine 9.0 and Ubuntu 26.04.1 LTS with Wine 10.0.
 
 `_get_fofem_dir()` resolves the runtime directory in order: the `FUEL_ANALYST_FOFEM_DIR`
 environment variable (an external FOFEM 6.9.4 installation, for overriding either of the
