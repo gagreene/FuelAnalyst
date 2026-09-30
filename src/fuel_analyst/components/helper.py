@@ -149,7 +149,7 @@ def get_repo_root(start_dir: str) -> str:
     while True:
         if (
             os.path.isdir(os.path.join(current_dir, 'src', 'fuel_analyst'))
-            and os.path.isfile(os.path.join(current_dir, 'requirements.txt'))
+            and os.path.isfile(os.path.join(current_dir, 'pyproject.toml'))
         ):
             return current_dir
 
