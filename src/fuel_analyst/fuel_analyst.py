@@ -465,6 +465,30 @@ def _find_id_mismatches(plot_ids, form_ids) -> tuple[list, list]:
     return missing_from_form, extra_in_form
 
 
+def _validate_stand_summary_permutations(stand_summary_params: dict, out_dir: str) -> None:
+    """Report and reject combined stand summaries with no usable tree group.
+
+    :param stand_summary_params: Configured stand attributes and summary modes.
+    :param out_dir: Directory for the run's error report.
+    :return: None. Writes fuelanalyst_errors.csv before rejecting invalid input.
+    """
+    invalid_attributes = [
+        name for name, params in stand_summary_params.items()
+        if params.get('summary_permutation', 'all') == 'combined'
+        and not any(part != 'total' for part in params.get('summary', []))
+    ]
+    if invalid_attributes:
+        message = (
+            "summary_permutation='combined' requires at least one summary "
+            "other than 'total' for: " + ', '.join(invalid_attributes)
+        )
+        error_handling.get_logger('trees').error(
+            message, extra={'issue_code': 'combined_summary_total_only'}
+        )
+        error_handling.write_report(os.path.join(out_dir, 'fuelanalyst_errors.csv'))
+        raise ValueError(message)
+
+
 @error_handling.run_guard
 def fuel_analyst(
         in_dir: str,
@@ -582,6 +606,8 @@ def fuel_analyst(
             {k: v for k, v in fofem_consume_params['canopy_fuels'].items() if k != 'woody_debris_classes'}
         )
         woody_debris_params['woody_debris_classes'].update(fofem_consume_params['woody_debris_classes'])
+
+    _validate_stand_summary_permutations(stand_summary_params, out_dir)
 
     # Generate a list of columns to keep, using all columns in plot_df to begin with
     keep_columns = ['unique_id']
