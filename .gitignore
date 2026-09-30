@@ -81,6 +81,7 @@ models/photoload/.work/
 
 # Jupyter notebooks
 *.ipynb
+!examples/tutorial/*.ipynb
 .ipynb_checkpoints/
 
 # pytest
