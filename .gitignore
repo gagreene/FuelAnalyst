@@ -105,7 +105,6 @@ docs/commit-message-*.md
 
 # Retained local dependency checkout; FuelAnalyst installs the PyPI package.
 dependencies/flame_components/
-dependencies/pyfofem/
 
 # runfofem.exe's own shared-state file, written into FOFEM_DATA (the fofem_694 bundle
 # directory) by every real-EXE run against it, regardless of the caller's cwd.
