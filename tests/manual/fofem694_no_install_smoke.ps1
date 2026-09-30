@@ -101,6 +101,9 @@ try {
         Set-Content -LiteralPath $inputPath -Encoding Ascii -Value @(
             '#1k-SizeClass',
             '#ConsumptionEquation',
+            '#EFG-STFS 3',
+            '#EFG-CWDRSC 7',
+            '#EFG-DuffRSC 8',
             '#BurnUpFile Burnup-Params.brn',
             '#PlotId,Litter',
             $case.Row
