@@ -18,24 +18,35 @@ It can also prepare inputs for the Canadian Forest Fire Behaviour Prediction (FB
 
 ## Contents
 
-- [What FuelAnalyst produces](#what-fuelanalyst-produces)
-- [Processing workflow](#processing-workflow)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Run the included example](#run-the-included-example)
-- [Input data](#input-data)
-- [Outputs](#outputs)
-- [Public API](#public-api)
-- [Configuration](#configuration)
-- [Testing](#testing)
-- [Repository layout](#repository-layout)
-- [Important behavior and limitations](#important-behavior-and-limitations)
-- [Contributing](#contributing)
+- [What FuelAnalyst is/does](#what-fuelanalyst-isdoes)
+  - [What FuelAnalyst produces](#what-fuelanalyst-produces)
+  - [Processing workflow](#processing-workflow)
+- [How FuelAnalyst is structured](#how-fuelanalyst-is-structured)
+  - [Repository layout](#repository-layout)
+- [How to install FuelAnalyst](#how-to-install-fuelanalyst)
+  - [Requirements](#requirements)
+  - [Installation](#installation)
+  - [Optional fire-model dependencies](#optional-fire-model-dependencies)
+  - [PhotoLoad model-development dependencies](#photoload-model-development-dependencies)
+- [How to use FuelAnalyst](#how-to-use-fuelanalyst)
+  - [Input data](#input-data)
+  - [Run the included example](#run-the-included-example)
+  - [Outputs](#outputs)
+  - [Units and column-name abbreviations](#units-and-column-name-abbreviations)
+  - [Public API](#public-api)
+  - [Configuration](#configuration)
+  - [Stand summary permutations](#stand-summary-permutations)
+  - [Important behavior and limitations](#important-behavior-and-limitations)
+- [How to maintain/contribute to FuelAnalyst](#how-to-maintaincontribute-to-fuelanalyst)
+  - [Testing](#testing)
+  - [Contributing](#contributing)
 - [License](#license)
 
 For a shorter setup guide, see [QUICK_START.md](QUICK_START.md).
 
-## What FuelAnalyst produces
+## What FuelAnalyst is/does
+
+### What FuelAnalyst produces
 
 FuelAnalyst-owned calculations include:
 
@@ -52,7 +63,7 @@ FuelAnalyst-owned calculations include:
 
 External fire-behaviour and fire-effects calculations are separate downstream steps. The FuelAnalyst tests validate FuelAnalyst-owned preparation and orchestration without testing those dependency libraries themselves.
 
-## Processing workflow
+### Processing workflow
 
 ```mermaid
 flowchart LR
@@ -85,7 +96,51 @@ The normal sequence is:
 4. Merge weather with the prepared ConPyro table.
 5. Run ConPyro and/or FOFEM models.
 
-## Requirements
+## How FuelAnalyst is structured
+
+### Repository layout
+
+```text
+FuelAnalyst/
+|-- .github/workflows/       Release-tag test workflow
+|-- dependencies/            Optional model dependencies as Git submodules
+|-- docs/                    Codebase, result-field, and contribution references
+|-- examples/
+|   |-- data/                Checked-in Survey123 example inputs
+|   `-- results/             Generated example outputs, ignored by Git
+|-- models/photoload/        Reproducible PhotoLoad model-development workflow
+|-- src/fuel_analyst/
+|   |-- components/          FuelAnalyst processing components
+|   |   |-- canopy_cover.py          Canopy-cover summaries
+|   |   |-- conpyro_attributes.py    ConPyro input attributes
+|   |   |-- error_handling.py        Run-scoped issue reporting
+|   |   |-- fofem_attributes.py      FOFEM input preparation
+|   |   |-- fofem_emissions.py       pyFOFEM emissions
+|   |   |-- fofem_gui_emissions.py   FOFEM batch backend
+|   |   |-- fofem_mortality.py       pyFOFEM tree mortality
+|   |   |-- fofem_units.py           FOFEM unit handling
+|   |   |-- fwis_moisture_content.py FWI-based fuel moisture
+|   |   |-- helper.py                Shared data helpers
+|   |   |-- plants_regen.py          Plants and regeneration
+|   |   |-- plot_attributes.py       Plot attributes
+|   |   |-- trees.py                 Trees, saplings, and stand metrics
+|   |   `-- woody_debris.py          Woody and forest-floor fuels
+|   |-- supporting_data/     Packaged species, plant, and ecodivision data
+|   |-- tools/               Optional supporting scripts
+|   |   |-- extract_nrcan_wx.py  NRCAN weather extraction
+|   |   |-- fbp_fuel_type.py     BC FBP fuel typing
+|   |   `-- merge_wx_data.py     Plot/weather merge
+|   |-- fuel_analyst.py      Core orchestrator and preparation defaults
+|   `-- run_conpyro.py       Fire-model orchestration
+|-- tests/                   Unit, integration, and regression suites
+|-- pyproject.toml           Package metadata and dependencies
+|-- QUICK_START.md           Short installation and first-run guide
+`-- README.md                Project documentation
+```
+
+## How to install FuelAnalyst
+
+### Requirements
 
 - Python 3.11 through 3.14
 - Git, if cloning the repository or installing ConPyro from GitHub
@@ -95,9 +150,9 @@ The base installation includes NumPy, pandas, SciPy, scikit-learn, Matplotlib, G
 
 ConPyro and FOFEM execution require optional packages. They are not required to process Survey123 data or generate model-preparation CSVs.
 
-## Installation
+### Installation
 
-### Development installation
+#### Development installation
 
 Clone the repository and create an isolated environment:
 
@@ -126,13 +181,16 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 ```
 
-### Test dependencies
+#### Test dependencies
 
 ```shell
-python -m pip install -e ".[test]"
+python -m pip install -e ".[test,photoload,fofem]"
 ```
 
-### Optional fire-model dependencies
+The full suite collects PhotoLoad tests, so its image-analysis dependencies
+must be installed even when the change does not modify PhotoLoad.
+
+#### Optional fire-model dependencies
 
 Install ConPyro and flame-component support:
 
@@ -216,7 +274,7 @@ retains other upstream projects as Git submodules for local dependency developme
 recursive clone is only necessary if you intend to work directly on those checked-out
 sources.
 
-### PhotoLoad model-development dependencies
+#### PhotoLoad model-development dependencies
 
 The reproducible PhotoLoad image-analysis workflow is separate from the core
 Survey123 pipeline:
@@ -228,7 +286,70 @@ python -m pip install -e ".[photoload]"
 See [models/photoload/README.md](models/photoload/README.md) for its source-data,
 calibration, and output contracts.
 
-## Run the included example
+## How to use FuelAnalyst
+
+### Input data
+
+#### Required directory layout
+
+FuelAnalyst recognizes the following directory and file names:
+
+```text
+Survey123_Data/
+|-- 1_Plot_Attributes/
+|   `-- survey_0.csv
+|-- 2_Plants_Regeneration/
+|   |-- survey_0.csv
+|   `-- regeneration_1.csv
+|-- 3_Trees/
+|   |-- survey_0.csv
+|   |-- sapling_1.csv
+|   `-- tree_plot_2.csv
+|-- 4_Canopy_Cover/
+|   |-- survey_0.csv
+|   `-- canopy_cover_1.csv
+`-- 5_Woody_Debris/
+    |-- survey_0.csv
+    |-- spp_comp_manual_1.csv
+    |-- t1_woody_2.csv
+    `-- t2_woody_3.csv
+```
+
+The included [example dataset](examples/data/Survey123_Data) is the best schema reference for a complete run. The spreadsheet in [docs/reference](docs/reference) describes result fields.
+
+#### Common identity fields
+
+Parent survey tables use these fields to construct a plot identity:
+
+- `_date`
+- `treatment_area`
+- `treatment_unit`
+- `treatment_type`
+- `plot_id`
+
+The generated identity is:
+
+```text
+treatment_area_treatment_unit_treatment_type_plot_id_year
+```
+
+Accepted `_date` formats are:
+
+- `MM/DD/YYYY HH:MM` using 24-hour time
+- `MM/DD/YYYY HH:MM:SS AM/PM` using 12-hour time
+
+If multiple records produce the same identity within a year, FuelAnalyst keeps the record with the latest parsed `_date`. Unparseable values raise a `ValueError` rather than silently choosing a record.
+
+Parent forms are deduplicated independently. Review warnings about plot IDs
+present in one form but absent from another.
+
+#### Form selection
+
+The Plot Attributes `form_select` value determines whether the plants, trees, cover, and woody components are expected for each plot. Missing component folders are skipped, with a warning when a plot selected that form.
+
+All four component-form folders are required when `gen_conpyro_df=True` because the prepared ConPyro schema depends on attributes from each component.
+
+### Run the included example
 
 From the repository root, run:
 
@@ -262,128 +383,7 @@ table's output units and filename (`fofem_consume_si_df.csv` or `fofem_consume_i
 are set by `fofem_consume_params`'s `fofem_processing_units` key (default `'SI'`); see
 [Units](#units) and [Configuration](#configuration).
 
-## Input data
-
-### Required directory layout
-
-FuelAnalyst recognizes the following directory and file names:
-
-```text
-Survey123_Data/
-|-- 1_Plot_Attributes/
-|   `-- survey_0.csv
-|-- 2_Plants_Regeneration/
-|   |-- survey_0.csv
-|   `-- regeneration_1.csv
-|-- 3_Trees/
-|   |-- survey_0.csv
-|   |-- sapling_1.csv
-|   `-- tree_plot_2.csv
-|-- 4_Canopy_Cover/
-|   |-- survey_0.csv
-|   `-- canopy_cover_1.csv
-`-- 5_Woody_Debris/
-    |-- survey_0.csv
-    |-- spp_comp_manual_1.csv
-    |-- t1_woody_2.csv
-    `-- t2_woody_3.csv
-```
-
-The included [example dataset](examples/data/Survey123_Data) is the best schema reference for a complete run. The spreadsheet in [docs/reference](docs/reference) describes result fields.
-
-### Common identity fields
-
-Parent survey tables use these fields to construct a plot identity:
-
-- `_date`
-- `treatment_area`
-- `treatment_unit`
-- `treatment_type`
-- `plot_id`
-
-The generated identity is:
-
-```text
-treatment_area_treatment_unit_treatment_type_plot_id_year
-```
-
-Accepted `_date` formats are:
-
-- `MM/DD/YYYY HH:MM` using 24-hour time
-- `MM/DD/YYYY HH:MM:SS AM/PM` using 12-hour time
-
-If multiple records produce the same identity within a year, FuelAnalyst keeps the record with the latest parsed `_date`. Unparseable values raise a `ValueError` rather than silently choosing a record.
-
-### Form selection
-
-The Plot Attributes `form_select` value determines whether the plants, trees, cover, and woody components are expected for each plot. Missing component folders are skipped, with a warning when a plot selected that form.
-
-All four component-form folders are required when `gen_conpyro_df=True` because the prepared ConPyro schema depends on attributes from each component.
-
-### Units
-
-FuelAnalyst calculations are primarily metric. Examples include centimetres for measured diameters, metres for heights and transects, trees per hectare, square metres per hectare, kilograms per square metre, and kilograms per cubic metre.
-
-`fofem_gui_app_tree_mortality_df.csv` (the standalone FOFEM GUI's tree-mortality input) is always
-written in the FOFEM GUI application's own required Imperial units, since that legacy `.TRE`
-import format has no metric mode; its column names are FOFEM's own field names, not FuelAnalyst's
-naming convention. The FOFEM consumption table (`fofem_consume_si_df.csv` or
-`fofem_consume_imperial_df.csv`) and the final FOFEM mortality and emissions result tables written
-by `run_conpyro()` default to SI but can be configured to Imperial; see
-[Configuration](#configuration) for the `fofem_processing_units`/`emissions_units` settings that
-control this. The FOFEM consumption table's own column names and order are fixed regardless of
-units - only its values and filename change; the final result tables carry an explicit unit
-suffix on every physical column instead. Do not assume every generated CSV uses the same units;
-consult the result-field reference and the tables below before downstream analysis.
-
-#### Units and column-name abbreviations
-
-Physical result columns separate the variable name from its unit with an underscore
-(`PM25F_gpm2`), using `p` inside an abbreviation to mean "per" (`kgpm2`, not `kg_m2`). Identifiers,
-dates, categorical labels, equation codes, and boolean/binary flags never carry a unit suffix.
-`_pct` denotes a 0-100 scale value; `_prop` denotes a 0-1 scale value.
-
-The tables below list every unit abbreviation FuelAnalyst's first-party code actually emits or
-accepts in a column name; abbreviations not listed are not currently used.
-
-##### SI units
-
-| Suffix | Meaning | Quantity | Example column |
-| --- | --- | --- | --- |
-| `m` | metres | Length/depth | `fuel_bed_depth_m` |
-| `cm` | centimetres | Length/depth | `stand_duff_depth_cm` |
-| `m2pha` | square metres per hectare | Basal area per hectare | `stand_ba_m2pha_broadleaf_sum` |
-| `m3pha` | cubic metres per hectare | Volume per hectare (intermediate; not carried into `master_fuel_df.csv`) | `woody_volume_m3pha` |
-| `kgpm3` | kilograms per cubic metre | Bulk density | `stand_cbd_kgpm3_live` |
-| `kgpm2` | kilograms per square metre | Fuel load | `stand_foliage_fofem_kgpm2_sum` |
-| `tpha` | trees per hectare | Tree density | `stand_dens_tpha_sum` |
-| `gpm2` | grams per square metre | FOFEM SI smoke-emission mass | `PM25F_gpm2` |
-| `mps` | metres per second | Speed | `instand_ws_mps` |
-| `kWpm` | kilowatts per metre | Fireline intensity | `stand_fire_intensity_kWpm_mean` |
-| `degC` | degrees Celsius | Temperature (FOFEM soil-heating results; always Celsius, not converted by `emissions_units`) | `Lay0_degC` |
-| `sec` | seconds | Duration | `flame_res_time_sec` |
-| `min` | minutes | Duration | `flame_res_time_min` |
-| `pct` | percent (0-100 scale) | Various | `plot_slope_pct` |
-| `prop` | proportion (0-1 scale) | Various | `prob_mortality_crnsch_prop` |
-
-##### Imperial units
-
-| Suffix | Meaning | Quantity | Example column |
-| --- | --- | --- | --- |
-| `in` | inches | Depth | `DufDepPre_in` |
-| `tpac` | US short tons per acre (not metric tonnes) | Fuel load | `LitPre_tpac` |
-| `lbpac` | pounds per acre | FOFEM Imperial smoke-emission mass | `PM25F_lbpac` |
-| `pct` | percent (0-100 scale) | Various | shared with SI |
-| `prop` | proportion (0-1 scale) | Various | shared with SI |
-| `sec` | seconds | Duration | shared with SI (unit-system-independent) |
-
-Only two output contracts use Imperial values at all: the standalone FOFEM GUI's mortality
-preparation file (always Imperial, native FOFEM field names, not this suffix convention) and the
-configurable FOFEM consumption/emissions tables described above. No other Imperial length, area,
-or speed abbreviation (`ft`, `ac`, `tpa`, `mph`, `Btu`, `degF`, etc.) is currently emitted or
-accepted anywhere in first-party FuelAnalyst code.
-
-## Outputs
+### Outputs
 
 The output directory mirrors processed form folders and may contain these top-level files:
 
@@ -398,6 +398,8 @@ The output directory mirrors processed form folders and may contain these top-le
 | `fofem_consume_si_df.csv` or `fofem_consume_imperial_df.csv` | `gen_fofem_consume_df=True` | FOFEM consumption and emissions input table; filename encodes `fofem_processing_units` (default SI) |
 
 Processed copies of each Survey123 parent table are written under their corresponding numbered output folders. Detailed repeat-table outputs may also be generated by individual components.
+
+Many stand means are basal-area weighted rather than simple arithmetic means.
 
 Every `fuel_analyst()` run that completes writes `fuelanalyst_errors.csv`
 alongside `master_fuel_df.csv`. It lists every data-quality issue encountered
@@ -421,7 +423,70 @@ FuelAnalyst respects a host application's existing package or root logging
 handler. If none is configured, it installs a run-scoped fallback console
 handler; a lone `logging.NullHandler` does not suppress that fallback.
 
-## Public API
+#### Units
+
+FuelAnalyst calculations are primarily metric. Examples include centimetres for measured diameters, metres for heights and transects, trees per hectare, square metres per hectare, kilograms per square metre, and kilograms per cubic metre.
+
+`fofem_gui_app_tree_mortality_df.csv` (the standalone FOFEM GUI's tree-mortality input) is always
+written in the FOFEM GUI application's own required Imperial units, since that legacy `.TRE`
+import format has no metric mode; its column names are FOFEM's own field names, not FuelAnalyst's
+naming convention. The FOFEM consumption table (`fofem_consume_si_df.csv` or
+`fofem_consume_imperial_df.csv`) and the final FOFEM mortality and emissions result tables written
+by `run_conpyro()` default to SI but can be configured to Imperial; see
+[Configuration](#configuration) for the `fofem_processing_units`/`emissions_units` settings that
+control this. The FOFEM consumption table's own column names and order are fixed regardless of
+units - only its values and filename change; the final result tables carry an explicit unit
+suffix on every physical column instead. Do not assume every generated CSV uses the same units;
+consult the result-field reference and the tables below before downstream analysis.
+
+##### Units and column-name abbreviations
+
+Physical result columns separate the variable name from its unit with an underscore
+(`PM25F_gpm2`), using `p` inside an abbreviation to mean "per" (`kgpm2`, not `kg_m2`). Identifiers,
+dates, categorical labels, equation codes, and boolean/binary flags never carry a unit suffix.
+`_pct` denotes a 0-100 scale value; `_prop` denotes a 0-1 scale value.
+
+The tables below list every unit abbreviation FuelAnalyst's first-party code actually emits or
+accepts in a column name; abbreviations not listed are not currently used.
+
+###### SI units
+
+| Suffix | Meaning | Quantity | Example column |
+| --- | --- | --- | --- |
+| `m` | metres | Length/depth | `fuel_bed_depth_m` |
+| `cm` | centimetres | Length/depth | `stand_duff_depth_cm` |
+| `m2pha` | square metres per hectare | Basal area per hectare | `stand_ba_m2pha_broadleaf_sum` |
+| `m3pha` | cubic metres per hectare | Volume per hectare (intermediate; not carried into `master_fuel_df.csv`) | `woody_volume_m3pha` |
+| `kgpm3` | kilograms per cubic metre | Bulk density | `stand_cbd_kgpm3_live` |
+| `kgpm2` | kilograms per square metre | Fuel load | `stand_foliage_fofem_kgpm2_sum` |
+| `tpha` | trees per hectare | Tree density | `stand_dens_tpha_sum` |
+| `gpm2` | grams per square metre | FOFEM SI smoke-emission mass | `PM25F_gpm2` |
+| `mps` | metres per second | Speed | `instand_ws_mps` |
+| `kWpm` | kilowatts per metre | Fireline intensity | `stand_fire_intensity_kWpm_mean` |
+| `degC` | degrees Celsius | Temperature (FOFEM soil-heating results; always Celsius, not converted by `emissions_units`) | `Lay0_degC` |
+| `sec` | seconds | Duration | `flame_res_time_sec` |
+| `min` | minutes | Duration | `flame_res_time_min` |
+| `pct` | percent (0-100 scale) | Various | `plot_slope_pct` |
+| `prop` | proportion (0-1 scale) | Various | `prob_mortality_crnsch_prop` |
+
+###### Imperial units
+
+| Suffix | Meaning | Quantity | Example column |
+| --- | --- | --- | --- |
+| `in` | inches | Depth | `DufDepPre_in` |
+| `tpac` | US short tons per acre (not metric tonnes) | Fuel load | `LitPre_tpac` |
+| `lbpac` | pounds per acre | FOFEM Imperial smoke-emission mass | `PM25F_lbpac` |
+| `pct` | percent (0-100 scale) | Various | shared with SI |
+| `prop` | proportion (0-1 scale) | Various | shared with SI |
+| `sec` | seconds | Duration | shared with SI (unit-system-independent) |
+
+Only two output contracts use Imperial values at all: the standalone FOFEM GUI's mortality
+preparation file (always Imperial, native FOFEM field names, not this suffix convention) and the
+configurable FOFEM consumption/emissions tables described above. No other Imperial length, area,
+or speed abbreviation (`ft`, `ac`, `tpa`, `mph`, `Btu`, `degF`, etc.) is currently emitted or
+accepted anywhere in first-party FuelAnalyst code.
+
+### Public API
 
 FuelAnalyst exposes five lazily imported functions from the package root:
 
@@ -433,7 +498,7 @@ FuelAnalyst exposes five lazily imported functions from the package root:
 | `merge_weather_data()` | Join or cross-join weather records to plot data |
 | `run_conpyro()` | Execute configured ConPyro and optional FOFEM workflows |
 
-### Core Survey123 processing
+#### Core Survey123 processing
 
 ```python
 from fuel_analyst import fuel_analyst
@@ -450,7 +515,7 @@ fuel_analyst(
 
 Configuration arguments may be left as `None` to use package defaults.
 
-### FBP fuel typing
+#### FBP fuel typing
 
 ```python
 from fuel_analyst import process_fbp_fuel_type
@@ -466,13 +531,16 @@ process_fbp_fuel_type(
 
 This writes a file such as `conpyro_df_fbp.csv`. Existing non-null fuel-type assignments in the ConPyro table are preserved.
 
-### Weather extraction
+#### Weather extraction
 
 `extract_weather_data()` samples gridded NRCAN weather rasters for CSV or spatial plot inputs and writes CSV, shapefile, and `<out_file_name>_errors.csv` outputs. It supports explicit `MMDD` season bounds or BC Wildfire Service season dates based on plot ecodivisions.
 
 Common weather variables include `temp`, `pcp`, `rh`, `ws`, `wd`, `ffmc`, `dmc`, `dc`, `bui`, `isi`, and `fwi`. The weather directory must contain the corresponding variable directories and dated raster files expected by `extract_nrcan_wx.py`.
 
-### Merge weather with plot data
+Weather extraction requires a local NRCAN raster archive; those large raster
+datasets are not included in the repository.
+
+#### Merge weather with plot data
 
 ```python
 from fuel_analyst import merge_weather_data
@@ -493,7 +561,7 @@ merge_weather_data(
 
 Set `wx_merge_col_name=None` to create a Cartesian product in which every weather row is applied to every plot. Use this only when the weather table intentionally represents shared scenarios rather than plot-specific observations.
 
-### Run ConPyro and FOFEM
+#### Run ConPyro and FOFEM
 
 ```python
 from fuel_analyst import run_conpyro
@@ -515,7 +583,7 @@ error on a mismatch rather than silently misinterpreting the file.
 
 Every completed `run_conpyro()` call also writes `run_conpyro_errors.csv`.
 
-## Configuration
+### Configuration
 
 Default dictionaries are defined in:
 
@@ -553,7 +621,7 @@ Important configuration areas include:
 
 Treat configuration schema as part of the scientific model. Change one setting at a time and retain the configuration used to create analysis outputs.
 
-### Valid `att_source` values
+#### Valid `att_source` values
 
 Each stand-summary entry reads one per-tree column from the master tree table.
 `att_source` names that attribute; if it is omitted, the entry's dictionary key is
@@ -575,7 +643,7 @@ table. Otherwise pandas raises a `KeyError` when the trees are grouped. Which
 trees contribute to each value is set by `summary` and `summary_permutation`,
 described next.
 
-### Stand summary permutations
+#### Stand summary permutations
 
 In the `default_stand_summary_dict`, the `summary` list chooses tree groups. `summary_permutation` controls which
 groups become separate output summaries. A joined name such as `live_conifer`
@@ -626,7 +694,7 @@ output suffix follows that order; for example, `['conifer', 'live']` produces
 `['live', 'conifer']` with `'combined'` to summarize live conifers in one
 output column.
 
-#### Adding `total`
+##### Adding `total`
 
 `total` alone produces `total` → 1, 2, 3, 4 in both `'all'` and `'exact'`.
 Its full output name omits `_total` (for example, `stand_dens_tpha_sum`).
@@ -645,7 +713,7 @@ the eight valid outputs shown by the last row plus `total`. With `'exact'`,
 it produces those five individual groups. With `'combined'`, `total` is
 removed and the four remaining groups simplify to `total` → 1, 2, 3, 4.
 
-#### Complete status and type groups
+##### Complete status and type groups
 
 `'combined'` treats `live` plus `dead` as all statuses, and `conifer` plus
 `broadleaf` as all tree types. Supplying
@@ -657,12 +725,21 @@ The repeated type names in these examples are removed during simplification.
 `['total']` remains invalid for `'combined'` by itself; specify at least one
 status or type group to obtain a combined summary.
 
-## Testing
+### Important behavior and limitations
+
+A completed run can include plot-level input warnings and fallbacks. Inspect
+`fuelanalyst_errors.csv` and the other error reports before interpreting its
+outputs. External fire models have their own assumptions, validation scope,
+and licenses; consult their documentation when interpreting model results.
+
+## How to maintain/contribute to FuelAnalyst
+
+### Testing
 
 Install test dependencies and run all FuelAnalyst tests:
 
 ```shell
-python -m pip install -e ".[test]"
+python -m pip install -e ".[test,photoload,fofem]"
 python -m pytest -vv
 ```
 
@@ -686,49 +763,16 @@ The suite is organized into:
 - Integration tests for interactions among FuelAnalyst components
 - Regression tests for confirmed defects and compatibility behavior
 
-GitHub Actions runs the complete suite on pull requests. See [tests/README.md](tests/README.md) for fixture and generated-result conventions.
+The GitHub Actions test workflow is configured for version-tag and manual runs. Run the full suite locally before each PR merge. See [tests/README.md](tests/README.md) for fixture and generated-result conventions.
 
-## Repository layout
+### Contributing
 
-```text
-FuelAnalyst/
-|-- .github/workflows/       Pull-request test workflow
-|-- dependencies/            Optional model dependencies as Git submodules
-|-- docs/                    Codebase and result-field references
-|-- examples/
-|   |-- data/                Checked-in Survey123 example inputs
-|   `-- results/             Generated example outputs, ignored by Git
-|-- models/photoload/        Reproducible PhotoLoad model-development workflow
-|-- src/fuel_analyst/
-|   |-- components/          FuelAnalyst processing components
-|   |-- supporting_data/     Packaged species, plant, and ecodivision data
-|   |-- tools/                   Optional supporting scripts
-|   |   |-- extract_nrcan_wx.py  NRCAN weather extraction
-|   |   |-- fbp_fuel_type.py     BC FBP fuel typing
-|   |   `-- merge_wx_data.py     Plot/weather merge
-|   |-- fuel_analyst.py      Core orchestrator and preparation defaults
-|   `-- run_conpyro.py       Fire-model orchestration
-|-- tests/                   Unit, integration, and regression suites
-|-- pyproject.toml           Package metadata and dependencies
-|-- QUICK_START.md           Short installation and first-run guide
-`-- README.md                Project documentation
-```
+See [Contribution procedures](docs/CONTRIBUTION_PROCEDURES.md) for the
+repository's commit, pull-request, and test rules.
 
-## Important behavior and limitations
-
-- FuelAnalyst expects the documented Survey123 folder and repeat-table names.
-- Plot identity includes the survey year. A repeat visit to the same treatment plot within one year replaces the earlier parent record for that form.
-- Parent forms are deduplicated independently. Review warnings about IDs present in one form but absent from another.
-- Component outputs depend on `form_select`; plots that did not select a form will not have that form's derived attributes.
-- `gen_conpyro_df=True` requires all component-form directories.
-- Many stand means are basal-area weighted rather than simple arithmetic averages.
-- Internal calculations are primarily SI, while FOFEM preparation includes required U.S.-unit conversions.
-- Weather extraction requires a locally available NRCAN raster archive; those large raster datasets are not included.
-- The FOFEM GUI backend depends on the external USFS Windows application. The default emissions backend is the optional `pyfofem` package.
-- External models have their own assumptions, validation scope, and licenses. Consult their documentation before interpreting model results.
-- Generated results are intentionally ignored by Git. Stable test fixtures belong under `tests/test_data`.
-
-## Contributing
+Versioned routing uses `MAJOR.MINOR.PATCH`: major and minor changes target
+`pre_release`, while patches target `master`. The repository owner reviews and
+merges `pre_release` into `master` through a PR.
 
 Before submitting a change:
 
@@ -738,6 +782,9 @@ Before submitting a change:
 4. Run `python -m pytest -vv`.
 5. Keep generated analysis files out of the commit.
 6. Describe scientific assumptions, unit changes, schema changes, and regression risks in the pull request.
+
+Generated results are intentionally ignored by Git. Put stable test fixtures
+under `tests/test_data`.
 
 Avoid writing tests that merely retest ConPyro, pyFOFEM, flame-components, pandas, GeoPandas, or other dependencies. Fake optional dependencies when the goal is to verify FuelAnalyst wrapper behavior.
 
