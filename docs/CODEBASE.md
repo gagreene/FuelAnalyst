@@ -25,7 +25,9 @@ The core pipeline calculates:
 
 ```text
 FuelAnalyst/
+|-- .github/workflows/tests.yml   Release-tag and manual test workflow
 |-- pyproject.toml                 Package metadata, dependencies, and pytest config
+|-- packages/fofem694-runtime/    Optional Windows FOFEM 6.9.4 runtime wheel
 |-- src/fuel_analyst/
 |   |-- __init__.py                Lazily loaded public API
 |   |-- fuel_analyst.py            Survey123 orchestrator and preparation defaults
@@ -47,12 +49,16 @@ FuelAnalyst/
 |   |   |-- fofem_emissions.py
 |   |   |-- fofem_mortality.py
 |   |   |-- fofem_gui_emissions.py
+|   |   |-- fofem_units.py
 |   |   |-- fwis_moisture_content.py
 |   |   `-- helper.py
 |   `-- supporting_data/           Packaged CSV and ecodivision data
 |-- models/photoload/              Reproducible PhotoLoad model-development workflow
 |-- dependencies/                  Optional dependency checkouts/submodules
-|-- examples/                      Checked-in inputs and ignored generated outputs
+|-- examples/
+|   |-- data/                     Checked-in example inputs
+|   |-- tutorial/                 Notebook and editor setup guide
+|   `-- results/                  Ignored generated outputs
 |-- tests/                         Unit, integration, regression, and test data
 `-- docs/                          Architecture, references, designs, and plans
 ```
@@ -152,11 +158,13 @@ console-script entry points.
 ### `fuel_analyst.py`
 
 The main orchestrator owns the default stand-summary, woody-debris, ConPyro,
-FOFEM-mortality, and FOFEM-consumption dictionaries. It processes Plot
+and FOFEM-consumption dictionaries. It processes Plot
 Attributes first, processes the four selected component forms, checks form IDs
 in both directions, left-merges component results, and writes the requested
-tables. Model-specific stand and woody settings are added to per-run copies of
-the defaults so one invocation does not pollute later runs.
+tables. Stand-summary entries are merged on an internal top-level copy, and
+the nested `woody_debris_classes` dictionary is copied before ConPyro and
+FOFEM classes are added. Those merges leave caller-supplied
+`stand_summary_params` and `woody_debris_params` unchanged across runs.
 
 ### `components/trees.py`
 
@@ -188,10 +196,11 @@ already be very wide.
 
 ### `components/fofem_attributes.py`
 
-Builds `fofem_tree_df` for mortality and `fofem_consume_df` for consumption and
-emissions. `fofem_tree_df`'s schema uses FOFEM's own required Imperial units
-unconditionally (the FOFEM GUI's `.TRE` import format has no metric mode).
-`fofem_consume_df`'s column names/order are fixed regardless of units, but its
+Builds the FOFEM GUI tree-mortality hand-off table
+(`fofem_gui_app_tree_mortality_df.csv`) and the FOFEM consumption table.
+The mortality hand-off uses FOFEM's required Imperial units unconditionally
+(the FOFEM GUI's `.TRE` import format has no metric mode).
+The consumption table's column names/order are fixed regardless of units, but its
 values default to SI and can be configured to Imperial via
 `fofem_consume_params['fofem_processing_units']`; see `fofem_units.py` and the
 README's Units section.
@@ -223,8 +232,8 @@ sidecars, and `<out_file_name>_errors.csv`.
 ### `run_conpyro.py`
 
 Runs ConPyro per row with a configurable worker count, calculates flame
-components, and optionally runs FOFEM mortality and emissions using `pyfofem`
-or the Windows FOFEM GUI backend. A completed run writes
+components, and optionally runs pyfofem tree mortality. Emissions use either
+pyfofem or the official FOFEM 6.9.4 batch backend. A completed run writes
 `run_conpyro_errors.csv` in addition to its selected model outputs.
 
 ### `components/fwis_moisture_content.py`
@@ -367,6 +376,33 @@ interchangeable:
   replaces it with tree height before deriving flame length and crown-fire
   intensity, so `444` is not treated as a physical height.
 
+### Stand-summary configuration
+
+`summary_permutation` supports `all`, `exact`, and `combined`. The `combined`
+mode removes `total`, treats `live` plus `dead` as any status and `conifer` plus
+`broadleaf` as any type, then combines remaining filters with AND. A
+`total`-only combined request is rejected and reported as a Trees configuration
+error before form processing. The [README configuration guide](../README.md#configuration)
+shows the output groups for all nonempty status/type subsets.
+
+`fuel_analyst()` merges ConPyro and FOFEM stand entries before applying
+`_enforce_fixed_stand_summary_metrics()`. Configure those entries through
+`conpyro_params` or `fofem_consume_params`; a same-named entry supplied through
+`stand_summary_params` is replaced by the merge. Enforcement uses the resolved
+`att_source` (or entry name when it is absent): `dens`, `ba`, `cfl`, `foliage`,
+`branches`, `wood`, `bark`, `foliage_fofem`, and `branches_fofem` are sum-only;
+`cbd` has an empty metrics list because its calculation is separate. The
+default `cfl` entry now emits only `_sum` columns, not `_min`, `_max`, or
+`_mean`. The fixed-attribute rule takes precedence over the ConPyro rule.
+
+The six single-column ConPyro height, CBH, and FSG entries accept exactly one
+of `min`, `max`, or `mean` (default `mean`). Duplicate metric names are removed
+first, preserving their first occurrence. A duplicate-only valid choice is
+normalized without a warning; a different fixed-metric request or an invalid
+single-column choice is replaced with its default and logged through the Trees
+source. On a completed run, these configuration warnings appear under
+`General Error` in `fuelanalyst_errors.csv` because they are not tied to a plot.
+
 ### Canopy cover
 
 Missing canopy cover (`cc`) is handled inconsistently and without any
@@ -443,8 +479,12 @@ or fallback handler attached for the next invocation.
 ## Tests and historical documents
 
 The active suite is split across `tests/unit`, `tests/integration`, and
-`tests/regression`; see [the test guide](../tests/README.md). Files under
-`docs/superpowers/plans`, `docs/superpowers/specs`, and `development` document
-the intent and sequence of earlier changes. Treat embedded code snippets and
-planned filenames in those historical records as snapshots; this file, the
-README, tests, and production code define the current behavior.
+`tests/regression`; see [the test guide](../tests/README.md). Run the full
+default suite locally against the latest PR commit and record the result in
+the PR description, as required by the
+[contribution procedures](CONTRIBUTION_PROCEDURES.md). The GitHub `Tests`
+workflow runs on pushed `v*` release tags or deliberate manual dispatch, not
+automatically on PRs. Files under `docs/superpowers/plans`,
+`docs/superpowers/specs`, and `development` record design and implementation
+work. Their code snippets and planned filenames may describe an earlier state;
+this file, the README, tests, and production code define current behavior.

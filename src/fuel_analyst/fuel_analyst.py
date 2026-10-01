@@ -495,7 +495,8 @@ def _enforce_fixed_stand_summary_metrics(stand_summary_params: dict) -> dict:
         elif isinstance(requested, str):
             requested = [requested]
         else:
-            requested = list(requested)
+            # Repeated metrics add nothing (and would otherwise look like several metrics).
+            requested = list(dict.fromkeys(requested))
         att = params.get('att_source', name)
         fixed = _FIXED_STAND_SUMMARY_METRICS.get(att)
         if fixed is not None:
@@ -626,11 +627,17 @@ def fuel_analyst(
     }
 
     if stand_summary_params is None:
-        stand_summary_params = default_stand_summary_dict.copy()
+        stand_summary_params = default_stand_summary_dict
+    # Work on a copy: the ConPyro and FOFEM entries are merged into it below, which must not
+    # change the caller's dictionary or the module-level default.
+    stand_summary_params = dict(stand_summary_params)
 
     if woody_debris_params is None:
-        woody_debris_params = default_woody_debris_dict.copy()
-        woody_debris_params['woody_debris_classes'] = default_woody_debris_dict['woody_debris_classes'].copy()
+        woody_debris_params = default_woody_debris_dict
+    # Work on copies: the ConPyro and FOFEM woody-debris classes are merged into the nested
+    # dictionary below, which must not change the caller's dictionary or the module-level default.
+    woody_debris_params = dict(woody_debris_params)
+    woody_debris_params['woody_debris_classes'] = dict(woody_debris_params['woody_debris_classes'])
 
     if conpyro_params is None:
         conpyro_params = default_conpyro_dict
