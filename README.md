@@ -638,6 +638,18 @@ names. `_calc_stand_attributes()` in
 | `cbd` | `tree_cfl_cnbe_ha` | Special case: ignores `metrics` and returns canopy fuel load divided by the BA-weighted crown depth. Its output name has no metric suffix. |
 | `foliage_fofem`, `branches_fofem` | `tree_<att>` | Used by `default_fofem_consume_dict`; these entries omit `att_source`, so the key is used. |
 
+For `dens`, `ba`, `cfl`, `foliage`, `branches`, `wood`, `bark`, `foliage_fofem`, and
+`branches_fofem`, `metrics` is fixed to `['sum']`, and for `cbd` it is fixed to `[]`. If a
+dictionary requests anything else, FuelAnalyst replaces it with the fixed value and records a
+warning in `fuelanalyst_errors.csv`. This also applies to the ConPyro and FOFEM entries, which
+are configured through `conpyro_params` and `fofem_consume_params`: a same-named key in
+`stand_summary_params` is replaced when those entries are merged in. The BA-weighted
+attributes (`ht`, `cbh`, `dcbh`, `fsg`, `flame_length`, `fire_intensity`) accept `min`, `max`,
+and `mean`. The six ConPyro height, canopy base height, and foliage-ground
+(`conpyro_ht_*`, `conpyro_cbh_*`, `conpyro_fsg`) entries each produce a single column, so
+they accept exactly one of `min`, `max`, or `mean`; anything else is replaced with `['mean']`
+and a warning is recorded.
+
 Any other value must match an existing `tree_<value>` column in the master tree
 table. Otherwise pandas raises a `KeyError` when the trees are grouped. Which
 trees contribute to each value is set by `summary` and `summary_permutation`,

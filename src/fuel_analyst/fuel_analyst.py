@@ -93,7 +93,7 @@ default_stand_summary_dict = {
         'override_field_name': False, # This is fixed as False for stand summaries
         'summary': ['live', 'conifer'],  # This is the default
         'summary_permutation': 'all',  # This is the default (options: 'all', 'exact', 'combined')
-        'metrics': ['min', 'max', 'mean', 'sum'],  # These are the only options
+        'metrics': ['sum'],  # This is the only option
         'units': 'kgpm2',  # This option is fixed
         'classes': {
             'dbh': [0, 5, float('inf')]
@@ -227,7 +227,7 @@ default_conpyro_dict = {
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['live', 'conifer'],  # This is fixed (no user options)
             'summary_permutation': 'combined',  # This is fixed (no user options)
-            'metrics': ['sum'],  # This is fixed as empty (no user options)
+            'metrics': ['sum'],  # This is fixed (no user options)
             'units': 'kgpm2',  # This option is fixed
             'classes': {
                 'dbh': [0, float('inf')]  # All trees
@@ -249,7 +249,7 @@ default_conpyro_dict = {
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['live', 'conifer'],  # This is fixed (no user options)
             'summary_permutation': 'combined',  # This is fixed (no user options)
-            'metrics': ['sum'],  # This is fixed as empty (no user options)
+            'metrics': ['sum'],  # This is fixed (no user options)
             'units': 'kgpm2',  # This option is fixed
             'classes': {
                 'dbh': [0, 0]  # Midstory trees excluded
@@ -271,7 +271,7 @@ default_conpyro_dict = {
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['dead'],  # This is fixed (no user options)
             'summary_permutation': 'combined',  # This is fixed (no user options)
-            'metrics': ['sum'],  # This is the only option
+            'metrics': ['sum'],  # This is fixed (no user options)
             'units': 'kgpm2',  # This option is fixed
             'classes': {
                 'dbh': [0, 0]  # Midstory trees excluded
@@ -282,7 +282,7 @@ default_conpyro_dict = {
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['live', 'conifer'],  # These are fixed (no user options)
             'summary_permutation': 'combined',  # This is fixed (no user options)
-            'metrics': ['mean'],  # This is the default (options: min, max, mean)
+            'metrics': ['mean'],  # This is the default (options: min, max, mean) - only one option can be used
             'units': 'm',  # This option is fixed
             'classes': {
                 'dbh': [0, float('inf')]  # All trees
@@ -293,7 +293,7 @@ default_conpyro_dict = {
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['live', 'conifer'],  # These are fixed (no user options)
             'summary_permutation': 'combined',  # This is fixed (no user options)
-            'metrics': ['mean'],  # This is the default (options: min, max, mean)
+            'metrics': ['mean'],  # This is the default (options: min, max, mean) - only one option can be used
             'units': 'm',  # This option is fixed
             'classes': {
                 'dbh': [0, 0]  # Midstory trees excluded
@@ -304,7 +304,7 @@ default_conpyro_dict = {
             'override_field_name': True,  # This is fixed (no user options)
             'summary': ['dead'],  # This is fixed for ht (no user options)
             'summary_permutation': 'combined',  # This is fixed (no user options)
-            'metrics': ['mean'],  # This is the default (options: min, max, mean)
+            'metrics': ['mean'],  # This is the default (options: min, max, mean) - only one option can be used
             'units': 'm',  # This option is fixed
             'classes': {
                 'dbh': [0, 0]  # Midstory trees excluded
@@ -442,6 +442,87 @@ default_fofem_consume_dict = {
     },
     'fofem_processing_units': 'SI',  # Output units/filename for the FOFEM consumption CSV (Options: 'SI', 'Imperial')
 }
+
+# Metrics fixed by the default dictionaries, keyed by an entry's resolved att_source.
+# Attributes that are BA-weighted (ht, cbh, dcbh, fsg, flame_length, fire_intensity) are not
+# listed because their comments describe allowed options rather than a fixed value.
+_FIXED_STAND_SUMMARY_METRICS = {
+    'dens': ['sum'],
+    'ba': ['sum'],
+    'cfl': ['sum'],
+    'foliage': ['sum'],
+    'branches': ['sum'],
+    'wood': ['sum'],
+    'bark': ['sum'],
+    'foliage_fofem': ['sum'],
+    'branches_fofem': ['sum'],
+    'cbd': [],
+}
+
+# ConPyro stand attributes must each produce one column, so these fixed-name entries hold exactly
+# one metric chosen from _SINGLE_METRIC_OPTIONS; anything else falls back to the default.
+_SINGLE_METRIC_CONPYRO_ENTRIES = (
+    'conpyro_ht_ovrstry_live',
+    'conpyro_ht_midstry_live',
+    'conpyro_ht_midstry_dead',
+    'conpyro_cbh_ovrstry',
+    'conpyro_cbh_midstry',
+    'conpyro_fsg',
+)
+_SINGLE_METRIC_OPTIONS = ('min', 'max', 'mean')
+_SINGLE_METRIC_DEFAULT = ['mean']
+
+
+def _enforce_fixed_stand_summary_metrics(stand_summary_params: dict) -> dict:
+    """
+    Replace user-supplied metrics that the default dictionaries mark as fixed.
+
+    Entries are matched by their resolved att_source (the entry key when att_source is
+    omitted). The fixed-by-attribute rule wins over the single-metric ConPyro rule. The
+    input dictionary and its nested entries are never modified.
+
+    :param stand_summary_params: Stand-summary entries keyed by entry name.
+    :return: A new dictionary in which every fixed attribute's metrics equal the fixed list and
+        each single-metric ConPyro entry holds exactly one of min, max, or mean. Entries already
+        correct are returned unchanged; each override is logged once as a warning with issue
+        code 'fixed_metrics_overridden' or 'single_metric_overridden'.
+    """
+    enforced = dict(stand_summary_params)
+    for name, params in stand_summary_params.items():
+        requested = params.get('metrics')
+        if requested is None:
+            requested = []
+        elif isinstance(requested, str):
+            requested = [requested]
+        else:
+            requested = list(requested)
+        att = params.get('att_source', name)
+        fixed = _FIXED_STAND_SUMMARY_METRICS.get(att)
+        if fixed is not None:
+            if requested == fixed:
+                if params.get('metrics') != fixed:
+                    # Same metrics in a non-list form (None, 'sum'); store the list silently.
+                    enforced[name] = {**params, 'metrics': list(fixed)}
+                continue
+            error_handling.get_logger('trees').warning(
+                f"Stand summary '{name}' (att_source '{att}') has fixed metrics {fixed}; "
+                f"the requested metrics {requested} were replaced.",
+                extra={'issue_code': 'fixed_metrics_overridden'}
+            )
+            enforced[name] = {**params, 'metrics': list(fixed)}
+        elif name in _SINGLE_METRIC_CONPYRO_ENTRIES:
+            if len(requested) == 1 and requested[0] in _SINGLE_METRIC_OPTIONS:
+                if params.get('metrics') != requested:
+                    enforced[name] = {**params, 'metrics': requested}
+                continue
+            error_handling.get_logger('trees').warning(
+                f"ConPyro stand attribute '{name}' must have exactly one metric from "
+                f"{list(_SINGLE_METRIC_OPTIONS)}; the requested metrics {requested} were "
+                f"replaced with {_SINGLE_METRIC_DEFAULT}.",
+                extra={'issue_code': 'single_metric_overridden'}
+            )
+            enforced[name] = {**params, 'metrics': list(_SINGLE_METRIC_DEFAULT)}
+    return enforced
 
 
 def _find_id_mismatches(plot_ids, form_ids) -> tuple[list, list]:
@@ -607,6 +688,7 @@ def fuel_analyst(
         )
         woody_debris_params['woody_debris_classes'].update(fofem_consume_params['woody_debris_classes'])
 
+    stand_summary_params = _enforce_fixed_stand_summary_metrics(stand_summary_params)
     _validate_stand_summary_permutations(stand_summary_params, out_dir)
 
     # Generate a list of columns to keep, using all columns in plot_df to begin with
