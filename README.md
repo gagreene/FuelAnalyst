@@ -553,6 +553,28 @@ Important configuration areas include:
 
 Treat configuration schema as part of the scientific model. Change one setting at a time and retain the configuration used to create analysis outputs.
 
+### Valid `att_source` values
+
+Each stand-summary entry reads one per-tree column from the master tree table.
+`att_source` names that attribute; if it is omitted, the entry's dictionary key is
+used. The output column name is built from the dictionary key, not from
+`att_source`, so two entries may summarize the same attribute under different
+names. `_calc_stand_attributes()` in
+[`trees.py`](src/fuel_analyst/components/trees.py) adds a suffix by attribute group:
+
+| `att_source` | Tree column read | Notes |
+| --- | --- | --- |
+| `dens`, `ba` | `tree_dens_ha`, `tree_ba_ha` | Per-hectare density and basal area. |
+| `cfl`, `foliage`, `branches`, `wood`, `bark` | `tree_<att>_cnbe_ha` | Crown fuel loads per hectare from the CNBE biomass equations. |
+| `ht`, `cbh`, `dcbh`, `fsg`, `flame_length`, `fire_intensity` | `tree_<att>_wtd` for `sum` and `mean`; `tree_<att>` for `min` and `max` | Basal-area-weighted; `mean` is the BA-weighted stand mean. |
+| `cbd` | `tree_cfl_cnbe_ha` | Special case: ignores `metrics` and returns canopy fuel load divided by the BA-weighted crown depth. Its output name has no metric suffix. |
+| `foliage_fofem`, `branches_fofem` | `tree_<att>` | Used by `default_fofem_consume_dict`; these entries omit `att_source`, so the key is used. |
+
+Any other value must match an existing `tree_<value>` column in the master tree
+table. Otherwise pandas raises a `KeyError` when the trees are grouped. Which
+trees contribute to each value is set by `summary` and `summary_permutation`,
+described next.
+
 ### Stand summary permutations
 
 In the `default_stand_summary_dict`, the `summary` list chooses tree groups. `summary_permutation` controls which
