@@ -619,7 +619,7 @@ of `'combined'`.
 
 The default tree-density input is
 `['total', 'live', 'dead', 'conifer', 'broadleaf']`. With `'all'`, it produces
-the nine valid outputs shown by the last row plus `total`. With `'exact'`,
+the eight valid outputs shown by the last row plus `total`. With `'exact'`,
 it produces those five individual groups. With `'combined'`, `total` is
 removed and the four remaining groups simplify to `total` → 1, 2, 3, 4.
 

@@ -321,7 +321,7 @@ default_conpyro_dict = {
         # - ['live', 'broadleaf'] includes all live broadleaf trees
         #
         # att_source: 'fsg'
-        # - ['total'] includes all trees
+        # - ['live', 'dead'] includes all trees (['total'] alone is not valid with 'combined')
         # - ['live'] includes all live trees
         # - ['dead'] includes all dead trees
         # - ['conifer'] includes all conifer trees
