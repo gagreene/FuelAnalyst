@@ -124,8 +124,12 @@ def test_delete_files_clears_files_and_nested_directories(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_get_repo_root_and_derived_directories():
-    root = Path(helper.get_repo_root(__file__))
-    assert (root / 'src' / 'fuel_analyst').is_dir()
-    assert Path(helper.get_examples_dir(__file__)) == root / 'examples'
-    assert Path(helper.get_development_dir(__file__)) == root / 'development'
+def test_get_repo_root_and_derived_directories(tmp_path):
+    package_dir = tmp_path / 'src' / 'fuel_analyst'
+    package_dir.mkdir(parents=True)
+    (tmp_path / 'pyproject.toml').write_text('[project]\nname = "fuel-analyst"\n', encoding='utf-8')
+
+    assert not (tmp_path / 'requirements.txt').exists()
+    assert Path(helper.get_repo_root(str(package_dir))) == tmp_path
+    assert Path(helper.get_examples_dir(str(package_dir))) == tmp_path / 'examples'
+    assert Path(helper.get_development_dir(str(package_dir))) == tmp_path / 'development'

@@ -338,9 +338,25 @@ def _calc_stand_attributes(
             # Only return the exact order as a single permutation
             return _summary_list
         elif _summary_permutation == 'combined':
-            # Only return a single permutation that combines all variables (sorted by priority)
-            sorted_list = sorted(_summary_list, key=lambda x: priority_order[x])
-            return ['_'.join(sorted_list)]
+            # Total means all trees and cannot constrain a combined filter.
+            combined_parts = list(dict.fromkeys(
+                part for part in _summary_list if part != 'total'
+            ))
+            if not combined_parts:
+                message = (
+                    "summary_permutation='combined' requires at least one summary "
+                    "other than 'total'."
+                )
+                logger.error(message, extra={'issue_code': 'combined_summary_total_only'})
+                raise ValueError(message)
+            both_statuses = {'live', 'dead'} <= set(combined_parts)
+            both_types = {'conifer', 'broadleaf'} <= set(combined_parts)
+            effective_parts = [
+                part for part in combined_parts
+                if not (both_statuses and part in {'live', 'dead'})
+                and not (both_types and part in {'conifer', 'broadleaf'})
+            ]
+            return ['_'.join(effective_parts) if effective_parts else 'total']
         else:
             # Default: all valid permutations as before
             valid_permutations = set()

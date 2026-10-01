@@ -553,6 +553,110 @@ Important configuration areas include:
 
 Treat configuration schema as part of the scientific model. Change one setting at a time and retain the configuration used to create analysis outputs.
 
+### Valid `att_source` values
+
+Each stand-summary entry reads one per-tree column from the master tree table.
+`att_source` names that attribute; if it is omitted, the entry's dictionary key is
+used. The output column name is built from the dictionary key, not from
+`att_source`, so two entries may summarize the same attribute under different
+names. `_calc_stand_attributes()` in
+[`trees.py`](src/fuel_analyst/components/trees.py) adds a suffix by attribute group:
+
+| `att_source` | Tree column read | Notes |
+| --- | --- | --- |
+| `dens`, `ba` | `tree_dens_ha`, `tree_ba_ha` | Per-hectare density and basal area. |
+| `cfl`, `foliage`, `branches`, `wood`, `bark` | `tree_<att>_cnbe_ha` | Crown fuel loads per hectare from the CNBE biomass equations. |
+| `ht`, `cbh`, `dcbh`, `fsg`, `flame_length`, `fire_intensity` | `tree_<att>_wtd` for `sum` and `mean`; `tree_<att>` for `min` and `max` | Basal-area-weighted; `mean` is the BA-weighted stand mean. |
+| `cbd` | `tree_cfl_cnbe_ha` | Special case: ignores `metrics` and returns canopy fuel load divided by the BA-weighted crown depth. Its output name has no metric suffix. |
+| `foliage_fofem`, `branches_fofem` | `tree_<att>` | Used by `default_fofem_consume_dict`; these entries omit `att_source`, so the key is used. |
+
+Any other value must match an existing `tree_<value>` column in the master tree
+table. Otherwise pandas raises a `KeyError` when the trees are grouped. Which
+trees contribute to each value is set by `summary` and `summary_permutation`,
+described next.
+
+### Stand summary permutations
+
+In the `default_stand_summary_dict`, the `summary` list chooses tree groups. `summary_permutation` controls which
+groups become separate output summaries. A joined name such as `live_conifer`
+means **live AND conifer**. In `'combined'` mode, both statuses together mean
+any status, and both tree types together mean any type. These settings are used by
+[`_calc_stand_attributes()`](src/fuel_analyst/components/trees.py) and the
+default dictionaries in [`fuel_analyst.py`](src/fuel_analyst/fuel_analyst.py).
+
+As an example of how the permutation types work, consider a plot with four trees:
+
+| Tree | Status | Type |
+| --- | --- | --- |
+| 1 | Live | Conifer |
+| 2 | Live | Broadleaf |
+| 3 | Dead | Conifer |
+| 4 | Dead | Broadleaf |
+
+Tree IDs 1–4 let the examples show which records each summary selects.
+`'all'` creates every valid individual group and cross-group pair, `'exact'`
+creates one output per input item, and `'combined'` simplifies complete
+status or type pairs before joining the remaining filters with AND. The table
+covers all 15 nonempty subsets of the four non-`total` groups. Names in the
+output columns are the summary suffixes;
+the full output name also contains the attribute and metric, such as
+`stand_dens_tpha_live_conifer_sum`.
+
+| `summary`<br>input list | `'all'`<br>outputs → matching trees | `'exact'`<br>outputs → matching trees | `'combined'`<br>output → matching trees |
+| --- | --- | --- | --- |
+| `live` | `live` → 1, 2 | `live` → 1, 2 | `live` → 1, 2 |
+| `dead` | `dead` → 3, 4 | `dead` → 3, 4 | `dead` → 3, 4 |
+| `conifer` | `conifer` → 1, 3 | `conifer` → 1, 3 | `conifer` → 1, 3 |
+| `broadleaf` | `broadleaf` → 2, 4 | `broadleaf` → 2, 4 | `broadleaf` → 2, 4 |
+| `live, dead` | `live` → 1, 2; `dead` → 3, 4 | `live` → 1, 2; `dead` → 3, 4 | `total` → 1, 2, 3, 4 |
+| `live, conifer` | `live` → 1, 2; `conifer` → 1, 3; `live_conifer` → 1 | `live` → 1, 2; `conifer` → 1, 3 | `live_conifer` → 1 |
+| `live, broadleaf` | `live` → 1, 2; `broadleaf` → 2, 4; `live_broadleaf` → 2 | `live` → 1, 2; `broadleaf` → 2, 4 | `live_broadleaf` → 2 |
+| `dead, conifer` | `dead` → 3, 4; `conifer` → 1, 3; `dead_conifer` → 3 | `dead` → 3, 4; `conifer` → 1, 3 | `dead_conifer` → 3 |
+| `dead, broadleaf` | `dead` → 3, 4; `broadleaf` → 2, 4; `dead_broadleaf` → 4 | `dead` → 3, 4; `broadleaf` → 2, 4 | `dead_broadleaf` → 4 |
+| `conifer, broadleaf` | `conifer` → 1, 3; `broadleaf` → 2, 4 | `conifer` → 1, 3; `broadleaf` → 2, 4 | `total` → 1, 2, 3, 4 |
+| `live, dead, conifer` | `live` → 1, 2; `dead` → 3, 4; `conifer` → 1, 3; `live_conifer` → 1; `dead_conifer` → 3 | `live` → 1, 2; `dead` → 3, 4; `conifer` → 1, 3 | `conifer` → 1, 3 |
+| `live, dead, broadleaf` | `live` → 1, 2; `dead` → 3, 4; `broadleaf` → 2, 4; `live_broadleaf` → 2; `dead_broadleaf` → 4 | `live` → 1, 2; `dead` → 3, 4; `broadleaf` → 2, 4 | `broadleaf` → 2, 4 |
+| `live, conifer, broadleaf` | `live` → 1, 2; `conifer` → 1, 3; `broadleaf` → 2, 4; `live_conifer` → 1; `live_broadleaf` → 2 | `live` → 1, 2; `conifer` → 1, 3; `broadleaf` → 2, 4 | `live` → 1, 2 |
+| `dead, conifer, broadleaf` | `dead` → 3, 4; `conifer` → 1, 3; `broadleaf` → 2, 4; `dead_conifer` → 3; `dead_broadleaf` → 4 | `dead` → 3, 4; `conifer` → 1, 3; `broadleaf` → 2, 4 | `dead` → 3, 4 |
+| `live, dead, conifer, broadleaf` | `live` → 1, 2; `dead` → 3, 4; `conifer` → 1, 3; `broadleaf` → 2, 4; `live_conifer` → 1; `live_broadleaf` → 2; `dead_conifer` → 3; `dead_broadleaf` → 4 | `live` → 1, 2; `dead` → 3, 4; `conifer` → 1, 3; `broadleaf` → 2, 4 | `total` → 1, 2, 3, 4 |
+
+The table assumes the listed input order. Where two filters remain, the
+output suffix follows that order; for example, `['conifer', 'live']` produces
+`conifer_live` in `'combined'` mode. Several ConPyro defaults use
+`['live', 'conifer']` with `'combined'` to summarize live conifers in one
+output column.
+
+#### Adding `total`
+
+`total` alone produces `total` → 1, 2, 3, 4 in both `'all'` and `'exact'`.
+Its full output name omits `_total` (for example, `stand_dens_tpha_sum`).
+Adding `total` to any table row adds `total` → 1, 2, 3, 4 in `'all'` and
+`'exact'`.
+In contrast, `'combined'` removes `total` before joining the remaining groups,
+so adding it to any table row leaves that row's combined result unchanged.
+If `total` is the *only* item in a `'combined'` list, FuelAnalyst records a
+Trees configuration error in `fuelanalyst_errors.csv` and raises `ValueError`.
+If you wish to include a summary for `total`, use `'all'` or `'exact'` instead
+of `'combined'`.
+
+The default tree-density input is
+`['total', 'live', 'dead', 'conifer', 'broadleaf']`. With `'all'`, it produces
+the eight valid outputs shown by the last row plus `total`. With `'exact'`,
+it produces those five individual groups. With `'combined'`, `total` is
+removed and the four remaining groups simplify to `total` → 1, 2, 3, 4.
+
+#### Complete status and type groups
+
+`'combined'` treats `live` plus `dead` as all statuses, and `conifer` plus
+`broadleaf` as all tree types. Supplying
+`['live', 'conifer', 'dead', 'conifer']` creates
+`conifer` → 1, 3, and supplying
+`['live', 'broadleaf', 'dead', 'broadleaf']` creates
+`broadleaf` → 2, 4. Supplying all four groups creates `total` → 1, 2, 3, 4.
+The repeated type names in these examples are removed during simplification.
+`['total']` remains invalid for `'combined'` by itself; specify at least one
+status or type group to obtain a combined summary.
+
 ## Testing
 
 Install test dependencies and run all FuelAnalyst tests:
