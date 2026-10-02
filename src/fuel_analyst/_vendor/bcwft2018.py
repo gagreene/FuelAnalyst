@@ -1,6 +1,6 @@
 # Vendored from https://github.com/gagreene/BC_CFFBPS_FuelTyping_Tool
-# Upstream commit: b570244
-# To update: copy latest bcwft2018.py from the upstream repo.
+# Upstream commit: 039b198
+# To update: run update_vendors.sh
 
 # -*- coding: utf-8 -*-
 """

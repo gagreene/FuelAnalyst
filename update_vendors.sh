@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
-# Update vendored single-file modules from their git submodule sources.
-# Run after pulling new submodule commits:
+# Update vendored third-party code under src/fuel_analyst/_vendor/.
+#
+# bcwft2018 (single file) comes from the dependencies/BC_CFFBPS_FuelTyping_Tool submodule:
 #   git submodule update --remote dependencies/BC_CFFBPS_FuelTyping_Tool
 #   bash update_vendors.sh
-# Note: flame_components is no longer vendored or a submodule; it is installed from PyPI.
+#
+# ConPyro (package) comes from a local clone of https://github.com/gagreene/conpyro, which
+# stays the upstream source of truth. Point CONPYRO_SRC at that clone (it must have no
+# uncommitted changes; check out the commit you want to vendor first):
+#   CONPYRO_SRC=/path/to/conpyro bash update_vendors.sh
+# Without CONPYRO_SRC only bcwft2018 is refreshed.
+# Note: flame_components is not vendored; it is installed from PyPI.
 set -e
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -18,3 +25,35 @@ BC_SHA=$(git -C "$REPO_ROOT/dependencies/BC_CFFBPS_FuelTyping_Tool" rev-parse --
   cat "$REPO_ROOT/dependencies/BC_CFFBPS_FuelTyping_Tool/bcwft2018.py"
 } > "$VENDOR_DIR/bcwft2018.py"
 echo "Updated bcwft2018.py (commit $BC_SHA)"
+
+# conpyro
+if [ -n "${CONPYRO_SRC:-}" ]; then
+  if [ ! -d "$CONPYRO_SRC/src/conpyro" ]; then
+    echo "CONPYRO_SRC=$CONPYRO_SRC has no src/conpyro directory" >&2
+    exit 1
+  fi
+  if [ -n "$(git -C "$CONPYRO_SRC" status --porcelain)" ]; then
+    echo "CONPYRO_SRC has uncommitted changes; commit or stash them first" >&2
+    exit 1
+  fi
+  CP_SHA=$(git -C "$CONPYRO_SRC" rev-parse HEAD)
+  CP_DST="$VENDOR_DIR/conpyro"
+  rm -rf "$CP_DST"
+  mkdir -p "$CP_DST"
+  cp -R "$CONPYRO_SRC/src/conpyro/." "$CP_DST/"
+  rm -rf "$CP_DST/tests"
+  find "$CP_DST" -name __pycache__ -type d -prune -exec rm -rf {} +
+  find "$CP_DST" -name '*.pyc' -delete
+  {
+    echo "# Vendored ConPyro"
+    echo ""
+    echo "- Upstream: https://github.com/gagreene/conpyro"
+    echo "- Upstream commit: $CP_SHA"
+    echo "- License: MIT (Gregory A. Greene), same as FuelAnalyst"
+    echo '- Generated copy: do not edit here. Fix upstream, then run `update_vendors.sh`.'
+    echo '- Excluded from this copy: `tests/` (one unit test is ported to `tests/unit/vendored_conpyro/`), `docs/`, `build/`, `pyproject.toml`.'
+  } > "$CP_DST/UPSTREAM.md"
+  echo "Updated conpyro (commit $CP_SHA)"
+else
+  echo "CONPYRO_SRC not set; skipped conpyro"
+fi
