@@ -1,6 +1,7 @@
 import importlib
 import pathlib
 import re
+import tomllib
 
 import fuel_analyst
 
@@ -18,6 +19,17 @@ def test_no_absolute_src_conpyro_imports():
     offenders = [str(p) for p in VENDOR_DIR.rglob('*.py') if 'from src.conpyro' in p.read_text(encoding='utf-8')]
     assert VENDOR_DIR.exists()
     assert offenders == []
+
+
+def test_pyproject_declares_flame_components_as_base_dependency_and_no_git_url():
+    root = pathlib.Path(fuel_analyst.__file__).parents[2]
+    text = (root / 'pyproject.toml').read_text(encoding='utf-8')
+    data = tomllib.loads(text)
+    base = data['project']['dependencies']
+    assert any(d.startswith('flame-components') for d in base)
+    assert 'conpyro' not in data['project']['optional-dependencies']
+    assert 'git+' not in text
+    assert '_vendor/conpyro/*.md' in data['tool']['setuptools']['package-data']['fuel_analyst']
 
 
 def test_run_conpyro_uses_vendored_conpyro():

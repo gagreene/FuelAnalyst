@@ -1,2 +1,3 @@
 recursive-include src/fuel_analyst/supporting_data *.csv *.json
 recursive-include src/fuel_analyst/_vendor *.py
+recursive-include src/fuel_analyst/_vendor *.md
