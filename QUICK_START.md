@@ -6,8 +6,7 @@ This guide gets the included Survey123 example running with the fewest steps. Co
 
 Install:
 
-- Python 3.10 or newer for the core workflow; Python 3.11 or newer for the
-  `conpyro` extra
+- Python 3.11 or newer
 - Git
 
 Confirm Python is available:
@@ -52,7 +51,7 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 ```
 
-The base installation is enough to process Survey123 data and generate ConPyro and FOFEM preparation files. It does not install or execute the external fire models.
+The base installation is enough to process Survey123 data and generate ConPyro and FOFEM preparation files. It installs ConPyro with FuelAnalyst, but not the FOFEM extra.
 
 ## 5. Run the included example
 
@@ -159,11 +158,11 @@ fuel_analyst(
 Only do this if you need to execute ConPyro or FOFEM after preparing the FuelAnalyst tables:
 
 ```shell
-python -m pip install -e ".[conpyro,fofem]"
+python -m pip install -e ".[fofem]"
 ```
 
-The ConPyro package is currently downloaded from GitHub. Its Flame Components dependency
-is installed from PyPI as `flame-components>=0.1.1,<0.2`. The `fofem` extra installs the
+ConPyro is vendored in the package, and its Flame Components dependency installs from PyPI as
+`flame-components>=0.1.1,<0.2` with the core package. The `fofem` extra installs the
 bounded `pyfofem-fire-effects>=0.1.1,<0.2` distribution from PyPI (imports as `pyfofem`),
 needing no Git checkout, and is the default `model_select='pyfofem'` emissions backend.
 
@@ -231,10 +230,8 @@ Preparing `conpyro_df.csv` does not attach weather. Extract or supply weather da
 
 ### Installation of optional dependencies fails
 
-Confirm Git is installed and can access GitHub when installing the ConPyro extra (the
-`fofem` extra installs from PyPI and needs no Git). The core FuelAnalyst workflow does not
-require those optional dependencies, so you can omit the extras until model execution is
-needed.
+The `fofem` extra installs from PyPI and needs no Git. The core FuelAnalyst workflow does not
+require it, so you can omit the extra until FOFEM model execution is needed.
 
 ## Next steps
 
