@@ -83,8 +83,11 @@ current PR head.
 - The locked environment supports Windows and Linux (x86_64) on Python 3.11 through 3.14, and
   **macOS 15 or newer on Apple Silicon**. Intel macOS is not supported. These limits apply to the
   lock only; installing the package with pip is not affected.
-- The minimum-dependency floor job is separate from the lock. It stays on pip with the hand-written
-  constraints in `.github/workflows/tests.yml`; keep those floors in sync with `pyproject.toml`.
+- The minimum-dependency floor job is separate from the lock. It installs with
+  `uv pip install --resolution lowest-direct`, which resolves every direct dependency to the lowest
+  version its `>=` bound in `pyproject.toml` allows, so there is no second list of floors to keep
+  in sync: change a floor in `pyproject.toml` and the job tests the new one. Raise a floor only
+  after confirming the exact version installs on every supported Python and OS.
 - `uv pip` ignores `UV_PROJECT_ENVIRONMENT`. Pass `--python <environment>/python` when using it so
   it cannot change another environment.
 
