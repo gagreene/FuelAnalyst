@@ -56,7 +56,7 @@ if [ -n "${CONPYRO_SRC:-}" ]; then
     echo "- Upstream commit: $CP_SHA"
     echo "- License: MIT (Gregory A. Greene), same as FuelAnalyst"
     echo '- Generated copy: do not edit here. Fix upstream, then run `update_vendors.sh`.'
-    echo '- Excluded from this copy: `tests/` (one unit test is ported to `tests/unit/vendored_conpyro/`), `docs/`, `build/`, `pyproject.toml`.'
+    echo '- Excluded from this copy: `tests/`, `docs/`, `build/`, `pyproject.toml`. FuelAnalyst keeps its own ISF solver unit test in `tests/unit/vendored_conpyro/`.'
   } > "$CP_DST/UPSTREAM.md"
   echo "Updated conpyro (commit $CP_SHA)"
 else
