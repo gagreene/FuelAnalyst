@@ -154,9 +154,9 @@ FuelAnalyst/
 - Git, if cloning the repository
 - A Survey123 export matching the expected form and repeat-table structure
 
-The base installation includes NumPy, pandas, SciPy, scikit-learn, Matplotlib, GeoPandas, Rasterio, PyProj, Shapely, python-dateutil, tqdm, and joblib.
+The base installation includes NumPy, pandas, SciPy, scikit-learn, Matplotlib, GeoPandas, Rasterio, PyProj, Shapely, python-dateutil, tqdm, joblib, and flame-components. ConPyro is vendored in the package.
 
-ConPyro and FOFEM execution require optional packages. They are not required to process Survey123 data or generate model-preparation CSVs.
+FOFEM execution requires the optional `fofem` extra. It is not required to process Survey123 data or generate model-preparation CSVs.
 
 ### Installation
 
@@ -200,8 +200,8 @@ must be installed even when the change does not modify PhotoLoad.
 
 #### Optional fire-model dependencies
 
-ConPyro is vendored in the package (`src/fuel_analyst/_vendor/conpyro`) and its only third-party
-requirement, `flame-components>=0.1.1,<0.2`, installs with the core package, so `run_conpyro()` needs no
+ConPyro is vendored in the package (`src/fuel_analyst/_vendor/conpyro`), and `run_conpyro()` also uses
+`flame-components>=0.1.1,<0.2`, which installs with the core package, so `run_conpyro()` needs no
 separate ConPyro install.
 
 Install pyFOFEM support:
