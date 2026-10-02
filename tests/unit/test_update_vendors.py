@@ -8,7 +8,7 @@ import pytest
 import fuel_analyst
 
 REPO_ROOT = pathlib.Path(fuel_analyst.__file__).parents[2]
-SCRIPT = REPO_ROOT / 'update_vendors.sh'
+SCRIPT = REPO_ROOT / 'scripts' / 'update_vendors.sh'
 BASH = shutil.which('bash')
 
 pytestmark = pytest.mark.skipif(BASH is None, reason='bash is not available')
@@ -46,14 +46,15 @@ def _make_conpyro_clone(path):
 
 def _make_workspace(tmp_path):
     """
-    Create a repository layout holding a copy of the script and no BC submodule.
+    Create a repository layout holding a copy of the script under scripts/ and no BC submodule.
 
     :param tmp_path: pytest temporary directory.
     :return: Path of the fake repository root.
     """
     root = tmp_path / 'repo'
     (root / 'src' / 'fuel_analyst' / '_vendor').mkdir(parents=True)
-    shutil.copy(SCRIPT, root / 'update_vendors.sh')
+    (root / 'scripts').mkdir()
+    shutil.copy(SCRIPT, root / 'scripts' / 'update_vendors.sh')
     return root
 
 
@@ -62,9 +63,14 @@ def test_conpyro_refresh_runs_without_the_bc_submodule(tmp_path):
     clone = tmp_path / 'conpyro_clone'
     clone.mkdir()
     sha = _make_conpyro_clone(clone)
+    elsewhere = tmp_path / 'elsewhere'
+    elsewhere.mkdir()
 
+    # Absolute script path, caller's working directory outside the repository: the script must
+    # find the repository root from its own location, not from the caller's cwd.
     result = subprocess.run(
-        [BASH, 'update_vendors.sh'], cwd=root, capture_output=True, text=True,
+        [BASH, (root / 'scripts' / 'update_vendors.sh').as_posix()], cwd=elsewhere,
+        capture_output=True, text=True,
         env={**os.environ, 'CONPYRO_SRC': clone.as_posix()},
     )
 
@@ -84,7 +90,7 @@ def test_conpyro_refresh_rejects_a_dirty_clone(tmp_path):
     (clone / 'src' / 'conpyro' / 'dirty.py').write_text('x = 1\n', encoding='utf-8')
 
     result = subprocess.run(
-        [BASH, 'update_vendors.sh'], cwd=root, capture_output=True, text=True,
+        [BASH, 'scripts/update_vendors.sh'], cwd=root, capture_output=True, text=True,
         env={**os.environ, 'CONPYRO_SRC': clone.as_posix()},
     )
 

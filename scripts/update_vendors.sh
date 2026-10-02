@@ -3,17 +3,17 @@
 #
 # bcwft2018 (single file) comes from the dependencies/BC_CFFBPS_FuelTyping_Tool submodule:
 #   git submodule update --remote dependencies/BC_CFFBPS_FuelTyping_Tool
-#   bash update_vendors.sh
+#   bash scripts/update_vendors.sh
 #
 # ConPyro (package) comes from a local clone of https://github.com/gagreene/conpyro, which
 # stays the upstream source of truth. Point CONPYRO_SRC at that clone (it must have no
 # uncommitted changes; check out the commit you want to vendor first):
-#   CONPYRO_SRC=/path/to/conpyro bash update_vendors.sh
+#   CONPYRO_SRC=/path/to/conpyro bash scripts/update_vendors.sh
 # Without CONPYRO_SRC only bcwft2018 is refreshed; either part is skipped when its source is unavailable.
 # Note: flame_components is not vendored; it is installed from PyPI.
 set -e
 
-REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VENDOR_DIR="$REPO_ROOT/src/fuel_analyst/_vendor"
 
 # bcwft2018 (skipped when the submodule is not checked out, e.g. a non-recursive clone)
@@ -22,7 +22,7 @@ if [ -f "$BC_DIR/bcwft2018.py" ]; then
   BC_SHA=$(git -C "$BC_DIR" rev-parse --short HEAD)
   { echo "# Vendored from https://github.com/gagreene/BC_CFFBPS_FuelTyping_Tool"
     echo "# Upstream commit: $BC_SHA"
-    echo "# To update: run update_vendors.sh"
+    echo "# To update: run scripts/update_vendors.sh"
     echo ""
     cat "$BC_DIR/bcwft2018.py"
   } > "$VENDOR_DIR/bcwft2018.py"
@@ -55,7 +55,7 @@ if [ -n "${CONPYRO_SRC:-}" ]; then
     echo "- Upstream: https://github.com/gagreene/conpyro"
     echo "- Upstream commit: $CP_SHA"
     echo "- License: MIT (Gregory A. Greene), same as FuelAnalyst"
-    echo '- Generated copy: do not edit here. Fix upstream, then run `update_vendors.sh`.'
+    echo '- Generated copy: do not edit here. Fix upstream, then run `scripts/update_vendors.sh`.'
     echo '- Excluded from this copy: `tests/`, `docs/`, `build/`, `pyproject.toml`. FuelAnalyst keeps its own ISF solver unit test in `tests/unit/vendored_conpyro/`.'
   } > "$CP_DST/UPSTREAM.md"
   echo "Updated conpyro (commit $CP_SHA)"

@@ -33,7 +33,7 @@ No Microsoft Visual C++ runtime DLLs are bundled; see the prerequisite note abov
 
 ## Provenance and updates
 
-FuelAnalyst's `update_fofem_694_runtime.sh` maintains the tracked source bundle from the
+FuelAnalyst's `scripts/update_fofem_694_runtime.sh` maintains the tracked source bundle from the
 exact pinned upstream ZIP. This wheel's build copies its seven runtime assets from that
 bundle, so it must be built from a FuelAnalyst repository checkout. Neither the wheel build
 nor installation downloads FOFEM files. The runtime project's source distribution is not a
