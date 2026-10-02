@@ -22,7 +22,7 @@ FuelAnalyst also:
 
 - [What FuelAnalyst does](#what-fuelanalyst-does)
   - [What FuelAnalyst produces](#what-fuelanalyst-produces)
-  - [Processing workflow](#processing-workflow)
+  - [General Processing workflow](#general-processing-workflow)
 - [How FuelAnalyst is structured](#how-fuelanalyst-is-structured)
   - [Repository layout](#repository-layout)
 - [How to install FuelAnalyst](#how-to-install-fuelanalyst)
@@ -65,7 +65,7 @@ FuelAnalyst-owned calculations include:
 
 External fire-behaviour and fire-effects calculations are separate downstream steps. The FuelAnalyst tests validate FuelAnalyst-owned preparation and orchestration without testing those dependency libraries themselves.
 
-### Processing workflow
+### General Processing workflow
 
 ```mermaid
 flowchart LR
@@ -93,12 +93,12 @@ flowchart LR
 The normal sequence is:
 
 1. Run `fuel_analyst()` on the Survey123 export folders.
-2. Optionally calculate FBP fuel types.
+2. Optionally calculate FBP fuel types if using CFIS to model fire behaviour.
 3. Extract or supply weather records.
 4. Merge weather with the prepared ConPyro table.
 5. Run ConPyro and/or FOFEM models.
 
-For the flow between modules and conditional output files, see
+For a detailed breakdown of the flow between modules and conditional output files, see
 [data flow and outputs in the codebase reference](docs/CODEBASE.md#data-flow-and-outputs).
 
 ## How FuelAnalyst is structured

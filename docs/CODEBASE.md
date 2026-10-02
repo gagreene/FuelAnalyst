@@ -322,7 +322,7 @@ flowchart TD
     conpyroCsv["conpyro_df.csv"]
 
     subgraph cfis["CFIS modelling only (optional)"]
-        fbpType["process_fbp_fuel_type"]
+        fbpType["process_fbp_fuel_type()"]
         conpyroFbp["conpyro_df_fbp.csv"]
         fbpType --> conpyroFbp
     end
@@ -333,7 +333,7 @@ flowchart TD
     locations["Plot locations<br/>ID, lat, long<br/>(e.g., conpyro_df.csv)"]
     rasters["Weather data<br/>(stations/rasters/etc)"]
     subgraph nrcan["NRCAN daily FWIS rasters (optional)"]
-        extract["extract_weather_data"]
+        extract["extract_weather_data()"]
         wxTable["Weather table,<br/>shapefile, and<br/>error file"]
         extract --> wxTable
     end
@@ -343,7 +343,7 @@ flowchart TD
     rasters -.-> extract
     rasters -.-> userExtract
 
-    conpyroFbp --> mergeWx["merge_weather_data"]
+    conpyroFbp --> mergeWx["merge_weather_data()"]
     conpyroCsv -.-> mergeWx
     wxTable --> mergeWx
     userExtract --> mergeWx
@@ -354,7 +354,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    wxMergedIn["Weather-merged<br/>ConPyro table"] --> runCp["run_conpyro"]
+    wxMergedIn["Weather-merged<br/>ConPyro table"] --> runCp["run_conpyro()"]
     treeCsv["master_tree_df.csv<br/>for FOFEM mortality"] -.-> runCp
     consumeCsv["fofem_consume_*_df.csv<br/>for FOFEM emissions"] -.-> runCp
     runCp --> results["fire_behavior/conpyro_results.csv<br/>fofem_mortality/ and fofem_emissions/<br/>conpyro_*_results.csv"]
