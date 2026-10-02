@@ -3,3 +3,6 @@ examples/data/weather/*.csv filter=lfs diff=lfs merge=lfs -text
 # Force LF regardless of a contributor's local core.autocrlf: these scripts must run
 # unmodified on Linux (Bash) even when committed from a Windows checkout.
 *.sh text eol=lf
+
+# uv rewrites uv.lock with LF; keep it LF in every checkout so relocking never produces line-ending diffs.
+uv.lock text eol=lf
