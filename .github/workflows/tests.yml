@@ -14,6 +14,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lock-check:
+    name: uv.lock matches pyproject.toml
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.2.0
+
+      - name: Fail if uv.lock is out of date
+        run: uv lock --check
+
   pytest:
     name: Python ${{ matrix.python-version }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -28,20 +43,24 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
-          cache-dependency-path: pyproject.toml
+          enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
 
-      - name: Install FuelAnalyst and test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[test,photoload]"
+      - name: Show the macOS version (the locked environment needs macOS 15 or newer)
+        if: runner.os == 'macOS'
+        run: sw_vers
+
+      - name: Install the locked environment
+        run: uv sync --locked --extra test --extra photoload
 
       - name: Run test suite
-        run: python -m pytest -vv --basetemp="${{ runner.temp }}/pytest"
+        run: uv run --locked --no-sync pytest -vv --basetemp="${{ runner.temp }}/pytest"
 
   pytest-minimum-deps:
     name: Minimum dependency floor (Python 3.11, ${{ matrix.os }})
@@ -104,17 +123,51 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: pyproject.toml
+          enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            pyproject.toml
 
-      - name: Install FuelAnalyst with the published pyfofem-fire-effects extra
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[fofem,test,photoload]"
+      - name: Install the locked environment with the published pyfofem-fire-effects extra
+        run: uv sync --locked --extra fofem --extra test --extra photoload
 
       - name: Run test suite against the installed pyfofem-fire-effects wheel
-        run: python -m pytest -vv --basetemp="${{ runner.temp }}/pytest"
+        run: uv run --locked --no-sync pytest -vv --basetemp="${{ runner.temp }}/pytest"
+
+  wheel-smoke:
+    name: Clean wheel install (no uv project, no source tree)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.2.0
+
+      - name: Build the wheel
+        run: uv build --no-sources --wheel --out-dir "${{ runner.temp }}/dist"
+
+      - name: Install the wheel into an empty environment
+        run: |
+          uv venv --python 3.12 "${{ runner.temp }}/wheel-env"
+          uv pip install --python "${{ runner.temp }}/wheel-env/bin/python" "${{ runner.temp }}"/dist/*.whl
+
+      - name: Import the installed package from outside the repository
+        working-directory: ${{ runner.temp }}
+        run: |
+          "${{ runner.temp }}/wheel-env/bin/python" - <<'EOF'
+          import importlib.metadata as md
+          import fuel_analyst
+          from fuel_analyst._vendor import bcwft2018
+          from fuel_analyst._vendor.conpyro import conpyro
+          import flame_components
+          assert "site-packages" in fuel_analyst.__file__, fuel_analyst.__file__
+          assert not any(r.split()[0].lower() == "uv" for r in (md.requires("fuel-analyst") or []))
+          print("OK", md.version("fuel-analyst"), fuel_analyst.__file__)
+          EOF

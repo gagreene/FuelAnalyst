@@ -47,6 +47,13 @@ python -m pip install -e ".[test,photoload,fofem]"
 python -m pytest -vv
 ```
 
+Or reproduce the locked environment with uv:
+
+```shell
+uv sync --locked --extra test --extra photoload --extra fofem --group dev
+uv run --no-sync pytest -vv
+```
+
 `photoload` supplies `scikit-image`, which the PhotoLoad tests import during
 collection. ConPyro is vendored in the package, so nothing extra is needed for
 ConPyro integration. If a change affects the optional FOFEM 6.9.4 batch
@@ -58,6 +65,28 @@ Rerun the suite after changes to the PR branch. Record the command, Python
 version, operating system, latest commit SHA, and pass/skip counts in the PR
 description. Do not treat a run against an earlier commit as validation of the
 current PR head.
+
+## Dependency changes and `uv.lock`
+
+- `pyproject.toml` is the only hand-edited dependency declaration. `uv.lock` is generated: never
+  edit it.
+- After any dependency change, run `uv lock`, commit both files, and confirm `uv lock --check`
+  passes. Record the check in the PR description. The `Tests` workflow also runs a `lock-check`
+  job on tags and manual dispatch.
+- To update one package: `uv lock --upgrade-package <name>`. To refresh everything:
+  `uv lock --upgrade`. Then run the full suite and review the lock diff: changed versions, added or
+  removed packages, and sources (every third-party package must come from `https://pypi.org/simple`;
+  no Git, path, or private-index sources; only FuelAnalyst itself is recorded as the editable
+  project `.`).
+- A numerical change after an upgrade is scientific behavior, not a tooling update. Review it as
+  such before merging.
+- The locked environment supports Windows and Linux (x86_64) on Python 3.11 through 3.14, and
+  **macOS 15 or newer on Apple Silicon**. Intel macOS is not supported. These limits apply to the
+  lock only; installing the package with pip is not affected.
+- The minimum-dependency floor job is separate from the lock. It stays on pip with the hand-written
+  constraints in `.github/workflows/tests.yml`; keep those floors in sync with `pyproject.toml`.
+- `uv pip` ignores `UV_PROJECT_ENVIRONMENT`. Pass `--python <environment>/python` when using it so
+  it cannot change another environment.
 
 ## Pull requests and merge review
 

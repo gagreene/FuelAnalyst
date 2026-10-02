@@ -198,6 +198,29 @@ python -m pip install -e ".[test,photoload,fofem]"
 The full suite collects PhotoLoad tests, so its image-analysis dependencies
 must be installed even when the change does not modify PhotoLoad.
 
+#### Contributor setup with uv (locked environment)
+
+Contributors can reproduce the exact tested environment from `uv.lock` with
+[uv](https://docs.astral.sh/uv/). This is optional: the pip commands above keep working, and uv is
+never a runtime dependency of FuelAnalyst.
+
+```shell
+uv sync --locked --extra test --extra photoload --extra fofem --group dev
+uv run --no-sync pytest -vv
+```
+
+- Name every extra you need: uv installs none by default. Add `--group notebook` for the tutorial
+  notebook tools.
+- `uv sync` is exact. It removes packages that are not in the lock, so do not run it in an
+  environment that holds packages you installed by hand and want to keep.
+- Use `uv run --no-sync` after the sync, so uv does not re-sync without your extras.
+- `uv.lock` is generated. Change dependencies in `pyproject.toml`, then run `uv lock` (see
+  [Dependency changes and `uv.lock`](docs/CONTRIBUTION_PROCEDURES.md#dependency-changes-and-uvlock)).
+- The locked environment needs **macOS 15 or newer on Apple Silicon** (the locked `rasterio` for
+  Python 3.12 and newer ships only macOS 15 wheels). Intel macOS is not supported. Windows and
+  Linux (x86_64) are covered for Python 3.11 through 3.14. Installing FuelAnalyst with pip is not
+  affected by these limits.
+
 #### Optional fire-model dependencies
 
 ConPyro is vendored in the package (`src/fuel_analyst/_vendor/conpyro`), and `run_conpyro()` also uses
@@ -770,6 +793,13 @@ Install test dependencies and run all FuelAnalyst tests:
 ```shell
 python -m pip install -e ".[test,photoload,fofem]"
 python -m pytest -vv
+```
+
+Or, in the locked uv environment described under Installation:
+
+```shell
+uv sync --locked --extra test --extra photoload --extra fofem --group dev
+uv run --no-sync pytest -vv
 ```
 
 Run a specific tier:

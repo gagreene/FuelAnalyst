@@ -184,11 +184,14 @@ See the [Public API](README.md#public-api) section of the main README for the FB
 
 ## 8. Optional: run the tests
 
-Install the test dependencies:
+Install the test dependencies (the suite also needs the `photoload` extra to collect its PhotoLoad tests):
 
 ```shell
-python -m pip install -e ".[test]"
+python -m pip install -e ".[test,photoload]"
 ```
+
+Contributors who want the exact locked environment can use uv instead; see the
+[contributor setup in the main README](README.md#contributor-setup-with-uv-locked-environment).
 
 Run the complete suite:
 
