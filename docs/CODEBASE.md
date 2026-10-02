@@ -64,8 +64,10 @@ FuelAnalyst/
 ```
 
 FuelAnalyst uses a standard `src` package layout and is installable with
-`python -m pip install -e .`. Optional dependency groups are declared in
-`pyproject.toml`: `fofem`, `photoload`, `test`, `dev`, and `all`.
+`python -m pip install -e .`. Installable extras are declared in
+`pyproject.toml`: `fofem`, `photoload`, `test`, and `all`; contributor-only PEP 735
+dependency groups are `dev` and `notebook`. `pyproject.toml` plus the generated `uv.lock` are the
+sources of truth for the development environment (uv is not a runtime dependency).
 The package supports Python 3.11 through 3.14, tested on Windows, Linux, and
 macOS. ConPyro is vendored in `src/fuel_analyst/_vendor/conpyro` (a generated copy of
 the upstream repository, refreshed with `update_vendors.sh`), and the bounded
