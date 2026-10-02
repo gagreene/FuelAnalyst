@@ -5,7 +5,7 @@ Standalone fuel_analyst() -> FBP fuel typing -> run_conpyro() (CFIS) demonstrati
 Companion to ``examples/run_fuel_analyst_conpyro_demo.py``, which exercises ConPyro's
 default fire-behavior model (``cfo_model=5``). This script instead exercises the CFIS
 (Crown Fire Initiation and Spread) model (``cfo_model=10``), which - unlike the default
-model - requires a real CFFBPS fuel type: ``dependencies/conpyro/src/conpyro/conpyro.py``
+model - requires a real CFFBPS fuel type: ``src/fuel_analyst/_vendor/conpyro/conpyro.py``
 documents ``fuel_type``/``pct_cnfr`` as "SFC (CFIS only) - set to None if not using CFIS",
 and ``_single_run_fire_behavior()`` only passes a real fuel-type array through when every
 plot in a weather-date batch has one (any missing value silently drops the whole batch to

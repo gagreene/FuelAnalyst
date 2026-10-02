@@ -48,8 +48,8 @@ python -m pytest -vv
 ```
 
 `photoload` supplies `scikit-image`, which the PhotoLoad tests import during
-collection. Install the local `dependencies/conpyro` checkout when a change
-needs ConPyro integration. If a change affects the optional FOFEM 6.9.4 batch
+collection. ConPyro is vendored in the package, so nothing extra is needed for
+ConPyro integration. If a change affects the optional FOFEM 6.9.4 batch
 runtime, run the relevant opt-in integration tests on a supported host and
 report their result. Document any skips, failures, or unavailable platform
 checks; a failed full suite does not satisfy the passing-test checkbox below.

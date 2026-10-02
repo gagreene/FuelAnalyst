@@ -10,7 +10,7 @@ Adapted from a tutorial by Sarah Smith-Tripp (UBC Centre for Wildfire Coexistenc
 
 - A clone of this repository. The notebook reads the example data from `examples/data/`, and it can be opened from any
   folder inside the clone.
-- Python 3.11 or newer with FuelAnalyst and its ConPyro and FOFEM components installed, plus `ipykernel` to run
+- Python 3.11 or newer with FuelAnalyst (which includes ConPyro) and its FOFEM component installed, plus `ipykernel` to run
   notebooks and `ipywidgets` for notebook progress bars.
 - A notebook front end: VS Code, PyCharm, or JupyterLab.
 

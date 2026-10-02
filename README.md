@@ -111,7 +111,7 @@ For module responsibilities, data flow, and runtime contracts, see the
 ```text
 FuelAnalyst/
 |-- .github/workflows/       Release-tag test workflow
-|-- dependencies/            Optional model dependencies as Git submodules
+|-- dependencies/            BC fuel-typing submodule (source for the vendored bcwft2018)
 |-- docs/                    Codebase, result-field, and contribution references
 |-- examples/
 |   |-- data/                Checked-in Survey123 example inputs
@@ -151,12 +151,12 @@ FuelAnalyst/
 ### Requirements
 
 - Python 3.11 through 3.14
-- Git, if cloning the repository or installing ConPyro from GitHub
+- Git, if cloning the repository
 - A Survey123 export matching the expected form and repeat-table structure
 
-The base installation includes NumPy, pandas, SciPy, scikit-learn, Matplotlib, GeoPandas, Rasterio, PyProj, Shapely, python-dateutil, tqdm, and joblib.
+The base installation includes NumPy, pandas, SciPy, scikit-learn, Matplotlib, GeoPandas, Rasterio, PyProj, Shapely, python-dateutil, tqdm, joblib, and flame-components. ConPyro is vendored in the package.
 
-ConPyro and FOFEM execution require optional packages. They are not required to process Survey123 data or generate model-preparation CSVs.
+FOFEM execution requires the optional `fofem` extra. It is not required to process Survey123 data or generate model-preparation CSVs.
 
 ### Installation
 
@@ -200,11 +200,9 @@ must be installed even when the change does not modify PhotoLoad.
 
 #### Optional fire-model dependencies
 
-Install ConPyro and flame-component support:
-
-```shell
-python -m pip install -e ".[conpyro]"
-```
+ConPyro is vendored in the package (`src/fuel_analyst/_vendor/conpyro`), and `run_conpyro()` also uses
+`flame-components>=0.1.1,<0.2`, which installs with the core package, so `run_conpyro()` needs no
+separate ConPyro install.
 
 Install pyFOFEM support:
 
@@ -212,15 +210,7 @@ Install pyFOFEM support:
 python -m pip install -e ".[fofem]"
 ```
 
-Install both sets:
-
-```shell
-python -m pip install -e ".[conpyro,fofem]"
-```
-
-The `conpyro` extra currently installs ConPyro from its GitHub repository and therefore
-requires Git and network access; it also installs the bounded `flame-components>=0.1.1,<0.2`
-distribution from PyPI. The `fofem` extra installs the bounded
+The `fofem` extra installs the bounded
 `pyfofem-fire-effects>=0.1.1,<0.2` distribution from PyPI (no Git checkout needed) for the
 default `model_select='pyfofem'` emissions backend, which works on Windows, Linux, and macOS.
 
@@ -279,9 +269,9 @@ paths below); the installed `fuel-analyst-fofem694-runtime` package; then, for a
 checkout only, the bundled `src/fuel_analyst/supporting_data/fofem_694` directory. See
 [the codebase reference](docs/CODEBASE.md#package-and-repository-layout) for the full
 resolution order and provenance details. The repository
-retains other upstream projects as Git submodules for local dependency development; a
-recursive clone is only necessary if you intend to work directly on those checked-out
-sources.
+retains one Git submodule, `dependencies/BC_CFFBPS_FuelTyping_Tool`, as the source for the vendored
+`bcwft2018.py`; a recursive clone is only necessary to refresh that vendored copy. ConPyro is vendored
+from its upstream repository the same way (`update_vendors.sh`, `CONPYRO_SRC`).
 
 #### PhotoLoad model-development dependencies
 
@@ -594,7 +584,7 @@ run_conpyro(
 )
 ```
 
-The default modelling configuration runs ConPyro, FOFEM mortality, and pyFOFEM emissions. Install both optional dependency groups before using this default. ConPyro input must already include required weather fields such as `ws`, `wd`, `ffmc`, `dmc`, and `bui`; some model choices additionally require `temp`, `rh`, `wx_date`, `time`, or model-selection columns.
+The default modelling configuration runs ConPyro, FOFEM mortality, and pyFOFEM emissions. Install the `fofem` extra before using this default. ConPyro input must already include required weather fields such as `ws`, `wd`, `ffmc`, `dmc`, and `bui`; some model choices additionally require `temp`, `rh`, `wx_date`, `time`, or model-selection columns.
 
 `in_fofem_consume_csv_path` must be one of `fuel_analyst()`'s two unit-bearing filenames, and
 must match `default_fire_modelling_dict['fofem_emissions']['emissions_units']` (default `'SI'`);

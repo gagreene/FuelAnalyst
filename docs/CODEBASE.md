@@ -54,7 +54,7 @@ FuelAnalyst/
 |   |   `-- helper.py
 |   `-- supporting_data/           Packaged CSV and ecodivision data
 |-- models/photoload/              Reproducible PhotoLoad model-development workflow
-|-- dependencies/                  Optional dependency checkouts/submodules
+|-- dependencies/                  BC fuel-typing submodule (source for vendored bcwft2018)
 |-- examples/
 |   |-- data/                     Checked-in example inputs
 |   |-- tutorial/                 Notebook and editor setup guide
@@ -65,11 +65,11 @@ FuelAnalyst/
 
 FuelAnalyst uses a standard `src` package layout and is installable with
 `python -m pip install -e .`. Optional dependency groups are declared in
-`pyproject.toml`: `conpyro`, `fofem`, `photoload`, `test`, `dev`, and `all`.
+`pyproject.toml`: `fofem`, `photoload`, `test`, `dev`, and `all`.
 The package supports Python 3.11 through 3.14, tested on Windows, Linux, and
-macOS. The `conpyro` extra installs the bounded `flame-components>=0.1.1,<0.2`
-distribution from PyPI; ConPyro itself is currently installed from its GitHub
-repository. The `fofem` extra installs the bounded `pyfofem-fire-effects>=0.1.1,<0.2`
+macOS. ConPyro is vendored in `src/fuel_analyst/_vendor/conpyro` (a generated copy of
+the upstream repository, refreshed with `update_vendors.sh`), and the bounded
+`flame-components>=0.1.1,<0.2` distribution from PyPI is a core dependency. The `fofem` extra installs the bounded `pyfofem-fire-effects>=0.1.1,<0.2`
 distribution from PyPI (imports as `pyfofem`, matching the prior GitHub checkout's
 import name) and needs no Git checkout for the Python-backed `model_select='pyfofem'`
 emissions path (mortality automation is pyfofem-only; the official FOFEM app is never
@@ -587,7 +587,7 @@ configuration value is `"use_csv"`. Missing requirements raise a descriptive
 
 The default fire-model configuration enables ConPyro, FOFEM mortality, and
 pyFOFEM emissions. Consequently, the default call also requires tree and FOFEM
-consumption input paths plus the `conpyro` and `fofem` optional dependencies.
+consumption input paths plus the `fofem` optional dependency.
 
 `examples/data/weather/conpyro_df_wx.csv` is a checked-in, real weather-merged
 demo input (2005-2024 NRCAN weather for the 20 example plots), tracked via Git

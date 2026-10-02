@@ -14,7 +14,7 @@ from typing import Optional
 from .components import error_handling
 from .components import fofem_units
 from .components import helper
-from conpyro import conpyro
+from ._vendor.conpyro import conpyro
 import flame_components as fc
 import tqdm
 import concurrent.futures
