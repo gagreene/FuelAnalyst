@@ -7,10 +7,6 @@ import pandas as pd
 import pytest
 
 
-fake_conpyro_package = types.ModuleType('conpyro')
-fake_conpyro_package.conpyro = types.SimpleNamespace()
-sys.modules['conpyro'] = fake_conpyro_package
-
 fake_flame = types.ModuleType('flame_components')
 fake_flame.get_mid_flame_ws = lambda **kwargs: np.asarray(kwargs['wind_speed']) / 2
 fake_flame.get_flame_length = lambda **kwargs: np.asarray(kwargs['fire_intensity']) / 100

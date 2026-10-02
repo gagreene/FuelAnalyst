@@ -20,6 +20,13 @@ def test_no_absolute_src_conpyro_imports():
     assert offenders == []
 
 
+def test_run_conpyro_uses_vendored_conpyro():
+    module = importlib.import_module('fuel_analyst.run_conpyro')
+    assert pathlib.Path(module.conpyro.__file__).is_relative_to(
+        pathlib.Path(fuel_analyst.__file__).parent / '_vendor'
+    )
+
+
 def test_tests_and_build_artifacts_are_not_vendored():
     assert VENDOR_DIR.exists()
     assert not (VENDOR_DIR / 'tests').exists()
