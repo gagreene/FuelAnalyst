@@ -12,15 +12,17 @@ The core pipeline processes five related Survey123 forms:
 - Canopy cover
 - Woody debris and forest-floor measurements
 
-It can also prepare inputs for the Canadian Forest Fire Behaviour Prediction (FBP) System, ConPyro, and FOFEM, and can connect plot data to gridded NRCAN weather data.
+FuelAnalyst also:
+- Prepares inputs for the Canadian Forest Fire Behaviour Prediction (FBP) System, ConPyro, and FOFEM, and can connect plot data to gridded NRCAN weather data.
+- Models fire behaviour and fire effects with ConPyro and FOFEM, including tree mortality and smoke emissions.
 
 > FuelAnalyst is research software under active development. Review input schemas, units, model assumptions, and output quality before using results operationally.
 
 ## Contents
 
-- [What FuelAnalyst is/does](#what-fuelanalyst-isdoes)
+- [What FuelAnalyst does](#what-fuelanalyst-does)
   - [What FuelAnalyst produces](#what-fuelanalyst-produces)
-  - [Processing workflow](#processing-workflow)
+  - [General Processing workflow](#general-processing-workflow)
 - [How FuelAnalyst is structured](#how-fuelanalyst-is-structured)
   - [Repository layout](#repository-layout)
 - [How to install FuelAnalyst](#how-to-install-fuelanalyst)
@@ -44,7 +46,7 @@ It can also prepare inputs for the Canadian Forest Fire Behaviour Prediction (FB
 
 For a shorter setup guide, see [QUICK_START.md](QUICK_START.md).
 
-## What FuelAnalyst is/does
+## What FuelAnalyst does
 
 ### What FuelAnalyst produces
 
@@ -63,7 +65,7 @@ FuelAnalyst-owned calculations include:
 
 External fire-behaviour and fire-effects calculations are separate downstream steps. The FuelAnalyst tests validate FuelAnalyst-owned preparation and orchestration without testing those dependency libraries themselves.
 
-### Processing workflow
+### General Processing workflow
 
 ```mermaid
 flowchart LR
@@ -91,12 +93,18 @@ flowchart LR
 The normal sequence is:
 
 1. Run `fuel_analyst()` on the Survey123 export folders.
-2. Optionally calculate FBP fuel types.
+2. Optionally calculate FBP fuel types if using CFIS to model fire behaviour.
 3. Extract or supply weather records.
 4. Merge weather with the prepared ConPyro table.
 5. Run ConPyro and/or FOFEM models.
 
+For a detailed breakdown of the flow between modules and conditional output files, see
+[data flow and outputs in the codebase reference](docs/CODEBASE.md#data-flow-and-outputs).
+
 ## How FuelAnalyst is structured
+
+For module responsibilities, data flow, and runtime contracts, see the
+[codebase reference](docs/CODEBASE.md).
 
 ### Repository layout
 
@@ -269,7 +277,8 @@ Ubuntu 24.04.5 LTS with Wine 9.0 and Ubuntu 26.04.1 LTS with Wine 10.0.
 environment variable (an external FOFEM 6.9.4 installation, for overriding either of the
 paths below); the installed `fuel-analyst-fofem694-runtime` package; then, for a Git source
 checkout only, the bundled `src/fuel_analyst/supporting_data/fofem_694` directory. See
-`docs/CODEBASE.md` for the full resolution order and provenance details. The repository
+[the codebase reference](docs/CODEBASE.md#package-and-repository-layout) for the full
+resolution order and provenance details. The repository
 retains other upstream projects as Git submodules for local dependency development; a
 recursive clone is only necessary if you intend to work directly on those checked-out
 sources.
@@ -382,6 +391,14 @@ This generates model input tables but does not execute ConPyro or FOFEM. The FOF
 table's output units and filename (`fofem_consume_si_df.csv` or `fofem_consume_imperial_df.csv`)
 are set by `fofem_consume_params`'s `fofem_processing_units` key (default `'SI'`); see
 [Units](#units) and [Configuration](#configuration).
+
+
+### Run the tutorial
+
+For a guided walkthrough of the example data, FBP fuel typing, weather
+merging, and ConPyro/FOFEM, start with the
+[FuelAnalyst tutorial](examples/tutorial/README.md). Its notebook and setup
+instructions use the same checked-in example data.
 
 ### Outputs
 
@@ -498,6 +515,9 @@ FuelAnalyst exposes five lazily imported functions from the package root:
 | `merge_weather_data()` | Join or cross-join weather records to plot data |
 | `run_conpyro()` | Execute configured ConPyro and optional FOFEM workflows |
 
+For the responsibilities and relationships of the underlying modules, see
+[core modules in the codebase reference](docs/CODEBASE.md#core-modules).
+
 #### Core Survey123 processing
 
 ```python
@@ -593,6 +613,9 @@ Default dictionaries are defined in:
 - `fuel_analyst.fuel_analyst.default_fofem_consume_dict` (includes `fofem_processing_units`, default `'SI'`)
 - `fuel_analyst.run_conpyro.default_fire_modelling_dict` (includes `fofem_emissions.emissions_units`, default `'SI'`)
 
+The [stand summary configuration reference](docs/CODEBASE.md#stand-summary-configuration)
+explains how these entries are merged and which metrics are fixed.
+
 Use a deep copy before changing nested settings:
 
 ```python
@@ -637,6 +660,19 @@ names. `_calc_stand_attributes()` in
 | `ht`, `cbh`, `dcbh`, `fsg`, `flame_length`, `fire_intensity` | `tree_<att>_wtd` for `sum` and `mean`; `tree_<att>` for `min` and `max` | Basal-area-weighted; `mean` is the BA-weighted stand mean. |
 | `cbd` | `tree_cfl_cnbe_ha` | Special case: ignores `metrics` and returns canopy fuel load divided by the BA-weighted crown depth. Its output name has no metric suffix. |
 | `foliage_fofem`, `branches_fofem` | `tree_<att>` | Used by `default_fofem_consume_dict`; these entries omit `att_source`, so the key is used. |
+
+For `dens`, `ba`, `cfl`, `foliage`, `branches`, `wood`, `bark`, `foliage_fofem`, and
+`branches_fofem`, `metrics` is fixed to `['sum']`, and for `cbd` it is fixed to `[]`. If a
+dictionary requests different metrics, FuelAnalyst replaces them with the fixed value and records a
+warning in `fuelanalyst_errors.csv`. This also applies to the ConPyro and FOFEM entries, which
+are configured through `conpyro_params` and `fofem_consume_params`: a same-named key in
+`stand_summary_params` is replaced when those entries are merged in. The BA-weighted
+attributes (`ht`, `cbh`, `dcbh`, `fsg`, `flame_length`, `fire_intensity`) accept `min`, `max`,
+and `mean`. The six ConPyro height, canopy base height, and foliage-ground
+(`conpyro_ht_*`, `conpyro_cbh_*`, `conpyro_fsg`) entries each produce a single column, so
+they accept exactly one of `min`, `max`, or `mean`; no metric, several different metrics, or
+an unknown metric is replaced with `['mean']` and a warning is recorded. A metric listed more
+than once counts once, so `['max', 'max']` is read as `['max']` without a warning.
 
 Any other value must match an existing `tree_<value>` column in the master tree
 table. Otherwise pandas raises a `KeyError` when the trees are grouped. Which
@@ -731,6 +767,9 @@ A completed run can include plot-level input warnings and fallbacks. Inspect
 `fuelanalyst_errors.csv` and the other error reports before interpreting its
 outputs. External fire models have their own assumptions, validation scope,
 and licenses; consult their documentation when interpreting model results.
+
+See [runtime contracts and gotchas](docs/CODEBASE.md#runtime-contracts-and-gotchas)
+for the input, form selection, and downstream model details behind these limits.
 
 ## How to maintain/contribute to FuelAnalyst
 
