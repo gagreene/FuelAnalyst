@@ -1,6 +1,6 @@
 # Vendored from https://github.com/gagreene/BC_CFFBPS_FuelTyping_Tool
 # Upstream commit: 039b198
-# To update: run update_vendors.sh
+# To update: run scripts/update_vendors.sh
 
 # -*- coding: utf-8 -*-
 """

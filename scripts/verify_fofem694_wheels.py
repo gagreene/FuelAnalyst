@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Build and verify the main fuel-analyst wheel and the optional
-fuel-analyst-fofem694-runtime wheel from a clean checkout, without network access.
+fuel-analyst-fofem694-runtime wheel from a clean checkout, without downloading FOFEM assets.
 
 Confirms: the main wheel is platform-independent (py3-none-any) and contains no Windows
 binary; the runtime wheel is tagged py3-none-win_amd64 specifically (fails loudly on an
@@ -12,7 +12,7 @@ Emission_Factors.csv exception is present and nothing else differs; no NOTICE fi
 Microsoft Visual C++ runtime DLL exist in either wheel.
 
 Run from the repository root:
-    python verify_fofem694_wheels.py
+    python scripts/verify_fofem694_wheels.py
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_PKG_DIR = REPO_ROOT / 'packages' / 'fofem694-runtime'
 SOURCE_BUNDLE_DIR = REPO_ROOT / 'src' / 'fuel_analyst' / 'supporting_data' / 'fofem_694'
 RUNTIME_SOURCE_DIR = RUNTIME_PKG_DIR / 'src' / 'fuel_analyst_fofem694_runtime'
@@ -34,7 +34,7 @@ RUNTIME_ASSETS = (
 
 _FORBIDDEN_DLLS = {'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll'}
 
-# Pinned upstream hashes - see update_fofem_694_runtime.sh and PROVENANCE.md.
+# Pinned upstream hashes - see scripts/update_fofem_694_runtime.sh and PROVENANCE.md.
 EXPECTED_HASHES = {
     'runfofem.exe': 'e882761635c8efc9e29cbd0f776d489a3452218e9a37cd26aa29fa49608907c7',
     'README.txt': '7f19a54cbe2ba6b5f374116944ef54bfc545f8c0a66c608324c4929035e687be',

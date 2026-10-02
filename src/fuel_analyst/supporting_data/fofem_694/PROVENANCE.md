@@ -14,7 +14,7 @@
   - fof_spp.csv: 238dbf71f3ef7b874be452221982113dbb8067ffcfd84e7d9773ab10f2ed7f67 (byte-identical to upstream's share/fofem/fof_spp.csv)
 
 runfofem.exe, fof_spp.csv, README.txt, and doc/ are copied byte-for-byte from the upstream ZIP by
-update_fofem_694_runtime.sh. doc/LICENSE states the software was developed by federal
+scripts/update_fofem_694_runtime.sh. doc/LICENSE states the software was developed by federal
 employees as part of official duties and is public domain; it is not the same license as
 FuelAnalyst's own MIT-licensed code (see the repository root LICENSE file). The upstream
 README.txt requests a citation for data derived from runfofem output.
@@ -24,5 +24,5 @@ vcruntime140.dll, vcruntime140_1.dll) have been removed. The upstream ZIP contai
 all. The Microsoft Visual C++ Redistributable is a documented, separately-installed Windows
 prerequisite for running runfofem.exe - see docs/CODEBASE.md.
 
-Regenerate this file by rerunning update_fofem_694_runtime.sh from the repository root. The
+Regenerate this file by rerunning `scripts/update_fofem_694_runtime.sh` from the repository root. The
 runtime wheel copies these selected files from this bundle during its build.

@@ -70,7 +70,7 @@ dependency groups are `dev` and `notebook`. `pyproject.toml` plus the generated 
 sources of truth for the development environment (uv is not a runtime dependency).
 The package supports Python 3.11 through 3.14, tested on Windows, Linux, and
 macOS. ConPyro is vendored in `src/fuel_analyst/_vendor/conpyro` (a generated copy of
-the upstream repository, refreshed with `update_vendors.sh`), and the bounded
+the upstream repository, refreshed with `scripts/update_vendors.sh`), and the bounded
 `flame-components>=0.1.1,<0.2` distribution from PyPI is a core dependency. The `fofem` extra installs the bounded `pyfofem-fire-effects>=0.1.1,<0.2`
 distribution from PyPI (imports as `pyfofem`, matching the prior GitHub checkout's
 import name) and needs no Git checkout for the Python-backed `model_select='pyfofem'`
@@ -118,7 +118,7 @@ immediate `FileNotFoundError` naming the gap before any row is processed if none
    only; it carries the same 7 files, tracked in Git, and needs no override.
 
 The tracked source bundle is updated from the pinned upstream release by
-`update_fofem_694_runtime.sh` (repo root), which downloads the exact pinned ZIP URL, verifies
+`scripts/update_fofem_694_runtime.sh`, which downloads the exact pinned ZIP URL, verifies
 its SHA-256 before extracting anything, and fails loudly on upstream drift. The separate wheel
 copies its seven assets from that bundle during the build, so a fresh checkout has one source
 for both locations. `Emission_Factors.csv` is FuelAnalyst's own tested

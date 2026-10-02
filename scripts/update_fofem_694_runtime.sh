@@ -18,7 +18,7 @@
 # something this script does automatically.
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUNDLE_DIR="$REPO_ROOT/src/fuel_analyst/supporting_data/fofem_694"
 
 UPSTREAM_URL="https://www.alturassolutions.com/SpatialFOFEM/runfofem.zip"
@@ -103,7 +103,7 @@ cat > "$BUNDLE_DIR/PROVENANCE.md" <<EOF
   - fof_spp.csv: $actual_fof_spp_sha256 (byte-identical to upstream's share/fofem/fof_spp.csv)
 
 runfofem.exe, fof_spp.csv, README.txt, and doc/ are copied byte-for-byte from the upstream ZIP by
-update_fofem_694_runtime.sh. doc/LICENSE states the software was developed by federal
+scripts/update_fofem_694_runtime.sh. doc/LICENSE states the software was developed by federal
 employees as part of official duties and is public domain; it is not the same license as
 FuelAnalyst's own MIT-licensed code (see the repository root LICENSE file). The upstream
 README.txt requests a citation for data derived from runfofem output.
@@ -113,7 +113,7 @@ vcruntime140.dll, vcruntime140_1.dll) have been removed. The upstream ZIP contai
 all. The Microsoft Visual C++ Redistributable is a documented, separately-installed Windows
 prerequisite for running runfofem.exe - see docs/CODEBASE.md.
 
-Regenerate this file by rerunning update_fofem_694_runtime.sh from the repository root. The
+Regenerate this file by rerunning \`scripts/update_fofem_694_runtime.sh\` from the repository root. The
 runtime wheel copies these selected files from this bundle during its build.
 EOF
 

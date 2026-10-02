@@ -294,7 +294,7 @@ checkout only, the bundled `src/fuel_analyst/supporting_data/fofem_694` director
 resolution order and provenance details. The repository
 retains one Git submodule, `dependencies/BC_CFFBPS_FuelTyping_Tool`, as the source for the vendored
 `bcwft2018.py`; a recursive clone is only necessary to refresh that vendored copy. ConPyro is vendored
-from its upstream repository the same way (`update_vendors.sh`, `CONPYRO_SRC`).
+from its upstream repository the same way (`scripts/update_vendors.sh`, `CONPYRO_SRC`).
 
 #### PhotoLoad model-development dependencies
 
