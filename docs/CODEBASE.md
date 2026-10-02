@@ -250,27 +250,54 @@ on the repository layout.
 
 ## Data flow and outputs
 
+The pipeline is a set of separate calls linked by files. The first two diagrams show
+what `fuel_analyst()` does internally, the third shows the optional fuel-typing and
+weather steps, and the fourth shows what `run_conpyro()` reads and writes. Solid
+arrows are data dependencies. Dotted arrows are optional or manual links.
+
+### `fuel_analyst()`: forms to merged tables
+
 ```mermaid
 flowchart TD
-    P[Plot Attributes] --> M[Merged plot data]
-    PR[Plants and Regeneration] --> M
-    T[Trees and Saplings] --> M
-    C[Canopy Cover] --> M
-    W[Woody Debris] --> M
+    subgraph FORMS["Survey123 forms (in_dir)"]
+        P["Plot Attributes<br/>always run"]
+        PR["Plants and<br/>Regeneration"]
+        T["Trees and<br/>Saplings"]
+        C["Canopy<br/>Cover"]
+        W["Woody<br/>Debris"]
+        HUB["Process each form<br/>and merge"]
+        P --> HUB
+        PR --> HUB
+        T --> HUB
+        C --> HUB
+        W --> HUB
+    end
 
-    M --> MF[master_fuel_df.csv]
-    T --> MT[master_tree_df.csv]
-    M --> CP[conpyro_df.csv]
-    M --> FP[fbp_prep_df.csv]
-    M --> FT[fofem_gui_app_tree_mortality_df.csv]
-    M --> FC[fofem_consume_si_df.csv or fofem_consume_imperial_df.csv]
-    M --> ER[fuelanalyst_errors.csv]
+    HUB --> PD["Merged<br/>plot table"]
+    HUB --> FORMCSV["Per-form survey_0.csv"]
+    HUB --> ER["fuelanalyst_errors.csv"]
+    HUB --> MT["master_tree_df.csv<br/>(from Trees)"]
+    PD --> MF["master_fuel_df.csv"]
+```
 
-    CP --> FBP[process_fbp_fuel_type]
-    WX[extract_weather_data] --> MW[merge_weather_data]
-    FBP --> MW
-    MW --> RC[run_conpyro]
-    RC --> RER[run_conpyro_errors.csv]
+### `fuel_analyst()`: optional model-preparation tables
+
+```mermaid
+flowchart TD
+    mergedPlot["Merged<br/>plot table"]
+    masterTree["master_tree_<br/>df.csv"]
+
+    mergedPlot --> buildCp["Build ConPyro<br/>tables<br/>gen_conpyro_df<br/>needs all<br/>four forms"]
+    buildCp --> conpyroOut["conpyro_df.csv"]
+    buildCp --> fbpOut["fbp_prep_df.csv"]
+
+    mergedPlot --> buildFc["Build FOFEM<br/>consumption table<br/>gen_fofem_consume_df<br/>needs Trees, Plants,<br/>Woody"]
+    buildFc --> consumeOut["fofem_consume_si_df.csv<br/>or fofem_consume_imperial_df.csv"]
+
+    mergedPlot --> buildFt["Build FOFEM<br/>tree table<br/>gen_fofem_gui_app_tree_df<br/>needs Trees"]
+    masterTree --> buildFt
+    buildFt --> ftOut["fofem_gui_app_tree_mortality_df.csv"]
+    ftOut -.-> guiApp["FOFEM GUI<br/>application<br/>(external)"]
 ```
 
 `master_fuel_df.csv` and `fuelanalyst_errors.csv` are written by every completed
@@ -285,6 +312,112 @@ flowchart TD
 The centralized report omits plots with no collected issues. Form columns and
 identity columns are dynamic. Multiple messages in one cell are numbered and
 include their logging severity.
+
+### After `fuel_analyst()`: fuel typing and weather
+
+```mermaid
+flowchart TD
+    fbpPrep["fbp_prep_df.csv<br/>fill BEC and VRI fields (manual)"]
+    masterFuel["master_fuel_df.csv"]
+    conpyroCsv["conpyro_df.csv"]
+
+    subgraph cfis["CFIS modelling only (optional)"]
+        fbpType["process_fbp_fuel_type"]
+        conpyroFbp["conpyro_df_fbp.csv"]
+        fbpType --> conpyroFbp
+    end
+    fbpPrep --> fbpType
+    masterFuel --> fbpType
+    conpyroCsv --> fbpType
+
+    locations["Plot locations<br/>ID, lat, long<br/>(e.g., conpyro_df.csv)"]
+    rasters["Weather data<br/>(stations/rasters/etc)"]
+    subgraph nrcan["NRCAN daily FWIS rasters (optional)"]
+        extract["extract_weather_data"]
+        wxTable["Weather table,<br/>shapefile, and<br/>error file"]
+        extract --> wxTable
+    end
+    userExtract["User supplied<br/>weather extraction<br/>process"]
+    locations --> extract
+    locations --> userExtract
+    rasters -.-> extract
+    rasters -.-> userExtract
+
+    conpyroFbp --> mergeWx["merge_weather_data"]
+    conpyroCsv -.-> mergeWx
+    wxTable --> mergeWx
+    userExtract --> mergeWx
+    mergeWx --> wxMerged["Weather-merged<br/>ConPyro table<br/>and missing_wx.csv"]
+```
+
+### `run_conpyro()`: fire behaviour, mortality, and emissions
+
+```mermaid
+flowchart TD
+    wxMergedIn["Weather-merged<br/>ConPyro table"] --> runCp["run_conpyro"]
+    treeCsv["master_tree_df.csv<br/>for FOFEM mortality"] -.-> runCp
+    consumeCsv["fofem_consume_*_df.csv<br/>for FOFEM emissions"] -.-> runCp
+    runCp --> results["fire_behavior/conpyro_results.csv<br/>fofem_mortality/ and fofem_emissions/<br/>conpyro_*_results.csv"]
+    runCp --> runErrors["run_conpyro_errors.csv"]
+```
+
+#### What the diagrams imply
+
+- **Configuration and flags decide what is built.** The four configuration
+  dictionaries (`stand_summary_params`, `woody_debris_params`, `conpyro_params`,
+  and `fofem_consume_params`) control the tree, woody-debris, ConPyro, and FOFEM
+  calculations, and the three `gen_*` flags decide which of the optional tables
+  are written. `form_select` in Plot Attributes decides, plot by plot, which of
+  the four optional forms are processed.
+- **Stages communicate through files, not objects.** `process_fbp_fuel_type()`,
+  `extract_weather_data()`, `merge_weather_data()`, and `run_conpyro()` each take
+  file paths and write CSVs, so any stage can be rerun, replaced, or fed a table
+  produced elsewhere.
+- **Fuel typing is optional and needs manual input.** `process_fbp_fuel_type()`
+  reads `master_fuel_df.csv`, the completed `fbp_prep_df.csv`, and `conpyro_df.csv`,
+  then writes a copy of the ConPyro table with an `_fbp` suffix. The BEC and VRI
+  fields in `fbp_prep_df.csv` come from external data and must be filled in
+  first; missing or invalid values are reported before any plot is typed.
+  `merge_weather_data()` accepts either ConPyro table.
+- **The weather-extraction input is any plot-location table.** It can be any CSV
+  or spatial file with a plot ID and latitude and longitude, named through the
+  `plot_pts_path`, `plot_id_col_name`, `lat_col_name`, and `lon_col_name`
+  arguments. `conpyro_df.csv` is a convenient choice because it already carries the
+  same `unique_id` and coordinates as the table the weather is merged into. This
+  has three consequences:
+  - For a keyed merge, the IDs in the location file must match the merge key in
+    the plot table, or those plots receive no weather.
+  - A plot with no coordinates is skipped during extraction (a warning is
+    logged) and later appears in `missing_wx.csv`, which the keyed merge writes
+    for every plot without a weather match, even when the file is empty.
+  - When weather is shared across plots (`wx_merge_col_name=None`), each weather
+    row is paired with every plot and the IDs do not need to match, so the
+    location file only affects what was extracted.
+- **`extract_weather_data()` is one way to produce the weather table.** It reads
+  NRCAN gridded rasters, so the diagram shows it as an optional example. Any
+  process of your own that writes a CSV can replace it, because
+  `merge_weather_data()` only reads the file, and the diagram shows it feeding the
+  merge directly. Like the NRCAN route, it would normally start from the same
+  plot-location table. The table needs the plot ID column
+  (for a keyed merge), a `wx_date` column (used to assign seasons and to sort the
+  final results), and the weather variables ConPyro needs (`ws`, `wd`, `ffmc`,
+  `dmc`, and `bui`, plus `temp` and `rh` for CFIS).
+- **`run_conpyro()` takes the weather-merged table plus optional side inputs.**
+  FOFEM mortality reads `master_tree_df.csv` (`in_tree_csv_path`) and FOFEM
+  emissions read the consumption table (`in_fofem_consume_csv_path`). Enabling a
+  stage without its input raises an error, and the final
+  `conpyro{_mortality}{_emissions}_results.csv` is written only when mortality or
+  emissions ran. Rows with an empty `stand_density` or `stand_type`, such as plots
+  with no live overstory, are dropped before ConPyro runs, so the results can have
+  fewer plots than the input.
+- **`fofem_gui_app_tree_mortality_df.csv` is a hand-off, not an input.** It is
+  formatted for import into the external FOFEM GUI application and is not read by
+  `run_conpyro()`.
+- **Each entry point reports its own problems.** `fuelanalyst_errors.csv` collects
+  log records from every component of one `fuel_analyst()` run, not only the merged
+  table. `extract_weather_data()` writes `<out_file_name>_errors.csv`,
+  `run_conpyro()` writes `run_conpyro_errors.csv`, and `missing_wx.csv` is a
+  diagnostic list of unmatched plots rather than an error report.
 
 ## Runtime contracts and gotchas
 
