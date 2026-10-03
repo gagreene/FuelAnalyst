@@ -111,7 +111,6 @@ For module responsibilities, data flow, and runtime contracts, see the
 ```text
 FuelAnalyst/
 |-- .github/workflows/       Release-tag test workflow
-|-- dependencies/            BC fuel-typing submodule (source for the vendored bcwft2018)
 |-- docs/                    Codebase, result-field, and contribution references
 |-- examples/
 |   |-- data/                Checked-in Survey123 example inputs
@@ -291,10 +290,10 @@ environment variable (an external FOFEM 6.9.4 installation, for overriding eithe
 paths below); the installed `fuel-analyst-fofem694-runtime` package; then, for a Git source
 checkout only, the bundled `src/fuel_analyst/supporting_data/fofem_694` directory. See
 [the codebase reference](docs/CODEBASE.md#package-and-repository-layout) for the full
-resolution order and provenance details. The repository
-retains one Git submodule, `dependencies/BC_CFFBPS_FuelTyping_Tool`, as the source for the vendored
-`bcwft2018.py`; a recursive clone is only necessary to refresh that vendored copy. ConPyro is vendored
-from its upstream repository the same way (`scripts/update_vendors.sh`, `CONPYRO_SRC`).
+resolution order and provenance details. The repository has no Git submodules. BC fuel typing
+(`bcwft2018.py`) and ConPyro are vendored from their upstream repositories the same way: the
+maintainer runs `bash scripts/update_vendors.sh`, which clones each upstream default branch from
+GitHub and regenerates the vendored files, so users never need access to those repositories.
 
 #### PhotoLoad model-development dependencies
 
@@ -849,4 +848,4 @@ Avoid writing tests that merely retest ConPyro, pyFOFEM, flame-components, panda
 
 ## License
 
-The project metadata declares the package under the MIT License. Third-party dependencies and vendored or submodule code retain their own licenses.
+The project metadata declares the package under the MIT License. Third-party dependencies and vendored code retain their own licenses.
