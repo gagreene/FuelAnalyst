@@ -1026,6 +1026,19 @@ def _get_van_wagner_qmd(
     return dc_df[[f'qmd{dc}' for dc in diam_classes]]
 
 
+def _load_manual_spp_comp(in_folder: str) -> pd.DataFrame:
+    """Load optional manual species composition records.
+
+    :param in_folder: Folder containing the Woody Debris Survey123 export.
+    :return: Manual composition rows, or an empty table with the required
+        columns when Survey123 omitted the unused repeat table.
+    """
+    path = os.path.join(in_folder, 'spp_comp_manual_1.csv')
+    if os.path.exists(path):
+        return helper.get_df(path)
+    return pd.DataFrame(columns=['ParentGlobalID', 'spp_comp_code', 'spp_comp_percent'])
+
+
 def _merge_spp_comp(
         plot_df: pd.DataFrame,
         df: pd.DataFrame,
@@ -1264,7 +1277,7 @@ def process_woody_debris(
 
     # ### PROCESS SPECIES COMPOSITION DATA
     # Get manual entry species composition dataframe
-    spp_comp_df = helper.get_df(os.path.join(in_folder, 'spp_comp_manual_1.csv'))
+    spp_comp_df = _load_manual_spp_comp(in_folder)
     # Process species composition attributes
     spp_comp_df = _assign_spp_comp_id_col(df, spp_comp_df)
     spp_comp_df = _add_spp_comp_type(spp_comp_df)
