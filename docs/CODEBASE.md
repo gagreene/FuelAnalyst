@@ -54,7 +54,6 @@ FuelAnalyst/
 |   |   `-- helper.py
 |   `-- supporting_data/           Packaged CSV and ecodivision data
 |-- models/photoload/              Reproducible PhotoLoad model-development workflow
-|-- dependencies/                  BC fuel-typing submodule (source for vendored bcwft2018)
 |-- examples/
 |   |-- data/                     Checked-in example inputs
 |   |-- tutorial/                 Notebook and editor setup guide
@@ -69,8 +68,9 @@ FuelAnalyst uses a standard `src` package layout and is installable with
 dependency groups are `dev` and `notebook`. `pyproject.toml` plus the generated `uv.lock` are the
 sources of truth for the development environment (uv is not a runtime dependency).
 The package supports Python 3.11 through 3.14, tested on Windows, Linux, and
-macOS. ConPyro is vendored in `src/fuel_analyst/_vendor/conpyro` (a generated copy of
-the upstream repository, refreshed with `scripts/update_vendors.sh`), and the bounded
+macOS. ConPyro (`src/fuel_analyst/_vendor/conpyro`) and BCWFT2018 (`_vendor/bcwft2018.py`) are
+vendored: generated copies of their upstream repositories, refreshed with `scripts/update_vendors.sh`
+(it shallow-clones each upstream default branch; `CONPYRO_SRC`/`BC_SRC` select a local clone instead), and the bounded
 `flame-components>=0.1.1,<0.2` distribution from PyPI is a core dependency. The `fofem` extra installs the bounded `pyfofem-fire-effects>=0.1.1,<0.2`
 distribution from PyPI (imports as `pyfofem`, matching the prior GitHub checkout's
 import name) and needs no Git checkout for the Python-backed `model_select='pyfofem'`
