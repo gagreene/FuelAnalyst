@@ -72,7 +72,7 @@ with it active. Then install FuelAnalyst and the packages the tutorial uses:
 ```
 python -m pip install --upgrade pip
 python -m pip install -e .
-python -m pip install "pyfofem-fire-effects>=0.1.1,<0.2" matplotlib ipykernel ipywidgets
+python -m pip install "pyfofem-fire-effects>=0.1.2,<0.2" matplotlib ipykernel ipywidgets
 ```
 
 What each line does:

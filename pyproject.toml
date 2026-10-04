@@ -51,7 +51,7 @@ photoload = [
     "scikit-image>=0.20",
 ]
 fofem = [
-    "pyfofem-fire-effects>=0.1.1,<0.2",
+    "pyfofem-fire-effects>=0.1.2,<0.2",
 ]
 all = [
     "fuel-analyst[fofem,photoload]",

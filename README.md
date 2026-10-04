@@ -233,7 +233,7 @@ python -m pip install -e ".[fofem]"
 ```
 
 The `fofem` extra installs the bounded
-`pyfofem-fire-effects>=0.1.1,<0.2` distribution from PyPI (no Git checkout needed) for the
+`pyfofem-fire-effects>=0.1.2,<0.2` distribution from PyPI (no Git checkout needed) for the
 default `model_select='pyfofem'` emissions backend, which works on Windows, Linux, and macOS.
 
 The `model_select='fof_gui'` backend runs the official USFS FOFEM 6.9.4 batch application

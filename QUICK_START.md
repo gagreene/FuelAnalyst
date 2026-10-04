@@ -163,7 +163,7 @@ python -m pip install -e ".[fofem]"
 
 ConPyro is vendored in the package, and its Flame Components dependency installs from PyPI as
 `flame-components>=0.1.1,<0.2` with the core package. The `fofem` extra installs the
-bounded `pyfofem-fire-effects>=0.1.1,<0.2` distribution from PyPI (imports as `pyfofem`),
+bounded `pyfofem-fire-effects>=0.1.2,<0.2` distribution from PyPI (imports as `pyfofem`),
 needing no Git checkout, and is the default `model_select='pyfofem'` emissions backend.
 
 The `model_select='fof_gui'` backend runs the official USFS FOFEM 6.9.4 `runfofem.exe` on

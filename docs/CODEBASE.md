@@ -71,7 +71,7 @@ The package supports Python 3.11 through 3.14, tested on Windows, Linux, and
 macOS. ConPyro (`src/fuel_analyst/_vendor/conpyro`) and BCWFT2018 (`_vendor/bcwft2018.py`) are
 vendored: generated copies of their upstream repositories, refreshed with `scripts/update_vendors.sh`
 (it shallow-clones each upstream default branch; `CONPYRO_SRC`/`BC_SRC` select a local clone instead), and the bounded
-`flame-components>=0.1.1,<0.2` distribution from PyPI is a core dependency. The `fofem` extra installs the bounded `pyfofem-fire-effects>=0.1.1,<0.2`
+`flame-components>=0.1.1,<0.2` distribution from PyPI is a core dependency. The `fofem` extra installs the bounded `pyfofem-fire-effects>=0.1.2,<0.2`
 distribution from PyPI (imports as `pyfofem`, matching the prior GitHub checkout's
 import name) and needs no Git checkout for the Python-backed `model_select='pyfofem'`
 emissions path (mortality automation is pyfofem-only; the official FOFEM app is never
