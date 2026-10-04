@@ -51,7 +51,7 @@ def _declared_pyfofem_specifier():
     """
     Read the fofem extra's pyfofem-fire-effects version range straight from pyproject.toml,
     so this test always validates against the single declared source of truth (currently
-    >=0.1.1,<0.2) instead of a hardcoded string that could drift from it.
+    >=0.1.2,<0.2) instead of a hardcoded string that could drift from it.
 
     :return: packaging.specifiers.SpecifierSet for the declared pyfofem-fire-effects requirement.
     """
