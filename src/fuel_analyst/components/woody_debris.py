@@ -230,10 +230,13 @@ def _calc_plot_t2_azimuth(df: pd.DataFrame) -> pd.DataFrame:
 
 def _calc_plot_tsct_slope_correction(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculate the slope correction factor for each transect.
+    Calculate the exact horizontal-projection correction for each transect.
+
+    For slope percent s, the factor is sqrt(1 + (s / 100)^2). Degrees are
+    converted to percent first; the radians column remains diagnostic.
 
     :param df: DataFrame containing transect length and slope data.
-    :return: Updated df with corrected transect lengths.
+    :return: Updated DataFrame with slope percent, radians, and correction factors.
     """
 
     # Calculate slope correction for each transect
@@ -247,7 +250,7 @@ def _calc_plot_tsct_slope_correction(df: pd.DataFrame) -> pd.DataFrame:
         df[f't{tsct}_slope_rad'] = np.arctan(df[f't{tsct}_slope_pct'].astype(float) / 100)
 
         # Calculate slope correction
-        df[f't{tsct}_slope_cor'] = (1 + np.power(df[f't{tsct}_slope_rad'], 2)) ** 0.5
+        df[f't{tsct}_slope_cor'] = np.sqrt(1 + np.power(df[f't{tsct}_slope_pct'] / 100, 2))
 
     return df
 

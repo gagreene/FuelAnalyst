@@ -567,11 +567,16 @@ downstream missing-cover inconsistency described below remains.
 Tallied volume already divides by slope-corrected transect length. Smallest-
 class biomass and both optional QMD comparison masses therefore use
 `specific_gravity * volume_m3_per_ha / 10` without another slope multiplier.
-Measured-piece volume and mass, QMD estimates, and corrected lengths remain
-unchanged by this repair. Final classes combining measured and tallied
-contributions can change. The existing per-transect approximation
-`sqrt(1 + arctan(slope_percent / 100)^2)` remains in use; replacing it with
-the exact geometric factor is a separate author-confirmed change.
+Removing the repeated biomass multiplier leaves measured-piece results and QMD
+estimates unchanged. The accompanying geometry correction replaces
+`sqrt(1 + arctan(slope_percent / 100)^2)` with
+`sqrt(1 + (slope_percent / 100)^2)`, equivalent to `1 / cos(angle)`.
+It changes corrected lengths and both measured and tallied loads on sloped
+plots; flat-transect results and QMD estimation remain unchanged. Plot factors
+still use pooled horizontal lengths, rather than an arithmetic mean of
+per-transect correction factors. These aggregation methods differ on unequal
+slopes and must not be described as identical. The exact per-transect formula
+is given in [USFS GTR-NC-256, equation 3.1b](https://research.fs.usda.gov/download/treesearch/13164.pdf#page=23).
 
 Regenerate affected results and rebuild weather/plot merges from fresh
 fuel attributes before rerunning ConPyro/FOFEM. Reusing the checked-in

@@ -145,7 +145,7 @@ def test_woody_tallied_mass_reaches_final_requested_class(compare):
     pieces = woody_debris._calc_woody_corrected_tsct_lengths(plot, pieces, params)
     pieces = woody_debris._calc_woody_weight(woody_debris._calc_woody_volume(pieces))
     final, keep = woody_debris._calc_plot_woody_debris(tallied, pieces, params)
-    factor = np.sqrt(1 + (np.pi / 4) ** 2)
+    factor = np.sqrt(2)
     # Counts 4/1, nominal lengths 8/20 m, and class midpoints 0.5/2 cm
     # give adjusted-frequency ratio 1/20 and this independent QMD integral.
     exponent = np.log(1 / 20) / np.log(4)

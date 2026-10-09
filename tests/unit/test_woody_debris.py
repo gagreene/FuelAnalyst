@@ -94,6 +94,53 @@ def test_calc_plot_t2_azimuth_wraps_at_360():
     assert result['t2_azimuth'].tolist() == [90, 30]
 
 
+@pytest.mark.parametrize(
+    ('value', 'units', 'expected'),
+    [
+        (0.0, 'percent', 1.0),
+        (100.0, 'percent', np.sqrt(2)),
+        (-100.0, 'percent', np.sqrt(2)),
+        (0.0, 'degrees', 1.0),
+        (45.0, 'degrees', np.sqrt(2)),
+        (-45.0, 'degrees', np.sqrt(2)),
+    ],
+)
+def test_calc_plot_tsct_slope_correction_uses_rise_over_run(value, units, expected):
+    source = pd.DataFrame({
+        't1_slope': [value], 't2_slope': [value],
+        't1_slope_units': [units], 't2_slope_units': [units],
+    })
+    result = _calc_plot_tsct_slope_correction(source)
+    assert result.loc[0, 't1_slope_cor'] == pytest.approx(expected)
+    assert result.loc[0, 't2_slope_cor'] == pytest.approx(expected)
+
+
+def test_calc_plot_tsct_total_slope_correction_handles_one_transect():
+    source = pd.DataFrame({
+        'num_transects': [1], 't1_slope': [100.0], 't2_slope': [np.nan],
+        't1_slope_units': ['percent'], 't2_slope_units': ['percent'],
+    })
+    result = _calc_plot_tsct_total_slope_correction(
+        _calc_plot_tsct_slope_correction(source),
+        {'protocol_transect_params': {'transect_lengths': [4, 10, 30]}},
+    )
+    assert result.loc[0, 'tsct_length_4m_cor'] == pytest.approx(4 / np.sqrt(2))
+    assert result.loc[0, 'tsct_slope_cor'] == pytest.approx(np.sqrt(2))
+
+
+def test_calc_plot_tsct_total_slope_correction_uses_horizontal_lengths():
+    source = pd.DataFrame({
+        'num_transects': [2], 't1_slope': [0.0], 't2_slope': [100.0],
+        't1_slope_units': ['percent'], 't2_slope_units': ['percent'],
+    })
+    result = _calc_plot_tsct_total_slope_correction(
+        _calc_plot_tsct_slope_correction(source),
+        {'protocol_transect_params': {'transect_lengths': [4, 10, 30]}},
+    )
+    assert result.loc[0, 'tsct_length_4m_cor'] == pytest.approx(4 + 4 / np.sqrt(2))
+    assert result.loc[0, 'tsct_slope_cor'] == pytest.approx(8 / (4 + 4 / np.sqrt(2)))
+
+
 def test_calc_plot_woody_debris_replaces_pre_existing_output_column():
     df = pd.DataFrame({
         'GlobalID': ['p1'],
@@ -259,7 +306,7 @@ def test_calc_tallied_woody_biomass_replaces_pre_existing_output_columns():
 def test_calc_tallied_woody_biomass_scales_linearly_with_slope_factor():
     flat, _ = _calc_tallied_woody_biomass(*_sloped_tally_frames(0.0, 0.0))
     sloped, _ = _calc_tallied_woody_biomass(*_sloped_tally_frames())
-    factor = np.sqrt(1 + (np.pi / 4) ** 2)
+    factor = np.sqrt(2)
     assert sloped.loc[0, 'compare_woody_qmd_vanwagner_test_1'] == flat.loc[0, 'compare_woody_qmd_vanwagner_test_1']
     for column in ['woody_volume_test_1', 'woody_kgpm2_test_1']:
         assert sloped.loc[0, column] / flat.loc[0, column] == pytest.approx(factor)
@@ -358,7 +405,6 @@ def test_resolve_spp_comp_type_falls_back_when_declared_source_has_no_data(caplo
     assert 'transect_data' in caplog.records[0].message
     assert caplog.records[0].unique_id == 'A'
 
-
 def test_resolve_spp_comp_type_keeps_declared_source_when_available(caplog):
     df = pd.DataFrame({'unique_id': ['A'], 'spp_comp_type': ['transect_data']})
     spp_comp_df = pd.DataFrame({
@@ -388,6 +434,7 @@ def test_species_composition_metadata_helpers():
     assert result.loc[0, 'unique_id'] == 'plot-1'
     assert result.loc[0, 'spp_comp_type'] == 'manual_entry'
 
+
 def test_species_composition_parameters_are_weighted_and_unknown_species_fall_back():
     from fuel_analyst.components.woody_debris import bulk_density_map, specific_gravity_map
 
@@ -410,7 +457,6 @@ def test_tallied_woody_counts_sum_both_ends_of_both_transects():
         't2_woody_tally_0to2': [3], 't2_woody_tally_28to30': [4],
     })
     assert _calc_tallied_woody_counts(df).loc[0, 'woody_tally_count'] == 10
-
 
 def test_tallied_woody_fragmentation_contract_preserves_outputs_without_warning():
     df = pd.DataFrame({
