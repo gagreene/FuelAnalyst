@@ -1,4 +1,6 @@
 import importlib
+import sys
+import types
 
 import numpy as np
 import pandas as pd
@@ -13,6 +15,13 @@ from fuel_calculation_fixtures import (
     _sloped_tally_frames,
     _transect_row,
 )
+
+# pyfofem is an optional extra, so the base CI jobs do not install it. Register a stand-in before importing the
+# FOFEM components, as the other pyfofem-touching test modules do; run_fofem_emissions is monkeypatched per test.
+if 'pyfofem' not in sys.modules:
+    fake_package = types.ModuleType('pyfofem')
+    fake_package.pyfofem = types.SimpleNamespace()
+    sys.modules['pyfofem'] = fake_package
 
 fofem_emissions = importlib.import_module('fuel_analyst.components.fofem_emissions')
 fofem_gui_emissions = importlib.import_module('fuel_analyst.components.fofem_gui_emissions')
