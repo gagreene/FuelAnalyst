@@ -1,6 +1,6 @@
 # Release notes
 
-## 0.1.1 (unreleased)
+## 0.1.0 (unreleased)
 
 - Fuel-bed depth now uses the cover-weighted heights of all usable recorded plant species. Missing species or height observations no longer erase earlier contributions. Empty usable observations remain missing in the plant output.
 - Plot canopy cover now averages usable records for transect IDs 1 and 2. A single transect retains its measured percentage; wholly excluded or absent observations do not count as zero cover.
