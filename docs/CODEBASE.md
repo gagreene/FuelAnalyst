@@ -538,6 +538,52 @@ single-column choice is replaced with its default and logged through the Trees
 source. On a completed run, these configuration warnings appear under
 `General Error` in `fuelanalyst_errors.csv` because they are not tied to a plot.
 
+### Fuel depth, canopy averaging, and tallied woody correction
+
+Fuel-bed depth in `plants_regen._process_top_five_spp()` is
+`sum(cover_percent * height_cm) / sum(cover_percent) / 100`, after the
+existing species and zero-value normalization. A shared validity mask
+requires a recorded species, positive finite cover, and finite nonnegative
+height. Missing heights are excluded from both sums; measured zero heights
+retain their cover weight. No usable species yields `NaN`. The intermediate
+column positions and functional-group biomass calculations remain unchanged.
+
+The FOFEM consumption builder rounds this depth to two decimals and fills
+missing values with 0 m. CSV reload preserves that zero, and both
+`fofem_emissions.py` and `fofem_gui_emissions.py` pass it to their emissions
+routes. The pyfofem adapter's `default=0.3` fills missing values, not numeric
+zero. Tree FSG uses the separate field-measured `tree_fuel_bed_ht` and is
+unaffected by derived plant depth.
+
+Canopy plot percentages are arithmetic means of usable records whose
+`cc_transect` is 1 or 2. A missing or wholly excluded transect receives no
+weight; valid uncovered transects contribute zero. Two valid transects
+receive equal weight despite differing usable-point counts. Duplicate
+eligible records each receive one weight; no deduplication occurs. The six
+`CC_*_t1`/`CC_*_t2` diagnostic columns retain summed values and can disagree
+with means on duplicate inputs. No usable records yields `NaN`; the existing
+downstream missing-cover inconsistency described below remains.
+
+Tallied volume already divides by slope-corrected transect length. Smallest-
+class biomass and both optional QMD comparison masses therefore use
+`specific_gravity * volume_m3_per_ha / 10` without another slope multiplier.
+Removing the repeated biomass multiplier leaves measured-piece results and QMD
+estimates unchanged. The accompanying geometry correction replaces
+`sqrt(1 + arctan(slope_percent / 100)^2)` with
+`sqrt(1 + (slope_percent / 100)^2)`, equivalent to `1 / cos(angle)`.
+It changes corrected lengths and both measured and tallied loads on sloped
+plots; flat-transect results and QMD estimation remain unchanged. Plot factors
+still use pooled horizontal lengths, rather than an arithmetic mean of
+per-transect correction factors. These aggregation methods differ on unequal
+slopes and must not be described as identical. The exact per-transect formula
+is given in [USFS GTR-NC-256, equation 3.1b](https://research.fs.usda.gov/download/treesearch/13164.pdf#page=23).
+
+Regenerate affected results and rebuild weather/plot merges from fresh
+fuel attributes before rerunning ConPyro/FOFEM. Reusing the checked-in
+`conpyro_df_wx.csv` unchanged would retain its old fuel attributes.
+See [release notes](RELEASE_NOTES.md) for the unreleased patch behavior.
+
+
 ### Canopy cover
 
 Missing canopy cover (`cc`) is handled inconsistently and without any

@@ -7,31 +7,11 @@ import pytest
 from fuel_analyst.components import fofem_units
 from fuel_analyst.components.fofem_attributes import gen_fofem_consumption_df, gen_fofem_gui_app_tree_df
 
+from fuel_calculation_fixtures import _make_consumption_input_df
+
 _CONSUME_LOAD_AND_DEPTH_COLS = fofem_units.FOFEM_LOAD_COLUMNS + fofem_units.FOFEM_DEPTH_COLUMNS
 
 
-def _make_consumption_input_df():
-    """
-    Build a minimal plot-level DataFrame with all columns gen_fofem_consumption_df() requires.
-
-    :return: DataFrame with one row of SI-unit source values.
-    """
-    return pd.DataFrame({
-        'unique_id': ['p1'], 'SPECIES_CD_1': ['PY'], 'dom_substrate': ['HG'],
-        'fofem_shrub_group': [''], 'treatment_type': ['untreated'],
-        'ffl_litter_kgpm2': [1.0], 'ffl_duff_kgpm2': [2.0], 'stand_duff_depth_cm': [3.0],
-        'woody_kgpm2_fofem_sound_0_635': [0.1], 'woody_kgpm2_fofem_sound_2_54': [0.2],
-        'woody_kgpm2_fofem_sound_7_62': [0.3], 'woody_kgpm2_fofem_sound_15_24': [0.4],
-        'woody_kgpm2_fofem_sound_22_86': [0.5], 'woody_kgpm2_fofem_sound_50_8': [0.6],
-        'woody_kgpm2_fofem_sound_gt50_8': [0.7],
-        'woody_kgpm2_fofem_rotten_0_635': [0.1], 'woody_kgpm2_fofem_rotten_2_54': [0.2],
-        'woody_kgpm2_fofem_rotten_7_62': [0.8],
-        'woody_kgpm2_fofem_rotten_15_24': [0.9], 'woody_kgpm2_fofem_rotten_22_86': [1.0],
-        'woody_kgpm2_fofem_rotten_50_8': [1.1], 'woody_kgpm2_fofem_rotten_gt50_8': [1.2],
-        'grass_kgpm2': [0.3], 'herbs_kgpm2': [0.5], 'shrubs_kgpm2': [0.1],
-        'fuel_bed_depth_m': [0.25],
-        'stand_foliage_fofem_kgpm2_sum': [0.4], 'stand_branches_fofem_kgpm2_sum': [0.5],
-    })
 
 
 def test_gen_fofem_gui_app_tree_df_converts_units_and_status():

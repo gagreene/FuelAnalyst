@@ -265,9 +265,13 @@ def _process_regen(df: pd.DataFrame, regen_df: pd.DataFrame) -> tuple[pd.DataFra
 
 def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     """
-    Processes the top five plant species per plot, calculating biomass, percent cover, and height-weighted metrics
-    for different plant functional groups (moss/bryophyte, grass, herb/forb, shrub). Adds columns for each group
-    and for each species, including Photoload codes, biomass, and labels. Returns the updated DataFrame.
+    Calculate species biomass and cover-weighted plant heights per plot.
+
+    Add species PhotoLoad codes, biomass, and labels, together with biomass,
+    cover, and height summaries for moss/bryophyte, grass, herb/forb, and shrub groups.
+    Fuel-bed depth weights valid recorded species by cover after normalization; missing
+    or nonfinite heights/covers and negative heights are excluded from both sums.
+    A measured zero height contributes zero; no usable species yields missing depth.
 
     :param df: DataFrame containing plant species, percent cover, and height data.
     :return: Updated DataFrame with calculated plant group attributes and species-level metrics,
@@ -301,6 +305,9 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     # Get the plant Photoload codes and labels
     pl_code_map = plant_photoload_df['pl_code'].to_dict()
     label_map = plant_photoload_df['label'].to_dict()
+
+    fuel_bed_ht_wtd = pd.Series(0.0, index=df.index)
+    fuel_bed_pct_total = pd.Series(0.0, index=df.index)
 
     # Cycle through the top 5 plant species
     for x in range(1, 6):
@@ -336,9 +343,18 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
         df[f'pc_species_{x}_label'] = df[f'pc_species_{x}'].map(label_map)
 
         # PROCESS ALL PLANTS FOR FUEL BED DEPTH (i.e., Height only)
-        # Get plant height weighted by percent cover for all species (for calculating dominant substrate)
-        df['fuel_bed_ht_wtd'] = df[f'pc_species_{x}_pct'] * df[f'pc_species_{x}_ht']
-        df['fuel_bed_pct_total'] = df[f'pc_species_{x}_pct']
+        # Accumulate valid cover-weighted heights for fuel-bed depth.
+        species_cover = df[f'pc_species_{x}_pct']
+        species_height = df[f'pc_species_{x}_ht']
+        valid_depth = (
+            df[f'pc_species_{x}'].notna() &
+            np.isfinite(species_cover) & (species_cover > 0) &
+            np.isfinite(species_height) & (species_height >= 0)
+        )
+        fuel_bed_ht_wtd += (species_cover * species_height).where(valid_depth, 0)
+        fuel_bed_pct_total += species_cover.where(valid_depth, 0)
+        df['fuel_bed_ht_wtd'] = fuel_bed_ht_wtd
+        df['fuel_bed_pct_total'] = fuel_bed_pct_total
 
         # PROCESS MOSS/BRYOPHYTE
         # Generate a mask for species that are mosses or bryophytes
@@ -391,7 +407,7 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
         df['shrubs_ht_wtd'] += np.where(shrub_mask, df[f'pc_species_{x}_pct'] * df[f'pc_species_{x}_ht'], 0)
 
     # Get average height of all fuels, grass, herbs/forbs, all herbaceous plants (grass + herbs/forbs), and shrubs (m)
-    df['fuel_bed_depth_m'] = df['fuel_bed_ht_wtd'] / df['fuel_bed_pct_total'] / 100
+    df['fuel_bed_depth_m'] = df['fuel_bed_ht_wtd'] / df['fuel_bed_pct_total'].replace(0, np.nan) / 100
     df['bryoid_ht_avg'] = (df['bryoid_ht_wtd'] / df['bryoid_pct_total']) / 100
     df['grass_ht_avg'] = (df['grass_ht_wtd'] / df['grass_pct_total']) / 100
     df['herb_forb_ht_avg'] = (df['herb_forb_ht_wtd'] / df['herb_forb_pct_total']) / 100

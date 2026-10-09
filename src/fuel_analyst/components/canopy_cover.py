@@ -13,20 +13,45 @@ import numpy as np
 from . import helper
 
 
+def _process_cc_data(df: pd.DataFrame, transect_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Average valid recorded canopy transects and retain their diagnostic sums.
+
+    Only transect IDs 1 and 2 enter plot means. Missing percentages receive no
+    weight; measured zero cover does. Duplicate eligible records each receive
+    one weight, while the per-transect diagnostic columns retain their sums.
+
+    :param df: Plot-level DataFrame containing GlobalID.
+    :param transect_df: Processed transect records containing ParentGlobalID.
+    :return: Updated plot DataFrame; plots without usable cover remain missing.
+    """
+    cc_cols = ['CC_t1', 'CC_cnfr_t1', 'CC_brdlf_t1', 'CC_brdlf_t2', 'CC_cnfr_t2', 'CC_t2']
+    group_sums = transect_df.groupby('ParentGlobalID')[cc_cols].sum()
+    for col in cc_cols:
+        df[col] = df['GlobalID'].map(group_sums[col])
+
+    cover_cols = ['cc', 'cc_cnfr', 'cc_brdlf']
+    eligible = transect_df[transect_df['cc_transect'].isin([1, 2])]
+    group_means = eligible.groupby('ParentGlobalID')[cover_cols].mean()
+    for col in cover_cols:
+        df[col] = df['GlobalID'].map(group_means[col])
+    return df
+
+
 def _process_transect_data(transect_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Processes canopy cover transect data to calculate total, conifer, and broadleaf canopy cover percentages,
-    accounting for excluded points, and assigns these values for each transect.
+    Calculate canopy percentages after excluding unusable sampling points.
 
-    :param transect_df: DataFrame containing canopy cover transect data.
-    :return: Updated DataFrame with calculated canopy cover columns.
+    :param transect_df: Canopy-cover transect records with 15 point observations.
+    :return: Updated records with total, conifer, and broadleaf percentages;
+        wholly excluded transects have missing percentages.
     """
     # List of canopy cover columns (every 2 meters from 2 to 30)
     cc_cols = [f'cc_{i}' for i in range(2, 32, 2)]
     # Count the number of excluded points per row
     exclude_count = transect_df[cc_cols].apply(lambda x: x.isin(['exclude']).sum(), axis=1)
     # Calculate denominator for percent cover (total points minus excluded)
-    denom = 15 - exclude_count
+    denom = (15 - exclude_count).replace(0, np.nan)
 
     # Calculate total, conifer, and broadleaf canopy cover percentages
     transect_df['cc'] = 100 * transect_df[cc_cols].isin(['cnfr', 'brdlf', 'cnfr_brdlf']).sum(axis=1) / denom
@@ -39,35 +64,7 @@ def _process_transect_data(transect_df: pd.DataFrame) -> pd.DataFrame:
             col = f'CC{suffix}_t{t}'
             base = f'cc{suffix}' if suffix else 'cc'
             transect_df[col] = np.where(transect_df['cc_transect'] == t, transect_df[base], 0)
-
     return transect_df
-
-
-def _process_cc_data(df: pd.DataFrame, transect_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Aggregates canopy cover data from transect-level to group-level and assigns
-    the results to the main DataFrame. Computes average canopy cover metrics.
-
-    :param df: DataFrame containing plot-level data with a 'group' column.
-    :param transect_df: DataFrame containing transect-level canopy cover data with a 'group' column.
-    :return: Updated DataFrame with group-level canopy cover columns.
-    """
-    # Columns to aggregate from transect data
-    cc_cols = ['CC_t1', 'CC_cnfr_t1', 'CC_brdlf_t1', 'CC_brdlf_t2', 'CC_cnfr_t2', 'CC_t2']
-
-    # Sum canopy cover columns by ParentGlobalID
-    group_sums = transect_df.groupby('ParentGlobalID')[cc_cols].sum()
-
-    # Map plot-level sums back to the main DataFrame using GlobalID
-    for col in cc_cols:
-        df[col] = df['GlobalID'].map(group_sums[col])
-
-    # Calculate average canopy cover metrics
-    df['cc'] = (df['CC_t1'] + df['CC_t2']) / 2
-    df['cc_cnfr'] = (df['CC_cnfr_t1'] + df['CC_cnfr_t2']) / 2
-    df['cc_brdlf'] = (df['CC_brdlf_t1'] + df['CC_brdlf_t2']) / 2
-
-    return df
 
 
 def process_canopy_cover(in_folder: str, out_folder: str) -> tuple[pd.DataFrame, list]:
