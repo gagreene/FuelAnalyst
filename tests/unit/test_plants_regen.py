@@ -10,7 +10,12 @@ from fuel_analyst.components.plants_regen import (
     _get_dom_substrate,
     _get_photoload_biomass,
     _process_regen,
+    _process_top_five_spp,
 )
+
+from fuel_calculation_fixtures import _depth_frame
+
+
 
 
 def test_calc_pc_flammable_computes_survey123_formula():
@@ -21,13 +26,13 @@ def test_calc_pc_flammable_computes_survey123_formula():
     assert keep == ['pc_nonflammable', 'pc_flammable']
 
 
-def test_calc_pc_flammable_treats_one_missing_value_as_zero(caplog):
-    df = pd.DataFrame({'unique_id': ['A'], 'pc_rock': [5.0], 'pc_mineral_soil': [np.nan]})
+def test_calc_pc_flammable_defaults_to_fully_flammable_when_columns_are_missing(caplog):
+    df = pd.DataFrame({'unique_id': ['A'], 'other_col': [1]})
     with caplog.at_level(logging.INFO, logger='fuel_analyst.components.plants_regen'):
         result, _ = _calc_pc_flammable(df)
-    assert result.loc[0, 'pc_nonflammable'] == 5.0
-    assert result.loc[0, 'pc_flammable'] == 95.0
-    assert caplog.records == []
+    assert result.loc[0, 'pc_nonflammable'] == 0.0
+    assert result.loc[0, 'pc_flammable'] == 100.0
+    assert 'No pc_rock or pc_mineral_soil cover provided' in caplog.records[0].message
 
 
 def test_calc_pc_flammable_defaults_to_fully_flammable_when_no_data_provided(caplog):
@@ -39,15 +44,6 @@ def test_calc_pc_flammable_defaults_to_fully_flammable_when_no_data_provided(cap
     assert len(caplog.records) == 1
     assert 'No pc_rock or pc_mineral_soil cover provided' in caplog.records[0].message
     assert caplog.records[0].unique_id == 'A'
-
-
-def test_calc_pc_flammable_defaults_to_fully_flammable_when_columns_are_missing(caplog):
-    df = pd.DataFrame({'unique_id': ['A'], 'other_col': [1]})
-    with caplog.at_level(logging.INFO, logger='fuel_analyst.components.plants_regen'):
-        result, _ = _calc_pc_flammable(df)
-    assert result.loc[0, 'pc_nonflammable'] == 0.0
-    assert result.loc[0, 'pc_flammable'] == 100.0
-    assert 'No pc_rock or pc_mineral_soil cover provided' in caplog.records[0].message
 
 
 def test_calc_pc_flammable_defaults_to_fully_flammable_when_result_out_of_range(caplog):
@@ -68,38 +64,30 @@ def test_calc_pc_flammable_handles_missing_unique_id_column(caplog):
     assert caplog.records[0].unique_id == 0
 
 
-@pytest.mark.parametrize(
-    ('code', 'reference_height', 'expected'),
-    [
-        ('AMAL', 35.56, 0.0690181 * (np.exp(0.0240242 * 50) - 1)),
-        ('ARLA', 30.48, 0.0005745 * np.power(50, 1.16228)),
-        ('CARU', 20.30, 0.0117766 * (np.exp(0.0379728 * 50) - 1)),
-        ('FESC', 30.5, 0.0161917 * (np.exp(0.0330081 * 50) - 1)),
-        ('MARE', 10.16, 0.000733871 * np.power(50, 1.16779)),
-        ('SYAL', 35.56, 0.00119555 * 50 + 0.0000169686 * np.power(50, 2)),
-        ('VAGL', 35.56, 0.398329 * (np.exp(0.0109776 * 50) - 1)),
-        ('VASC', 17.78, 0.0025455 * 50),
-        ('XETE', 25.4, 0.00366616 * 50),
-    ],
-)
-def test_get_photoload_biomass_uses_final_models(code, reference_height, expected):
-    assert _get_photoload_biomass(code, 50, reference_height) == pytest.approx(expected)
+def test_calc_pc_flammable_treats_one_missing_value_as_zero(caplog):
+    df = pd.DataFrame({'unique_id': ['A'], 'pc_rock': [5.0], 'pc_mineral_soil': [np.nan]})
+    with caplog.at_level(logging.INFO, logger='fuel_analyst.components.plants_regen'):
+        result, _ = _calc_pc_flammable(df)
+    assert result.loc[0, 'pc_nonflammable'] == 5.0
+    assert result.loc[0, 'pc_flammable'] == 95.0
+    assert caplog.records == []
 
 
-@pytest.mark.parametrize(
-    'code',
-    ['AMAL', 'ARLA', 'CARU', 'FESC', 'MARE', 'SYAL', 'VAGL', 'VASC', 'XETE'],
-)
-def test_get_photoload_biomass_models_pass_through_origin(code):
-    assert _get_photoload_biomass(code, 0, 20) == pytest.approx(0)
-
-
-def test_get_photoload_biomass_scales_with_height_and_handles_special_codes():
-    reference_biomass = _get_photoload_biomass('VAGL', 20, 35.56)
-    assert _get_photoload_biomass('VAGL', 20, 71.12) == pytest.approx(2 * reference_biomass)
-    assert _get_photoload_biomass('MOSS', 50, 10) == 0
-    assert _get_photoload_biomass('TREE', 50, 10) == 0
-    assert np.isnan(_get_photoload_biomass('UNKNOWN', 20, 10))
+def test_calc_plants_fccs_fofem_attributes_aggregates_duplicate_shrubs():
+    row = {'dom_substrate': 'SL'}
+    for i in range(1, 6):
+        row[f'pc_species_{i}_label'] = None
+        row[f'pc_species_{i}_plCode'] = None
+        row[f'pc_species_{i}_pct'] = 0
+    row.update({
+        'pc_species_1_label': 'Shrub', 'pc_species_1_plCode': 'ARTR', 'pc_species_1_pct': 60,
+        'pc_species_2_label': 'Shrub', 'pc_species_2_plCode': 'ARTR', 'pc_species_2_pct': 20,
+        'pc_species_3_label': 'Shrub', 'pc_species_3_plCode': 'VAGL', 'pc_species_3_pct': 20,
+    })
+    result, keep = _calc_plants_fccs_fofem_attributes(pd.DataFrame([row]))
+    assert result.loc[0, 'fccs_shrub_species'] == 'ARTR:80.0 | VAGL:20.0'
+    assert result.loc[0, 'fofem_shrub_group'] == 'Sagebrush'
+    assert keep == ['fofem_shrub_group']
 
 
 @pytest.mark.parametrize(
@@ -122,22 +110,38 @@ def test_get_dom_substrate_rules(covers, height, expected):
     assert keep == ['dom_substrate']
 
 
-def test_calc_plants_fccs_fofem_attributes_aggregates_duplicate_shrubs():
-    row = {'dom_substrate': 'SL'}
-    for i in range(1, 6):
-        row[f'pc_species_{i}_label'] = None
-        row[f'pc_species_{i}_plCode'] = None
-        row[f'pc_species_{i}_pct'] = 0
-    row.update({
-        'pc_species_1_label': 'Shrub', 'pc_species_1_plCode': 'ARTR', 'pc_species_1_pct': 60,
-        'pc_species_2_label': 'Shrub', 'pc_species_2_plCode': 'ARTR', 'pc_species_2_pct': 20,
-        'pc_species_3_label': 'Shrub', 'pc_species_3_plCode': 'VAGL', 'pc_species_3_pct': 20,
-    })
-    result, keep = _calc_plants_fccs_fofem_attributes(pd.DataFrame([row]))
-    assert result.loc[0, 'fccs_shrub_species'] == 'ARTR:80.0 | VAGL:20.0'
-    assert result.loc[0, 'fofem_shrub_group'] == 'Sagebrush'
-    assert keep == ['fofem_shrub_group']
+@pytest.mark.parametrize(
+    'code',
+    ['AMAL', 'ARLA', 'CARU', 'FESC', 'MARE', 'SYAL', 'VAGL', 'VASC', 'XETE'],
+)
+def test_get_photoload_biomass_models_pass_through_origin(code):
+    assert _get_photoload_biomass(code, 0, 20) == pytest.approx(0)
 
+
+def test_get_photoload_biomass_scales_with_height_and_handles_special_codes():
+    reference_biomass = _get_photoload_biomass('VAGL', 20, 35.56)
+    assert _get_photoload_biomass('VAGL', 20, 71.12) == pytest.approx(2 * reference_biomass)
+    assert _get_photoload_biomass('MOSS', 50, 10) == 0
+    assert _get_photoload_biomass('TREE', 50, 10) == 0
+    assert np.isnan(_get_photoload_biomass('UNKNOWN', 20, 10))
+
+
+@pytest.mark.parametrize(
+    ('code', 'reference_height', 'expected'),
+    [
+        ('AMAL', 35.56, 0.0690181 * (np.exp(0.0240242 * 50) - 1)),
+        ('ARLA', 30.48, 0.0005745 * np.power(50, 1.16228)),
+        ('CARU', 20.30, 0.0117766 * (np.exp(0.0379728 * 50) - 1)),
+        ('FESC', 30.5, 0.0161917 * (np.exp(0.0330081 * 50) - 1)),
+        ('MARE', 10.16, 0.000733871 * np.power(50, 1.16779)),
+        ('SYAL', 35.56, 0.00119555 * 50 + 0.0000169686 * np.power(50, 2)),
+        ('VAGL', 35.56, 0.398329 * (np.exp(0.0109776 * 50) - 1)),
+        ('VASC', 17.78, 0.0025455 * 50),
+        ('XETE', 25.4, 0.00366616 * 50),
+    ],
+)
+def test_get_photoload_biomass_uses_final_models(code, reference_height, expected):
+    assert _get_photoload_biomass(code, 50, reference_height) == pytest.approx(expected)
 
 def test_process_regen_normalizes_sampled_proportion_and_maps_to_plot():
     plots = pd.DataFrame({'GlobalID': ['p1', 'p2']})
@@ -150,3 +154,37 @@ def test_process_regen_normalizes_sampled_proportion_and_maps_to_plot():
     assert result['dens_regen_live_small_ha'].tolist() == [500.0, 0.0]
     assert result['dens_regen_live_tall_ha'].tolist() == [500.0, 0.0]
     assert keep == ['dens_regen_live_small_ha', 'dens_regen_live_tall_ha']
+
+
+@pytest.mark.parametrize(
+    ('covers', 'heights', 'species', 'expected'),
+    [
+        ([50, 20], [10, np.nan], None, 0.1),
+        ([50, 20], [10, 100], ['ACCA', None], 0.1),
+        ([50, 20], [10, np.inf], None, 0.1),
+        ([50, np.inf], [10, 100], None, 0.1),
+        ([50, -20], [10, 100], None, 0.1),
+        ([50, 20], [10, -100], None, 0.1),
+        ([], [], None, np.nan),
+        ([20], [0], None, 0.0),
+    ],
+)
+def test_process_top_five_spp_depth_handles_unusable_observations(covers, heights, species, expected):
+    # Existing PhotoLoad equations evaluate fractional powers on deliberate negative cover.
+    with np.errstate(invalid="ignore"):
+        result, _ = _process_top_five_spp(_depth_frame(covers, heights, species))
+    if np.isnan(expected):
+        assert np.isnan(result.loc[0, 'fuel_bed_depth_m'])
+    else:
+        assert result.loc[0, 'fuel_bed_depth_m'] == pytest.approx(expected)
+
+
+def test_process_top_five_spp_depth_ignores_missing_fifth_species():
+    result, _ = _process_top_five_spp(_depth_frame([50, 20, 15, 10], [10, 20, 30, 40]))
+    assert result.loc[0, 'fuel_bed_depth_m'] == pytest.approx(1750 / 95 / 100)
+
+
+def test_process_top_five_spp_depth_weights_all_species():
+    result, keep = _process_top_five_spp(_depth_frame([50, 20, 15, 10, 5], [10, 20, 30, 40, 100]))
+    assert result.loc[0, 'fuel_bed_depth_m'] == pytest.approx(0.225)
+    assert keep == ['fuel_bed_depth_m', 'bryoid_kgpm2', 'grass_kgpm2', 'herb_forb_kgpm2', 'shrubs_kgpm2']

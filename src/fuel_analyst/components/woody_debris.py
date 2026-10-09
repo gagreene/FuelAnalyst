@@ -466,6 +466,8 @@ def _calc_tallied_woody_biomass(
     This function processes tallied woody fuel data for each plot and woody debris class,
     calculates counts, theoretical and actual QMD (quadratic mean diameter), and computes
     biomass using the Van Wagner approach and measured values if requested.
+    Volume already uses slope-corrected transect length. All biomass paths convert
+    that volume with specific gravity / 10, without a second slope correction.
 
     :param df: DataFrame containing plot-level data.
     :param woody_merged_df: DataFrame containing merged woody debris transect data.
@@ -598,7 +600,6 @@ def _calc_tallied_woody_biomass(
                     )
                     # Calculate biomass
                     biomass_columns[f'woody_kgpm2_{woody_class_ext}_{dc_str}'] = (
-                        df[f'tsct_slope_cor'] *
                         df[f'woody_sg_{dc_str}cm'] *
                         biomass_columns[volume_col] /
                         10
@@ -616,7 +617,6 @@ def _calc_tallied_woody_biomass(
                         np.power(df[f'woody_qmd_vanwagner_{woody_class_ext}_{dc_str}'] / 100, 2)
                     )
                     biomass_columns[f'compare_woody_kgpm2_vanwagner_{woody_class_ext}_{dc_str}'] = (
-                        df[f'tsct_slope_cor'] *
                         df[f'woody_sg_{dc_str}cm'] *
                         biomass_columns[van_wagner_volume_col] /
                         10
@@ -628,7 +628,6 @@ def _calc_tallied_woody_biomass(
                         np.power(df[f'compare_woody_qmd_calculated_{woody_class_ext}_{dc_str}'] / 100, 2)
                     )
                     biomass_columns[f'compare_woody_kgpm2_calculated_{woody_class_ext}_{dc_str}'] = (
-                        df[f'tsct_slope_cor'] *
                         df[f'woody_sg_{dc_str}cm'] *
                         biomass_columns[calculated_volume_col] /
                         10
