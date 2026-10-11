@@ -12,7 +12,7 @@
 - The checked-in example weather-merged file, `examples/data/weather/conpyro_df_wx.csv`, was rebuilt from the corrected plot attributes. Only its `fsg` column (30,570 of 61,139 rows) and `woody_fuel_load` column (every row) changed; the weather observations are untouched.
 - `merge_weather_data()` no longer fails with its default settings on a `conpyro_df.csv` that has not been through FBP fuel typing. That file carries `fbp_fuel_type` as an empty placeholder, which a CSV reader returns as floating-point missing values, and the seasonal refinement then applied text operations to it. The column is now read as text in `merge_weather_data()` and in `process_fbp_fuel_type()`, so an empty placeholder is left empty, a partly typed column is refined where it has values, and an existing fuel type is still kept.
 
-Regenerate previously processed woody, tree, ConPyro, and FOFEM outputs where these changes apply. Rebuild weather/plot merges from fresh plot attributes before rerunning fire behaviour and emissions; an existing weather-merged file holds the old `fsg` and `woody_fuel_load` values. A custom copy of `tree_parameters.csv` must drop `SG_7+` and keep the other `SG_*` columns.
+Regenerate previously processed woody, tree, ConPyro, and FOFEM outputs where these changes apply. Rebuild weather/plot merges from fresh plot attributes before rerunning fire behaviour and emissions; an existing weather-merged file holds the old `fsg` and `woody_fuel_load` values. A custom copy of `tree_parameters.csv` needs every `SG_*` column named above (`SG_0.5` through `SG_7.62+`); a leftover `SG_7+` column is ignored.
 
 ## 0.1.0
 
