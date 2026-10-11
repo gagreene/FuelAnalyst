@@ -729,3 +729,27 @@ def test_validate_user_supplied_fbp_fields_reports_missing_string_column(bc_fuel
     df = _valid_required_fbp_fields().drop(columns=['BEC_SUBZONE'])
     with pytest.raises(ValueError, match='BEC_SUBZONE'):
         fbp_fuel_type._validate_user_supplied_fbp_fields(df, bc_fuel_type)
+
+
+def test_process_fbp_fuel_type_fills_the_empty_placeholder_and_keeps_existing_values(tmp_path, monkeypatch):
+    """The fbp_fuel_type placeholder is read as text, so it is filled where empty and kept where already set."""
+    prep_columns = {
+        '_date': ['2021-10-26'] * 3, 'treatment_area': ['A'] * 3, 'treatment_unit': ['U'] * 3,
+        'treatment_type': ['burned'] * 3, 'plot_id': ['p1', 'p2', 'p3'], 'SPECIES_CD_1': ['PL'] * 3,
+    }
+    ids = ['a', 'b', 'c']
+    pd.DataFrame({'unique_id': ids, '_date': ['2021-10-26'] * 3}).to_csv(tmp_path / 'master.csv', index=False)
+    pd.DataFrame({'unique_id': ids, **prep_columns}).to_csv(tmp_path / 'prep.csv', index=False)
+    pd.DataFrame({'unique_id': ids, 'fbp_fuel_type': ['', 'D1', '']}).to_csv(tmp_path / 'conpyro_df.csv', index=False)
+    monkeypatch.setattr(
+        fbp_fuel_type, '_calc_fbp_fuel_type',
+        lambda df, season: df.assign(fbp_fuel_type=['C3', 'C5', 'M1']),
+    )
+
+    fbp_fuel_type.process_fbp_fuel_type(
+        str(tmp_path / 'master.csv'), str(tmp_path / 'prep.csv'), str(tmp_path / 'conpyro_df.csv'),
+        str(tmp_path / 'out'), 'Growing',
+    )
+
+    result = pd.read_csv(tmp_path / 'out' / 'conpyro_df_fbp.csv')
+    assert result['fbp_fuel_type'].tolist() == ['C3', 'D1', 'M1']

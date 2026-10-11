@@ -157,13 +157,15 @@ def gen_fofem_consumption_df(
     fofem_consume_df = pd.DataFrame({
         '#PlotId': df.unique_id,
         'Litter': (df['ffl_litter_kgpm2'] * load_conv).fillna(0),
-        'wfl1Hour': ((df['woody_kgpm2_fofem_sound_0_635'] +
-                       df['woody_kgpm2_fofem_rotten_0_635']) * load_conv).fillna(0),
-        'wfl10Hour': ((df['woody_kgpm2_fofem_sound_2_54'] +
-                        df['woody_kgpm2_fofem_rotten_2_54']) * load_conv).fillna(0),
+        # A missing sound or rotten class means no pieces, so each is filled with 0 before the two are added;
+        # filling after the addition would turn a class with only one of them into 0
+        'wfl1Hour': ((df['woody_kgpm2_fofem_sound_0_635'].fillna(0) +
+                      df['woody_kgpm2_fofem_rotten_0_635'].fillna(0)) * load_conv),
+        'wfl10Hour': ((df['woody_kgpm2_fofem_sound_2_54'].fillna(0) +
+                       df['woody_kgpm2_fofem_rotten_2_54'].fillna(0)) * load_conv),
         'wfl10HourMoisture': fofem_moist_regime[1],
-        'wfl100Hour': ((df['woody_kgpm2_fofem_sound_7_62'] +
-                         df['woody_kgpm2_fofem_rotten_7_62']) * load_conv).fillna(0),
+        'wfl100Hour': ((df['woody_kgpm2_fofem_sound_7_62'].fillna(0) +
+                        df['woody_kgpm2_fofem_rotten_7_62'].fillna(0)) * load_conv),
         'wfl3_6S': (df['woody_kgpm2_fofem_sound_15_24'] * load_conv).fillna(0),
         'wfl6_9S': (df['woody_kgpm2_fofem_sound_22_86'] * load_conv).fillna(0),
         'wfl9_20S': (df['woody_kgpm2_fofem_sound_50_8'] * load_conv).fillna(0),

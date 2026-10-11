@@ -33,21 +33,24 @@ woody_tally_map = [
      't2_woody_tally_0to2', 't2_woody_tally_28to30')
 ]
 
+# Specific gravity columns are breakpoints along one size trend. A piece or tally class takes the first column whose
+# breakpoint is at or above its diameter, so each column covers diameters greater than the previous breakpoint and up to
+# (and including) its own, and the last column covers everything thicker than the final breakpoint.
 specific_gravity_map = [
-    # (output sg column, input sg column, tree parameters column, lower diam limit, upper diam limit)
+    # (plot-level output column, tree parameters column, lower diameter limit (cm, excluded),
+    # upper diameter limit (cm, included))
     ('woody_sg_0_5cm', 'SG_0.5', 0, 0.5),
-    ('woody_sg_1cm', 'SG_1', 0.5, 1),
+    ('woody_sg_0_635cm', 'SG_0.635', 0.5, 0.635),    # 1hr woody fuels (US protocol)
+    ('woody_sg_1cm', 'SG_1', 0.635, 1),
     ('woody_sg_2cm', 'SG_2', 1, 2),
-    ('woody_sg_3cm', 'SG_3', 1, 3),
+    ('woody_sg_2_54cm', 'SG_2.54', 2, 2.54),         # 10hr woody fuels (US protocol)
+    ('woody_sg_3cm', 'SG_3', 2.54, 3),
     ('woody_sg_4cm', 'SG_4', 3, 4),
-    ('woody_sg_5cm', 'SG_5', 3, 5),
+    ('woody_sg_5cm', 'SG_5', 4, 5),
     ('woody_sg_6cm', 'SG_6', 5, 6),
-    ('woody_sg_7cm', 'SG_7', 5, 7),
-    ('woody_sg_gt7cm', 'SG_7+', 7, 9999),
-    ('woody_sg_0_635cm', 'SG_0.635', 0, 0.635),      # 1hr woody fuels
-    ('woody_sg_2_54cm', 'SG_2.54', 0.635, 2.54),     # 10hr woody fuels
-    ('woody_sg_7_62cm', 'SG_7.62', 2.54, 7.62),      # 100hr woody fuels
-    ('woody_sg_gt7_62cm', 'SG_7.62+', 7.62, 9999),     # 1000hr woody fuels
+    ('woody_sg_7cm', 'SG_7', 6, 7),
+    ('woody_sg_7_62cm', 'SG_7.62', 7, 7.62),         # 100hr woody fuels (US protocol)
+    ('woody_sg_gt7_62cm', 'SG_7.62+', 7.62, np.inf),  # 1000hr woody fuels (US protocol)
 ]
 
 
@@ -301,7 +304,8 @@ def _calc_plot_woody_debris(
     For each woody debris class defined in the protocol parameters, this function:
     - Applies user-defined filters to the merged woody debris DataFrame to select pieces in each output class.
     - Sums the measured woody debris biomass for each plot and output class.
-    - Optionally incorporates tallied woody fuel biomass into the output for the first diameter class.
+    - Incorporates tallied woody fuel biomass into every output class that holds the tallied size class
+      (for a request filtered on a field the tally lacks, only into the first request).
     - Adds the resulting columns to a list of columns to keep.
 
     :param df: DataFrame containing plot-level data (with GlobalID).
@@ -366,8 +370,11 @@ def _calc_plot_woody_debris(
                         ].groupby('ParentGlobalID')['woody_mass_kgpm2'].sum()
                     )
 
-                    # Incorporate tallied woody fuels into outputs on first iteration
-                    if i == 0:
+                    # Incorporate tallied woody fuels into every output class that holds the tallied size class,
+                    # whatever the position of its request. A request filtered on a field the tally lacks (such as
+                    # decay class) only gets the tally when it is the first request, so FOFEM's sound and rotten
+                    # classes do not both count the same tally
+                    if i == 0 or not req_filter:
                         dc = diameter_cutoffs[0]
                         dc_str = str(dc).replace('.', '_')
                         if dc == out_dc:
@@ -375,10 +382,11 @@ def _calc_plot_woody_debris(
                             # copy the tallied woody value
                             output_columns[output_col] = df[f'woody_kgpm2_{woody_class_ext}_{dc_str}']
                         elif prior_out_dc < dc < out_dc:
-                            # Add the tallied fuel mass to the first class if the tallied diameter class is between
-                            # the prior and current output diameter classes
-                            output_columns[output_col] = output_columns[output_col] + (
-                                df[f'woody_kgpm2_{woody_class_ext}_{dc_str}']
+                            # Add the tallied fuel mass to the class if the tallied diameter class is between
+                            # the prior and current output diameter classes. A plot with only one of the measured
+                            # and tallied masses keeps it (a missing part is no pieces, not a missing total)
+                            output_columns[output_col] = output_columns[output_col].add(
+                                df[f'woody_kgpm2_{woody_class_ext}_{dc_str}'], fill_value=0
                             )
                         else:
                             pass
@@ -591,6 +599,7 @@ def _calc_tallied_woody_biomass(
             biomass_columns = {}
             for i, dc in enumerate(diameter_cutoffs):
                 dc_str = str(dc).replace('.', '_')
+                sg_col = _get_sg_output_column(dc)
 
                 # Convert to volumes and biomass
                 if i == 0:
@@ -603,7 +612,7 @@ def _calc_tallied_woody_biomass(
                     )
                     # Calculate biomass
                     biomass_columns[f'woody_kgpm2_{woody_class_ext}_{dc_str}'] = (
-                        df[f'woody_sg_{dc_str}cm'] *
+                        df[sg_col] *
                         biomass_columns[volume_col] /
                         10
                     )
@@ -620,7 +629,7 @@ def _calc_tallied_woody_biomass(
                         np.power(df[f'woody_qmd_vanwagner_{woody_class_ext}_{dc_str}'] / 100, 2)
                     )
                     biomass_columns[f'compare_woody_kgpm2_vanwagner_{woody_class_ext}_{dc_str}'] = (
-                        df[f'woody_sg_{dc_str}cm'] *
+                        df[sg_col] *
                         biomass_columns[van_wagner_volume_col] /
                         10
                     )
@@ -631,7 +640,7 @@ def _calc_tallied_woody_biomass(
                         np.power(df[f'compare_woody_qmd_calculated_{woody_class_ext}_{dc_str}'] / 100, 2)
                     )
                     biomass_columns[f'compare_woody_kgpm2_calculated_{woody_class_ext}_{dc_str}'] = (
-                        df[f'woody_sg_{dc_str}cm'] *
+                        df[sg_col] *
                         biomass_columns[calculated_volume_col] /
                         10
                     )
@@ -747,8 +756,9 @@ def _calc_woody_species(woody_merged_df: pd.DataFrame) -> pd.DataFrame:
 def _calc_woody_specific_gravity(woody_merged_df: pd.DataFrame, tree_params: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate and assign specific gravity values for each woody debris piece in the
-    merged transect DataFrame, based on species and diameter class, normalized by the sum of
-    diameters per plot and class.
+    merged transect DataFrame, based on species and diameter, normalized by the sum of
+    diameters per plot and class. Each piece takes the column whose size range holds its
+    diameter (greater than the previous breakpoint and up to its own; see specific_gravity_map).
 
     :param woody_merged_df: DataFrame with merged woody debris transect data.
     :param tree_params: DataFrame with specific gravity parameters for each species.
@@ -880,6 +890,24 @@ def _get_merged_woody_df(in_folder: str) -> pd.DataFrame:
         woody_merged_df = woody_df1.copy()
 
     return woody_merged_df
+
+
+def _get_sg_output_column(diameter_cm: float) -> str:
+    """
+    Find the plot-level specific gravity column for a diameter.
+
+    The column is the first breakpoint at or above the diameter: greater than the previous breakpoint and up to
+    and including its own, so 0.45 cm uses the 0.5 column, 4.8 cm uses the 5 column, and 20 cm uses the last column.
+
+    :param diameter_cm: Diameter of a woody debris piece or the upper cutoff of a tally class (cm).
+    :return: Name of the plot-level specific gravity column.
+    """
+    if not diameter_cm > 0:
+        raise ValueError(f'No specific gravity column for a diameter of {diameter_cm} cm')
+    for out_col, _, lower, upper in specific_gravity_map:
+        if lower < diameter_cm <= upper:
+            return out_col
+    raise ValueError(f'No specific gravity column for a diameter of {diameter_cm} cm')
 
 
 def _get_van_wagner_qmd(

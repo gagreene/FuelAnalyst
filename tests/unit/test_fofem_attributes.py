@@ -101,6 +101,23 @@ def test_gen_fofem_consumption_df_imperial_converts_loads_and_depth():
     assert result.loc[0, 'DuffDepth'] == pytest.approx(3.0 * fofem_units.DEPTH_CONV_FACTOR, abs=1e-9)
 
 
+@pytest.mark.parametrize('units, factor', [('SI', 1.0), ('Imperial', fofem_units.LOAD_CONV_FACTOR)])
+def test_gen_fofem_consumption_df_keeps_load_when_sound_or_rotten_is_missing(units, factor):
+    """A 1-, 10-, or 100-hour class with only a sound or only a rotten load keeps that load instead of becoming 0."""
+    df = pd.concat([_make_consumption_input_df()] * 4, ignore_index=True)
+    df['unique_id'] = ['sound_only', 'rotten_only', 'both', 'neither']
+    classes = {'wfl1Hour': '0_635', 'wfl10Hour': '2_54', 'wfl100Hour': '7_62'}
+    for suffix in classes.values():
+        df[f'woody_kgpm2_fofem_sound_{suffix}'] = [0.4, np.nan, 0.4, np.nan]
+        df[f'woody_kgpm2_fofem_rotten_{suffix}'] = [np.nan, 0.25, 0.25, np.nan]
+    params = {'region': 'West', 'season': 'Summer', 'moisture_regime': 'unknown',
+              'soil_heating': {'use_soil_heating': False}, 'fofem_processing_units': units}
+    result = gen_fofem_consumption_df(df, params)
+    for column in classes:
+        assert result[column].tolist() == pytest.approx([0.4 * factor, 0.25 * factor, 0.65 * factor, 0.0])
+        assert not result[column].isna().any()
+
+
 def test_gen_fofem_consumption_df_rejects_invalid_units():
     df = _make_consumption_input_df()
     params = {'region': 'West', 'season': 'Summer', 'moisture_regime': 'unknown',

@@ -58,6 +58,8 @@ def _refine_fbp_fuel_types_by_season(merged_df: pd.DataFrame) -> pd.DataFrame:
     :return: DataFrame with refined 'fbp_fuel_type' based on season
     """
     if 'fbp_fuel_type' in merged_df.columns and 'season' in merged_df.columns:
+        # Text operations need a text column; an all-empty column can arrive as floating-point missing values
+        merged_df['fbp_fuel_type'] = merged_df['fbp_fuel_type'].astype('string')
         # O1a/O1b
         merged_df.loc[merged_df['season'] == 'Spring', 'fbp_fuel_type'] = (
             merged_df.loc[merged_df['season'] == 'Spring', 'fbp_fuel_type'].str.replace('O1b', 'O1a')
@@ -139,6 +141,10 @@ def merge_weather_data(
     print('Merging extracted weather data with other plot data...')
     plot_df = helper.get_df(plot_data_path)
     wx_df = helper.get_df(wx_data_path)
+    # fbp_fuel_type is text, but an empty placeholder column (the state before FBP fuel typing) is read from a CSV
+    # as floating-point missing values, so declare it as text
+    if 'fbp_fuel_type' in plot_df.columns:
+        plot_df['fbp_fuel_type'] = plot_df['fbp_fuel_type'].astype('string')
     # Get weather variables to merge
     if wx_merge_vars is not None:
         wx_merge_vars = [var for var in wx_merge_vars if var in wx_df.columns]

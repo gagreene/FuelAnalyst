@@ -31,6 +31,41 @@ def test_refine_fbp_fuel_types_by_season():
     ]
 
 
+def _merge_with_fbp_column(tmp_path, fuel_types):
+    """Merge two plots with the given fbp_fuel_type values (written to CSV as plain text cells) on 15 July."""
+    plot_path, wx_path, out_path = tmp_path / 'plots.csv', tmp_path / 'wx.csv', tmp_path / 'out.csv'
+    pd.DataFrame({'unique_id': ['a', 'b'], 'fbp_fuel_type': fuel_types}).to_csv(plot_path, index=False)
+    pd.DataFrame({'station_id': ['a', 'b'], 'wx_date': [20250715, 20250715], 'fwi': [10, 20]}).to_csv(wx_path, index=False)
+    merge_weather_data(
+        str(plot_path), 'unique_id', str(wx_path), 'station_id', ['wx_date', 'fwi'], str(out_path),
+        add_season=True, refine_fbp_seasonally=True, summer_start=615, fall_start=915,
+    )
+    return pd.read_csv(out_path, dtype={'fbp_fuel_type': 'string'})
+
+
+def test_merge_weather_data_accepts_the_empty_fbp_fuel_type_placeholder(tmp_path):
+    """conpyro_df.csv ships fbp_fuel_type as an empty placeholder that pandas reads back as a float column."""
+    result = _merge_with_fbp_column(tmp_path, ['', ''])
+
+    assert result['season'].tolist() == ['Summer', 'Summer']
+    assert result['fbp_fuel_type'].isna().all()
+
+
+def test_merge_weather_data_refines_the_filled_part_of_a_partly_typed_fbp_column(tmp_path):
+    result = _merge_with_fbp_column(tmp_path, ['M1', ''])
+
+    assert result.loc[0, 'fbp_fuel_type'] == 'M2'   # M1 becomes M2 in Summer
+    assert pd.isna(result.loc[1, 'fbp_fuel_type'])
+
+
+def test_refine_fbp_fuel_types_by_season_leaves_an_all_missing_float_column_missing():
+    df = pd.DataFrame({'season': ['Spring', 'Summer'], 'fbp_fuel_type': [float('nan'), float('nan')]})
+
+    result = _refine_fbp_fuel_types_by_season(df)
+
+    assert result['fbp_fuel_type'].isna().all()
+
+
 def test_merge_weather_data_cartesian_product_does_not_write_missing_wx_and_preserves_row_count(tmp_path):
     plot_path, wx_path, out_path = tmp_path / 'plots.csv', tmp_path / 'wx.csv', tmp_path / 'out.csv'
     pd.DataFrame({'unique_id': ['a', 'b']}).to_csv(plot_path, index=False)
