@@ -669,7 +669,7 @@ names. `_calc_stand_attributes()` in
 | --- | --- | --- |
 | `dens`, `ba` | `tree_dens_ha`, `tree_ba_ha` | Per-hectare density and basal area. |
 | `cfl`, `foliage`, `branches`, `wood`, `bark` | `tree_<att>_cnbe_ha` | Crown fuel loads per hectare from the CNBE biomass equations. |
-| `ht`, `cbh`, `dcbh`, `fsg`, `flame_length`, `fire_intensity` | `tree_<att>_wtd` for `sum` and `mean`; `tree_<att>` for `min` and `max` | Basal-area-weighted; `mean` is the BA-weighted stand mean. |
+| `ht`, `cbh`, `dcbh`, `fsg`, `flame_length`, `fire_intensity` | `tree_<att>_wtd` for `sum` and `mean`; `tree_<att>` for `min` and `max` | Basal-area-weighted; `mean` is the BA-weighted stand mean, taken over the trees that have a value (a plot where no tree has a value gets a missing mean, not 0). `flame_length` and `fire_intensity` are calculated only for burned plots (`treatment_type` is `burned`): unburned plots are missing, and a valid tree of a burned plot with no bark char height is recorded as 0. |
 | `cbd` | `tree_cfl_cnbe_ha` | Special case: ignores `metrics` and returns canopy fuel load divided by the BA-weighted crown depth. Its output name has no metric suffix. |
 | `foliage_fofem`, `branches_fofem` | `tree_<att>` | Used by `default_fofem_consume_dict`; these entries omit `att_source`, so the key is used. |
 
@@ -680,11 +680,14 @@ warning in `fuelanalyst_errors.csv`. This also applies to the ConPyro and FOFEM 
 are configured through `conpyro_params` and `fofem_consume_params`: a same-named key in
 `stand_summary_params` is replaced when those entries are merged in. The BA-weighted
 attributes (`ht`, `cbh`, `dcbh`, `fsg`, `flame_length`, `fire_intensity`) accept `min`, `max`,
-and `mean`. The six ConPyro height, canopy base height, and foliage-ground
+and `mean`. The six ConPyro height, canopy base height, and fuel strata gap
 (`conpyro_ht_*`, `conpyro_cbh_*`, `conpyro_fsg`) entries each produce a single column, so
 they accept exactly one of `min`, `max`, or `mean`; no metric, several different metrics, or
 an unknown metric is replaced with `['mean']` and a warning is recorded. A metric listed more
-than once counts once, so `['max', 'max']` is read as `['max']` without a warning.
+than once counts once, so `['max', 'max']` is read as `['max']` without a warning. By default,
+`conpyro_fsg` is filled with the crown base height of live conifers (`att_source: 'cbh'`,
+`summary: ['live', 'conifer']`), the same value as `conpyro_cbh_ovrstry`; set `att_source` to
+`'fsg'` to use the tree-level fuel strata gap instead.
 
 Any other value must match an existing `tree_<value>` column in the master tree
 table. Otherwise pandas raises a `KeyError` when the trees are grouped. Which

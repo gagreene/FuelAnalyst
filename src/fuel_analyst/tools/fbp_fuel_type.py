@@ -456,7 +456,8 @@ def process_fbp_fuel_type(
     fbp_prep_df = (pd.read_csv(fbp_prep_df_path)
                    .drop(columns=fbp_drop_columns)
                    .rename(columns=fbp_rename_columns))
-    conpyro_df = pd.read_csv(conpyro_df_path)
+    # fbp_fuel_type is text; an empty placeholder column would otherwise be read as floating-point missing values
+    conpyro_df = pd.read_csv(conpyro_df_path, dtype={'fbp_fuel_type': 'string'})
 
     # Merge the two dataframes on 'unique_id' to get all necessary attributes
     fuel_type_df = master_fuel_df.merge(fbp_prep_df, on='unique_id', how='left')

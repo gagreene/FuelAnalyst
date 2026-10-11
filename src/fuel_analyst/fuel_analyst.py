@@ -354,9 +354,11 @@ default_conpyro_dict = {
             },
         },
         'conpyro_fsg': {  # This name is fixed for ConPyro
-            'att_source': 'cbh',  # This is default (options: cbh, fsg)
+            # The default uses the crown base height of live conifers as the fuel strata gap
+            # (options: cbh, fsg); use 'fsg' to summarize the tree-level fuel strata gap instead
+            'att_source': 'cbh',
             'override_field_name': True,  # This is fixed (no user options)
-            'summary': ['conifer'],  # This is the default (options: see above)
+            'summary': ['live', 'conifer'],  # This is the default (options: see above)
             'summary_permutation': 'combined',  # This is fixed (no user options)
             'metrics': ['mean'],  # This is the default (options: min, max, mean)
             'units': 'm',  # This option is fixed

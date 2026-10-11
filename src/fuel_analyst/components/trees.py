@@ -452,7 +452,10 @@ def _calc_stand_attributes(
         """
         if _att in attribute_weighting_dict.keys():
             field_name = f"tree_{attribute_weighting_dict.get(_att, 'dens')}_ha"
-            denom = _tree_df.groupby('ParentGlobalID')[field_name].sum()
+            # Only trees that have a value carry weight; a plot where none do gets a missing mean, not 0
+            valued_trees = _tree_df[_tree_df[f'tree_{_att}'].notna()]
+            denom = valued_trees.groupby('ParentGlobalID')[field_name].sum()
+            denom = denom.where(denom > 0)
         elif _att == 'cbd':
             field_name = f'tree_{attribute_weighting_dict["crwn_dpth"]}_ha'
             denom = (_tree_df.groupby('ParentGlobalID')['tree_crwn_dpth_wtd'].sum() /
@@ -1152,7 +1155,11 @@ def _calc_tree_density(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame:
     return tree_df
 
 
-def _calc_tree_fire_attributes(tree_df: pd.DataFrame, surface_fire_intensity_model: str = 'Byram') -> pd.DataFrame:
+def _calc_tree_fire_attributes(
+        tree_df: pd.DataFrame,
+        surface_fire_intensity_model: str = 'Byram',
+        burned_plot_ids: set | None = None,
+) -> pd.DataFrame:
     """
     Calculates fire-related attributes for each tree in the DataFrame.
 
@@ -1162,10 +1169,16 @@ def _calc_tree_fire_attributes(tree_df: pd.DataFrame, surface_fire_intensity_mod
         - Byram (1959) or Thomas (1963) model for surface fire intensity.
         - Butler's model for crown fire intensity.
 
+    When burned_plot_ids is given, only the trees of those plots are part of the calculation: trees of
+    unburned plots are left missing, and a valid tree (one with a basal area) of a burned plot without a bark
+    char height is recorded as 0.
+
     :param tree_df: DataFrame containing individual tree data, including density, basal area, crown base height,
                     dead crown base height, and fuel bed height.
     :param surface_fire_intensity_model: Model to use for calculating surface fireline intensity (default is 'Byram').
         Options: ['Byram', 'Thomas']
+    :param burned_plot_ids: GlobalID values of the burned plots, matched to the ParentGlobalID of each tree. None
+        applies no plot restriction.
     :return: Updated DataFrame with new columns for FLI, CFP, and CBD.
     """
     print('\tCalculating fire metrics (Fireline Intensity, Flame Length)')
@@ -1204,6 +1217,18 @@ def _calc_tree_fire_attributes(tree_df: pd.DataFrame, surface_fire_intensity_mod
     # ### ESTIMATE FIRELINE INTENSITY ###
     # Use crown fire model where bark char reached full tree height, surface model otherwise
     tree_df['tree_fire_intensity'] = np.where(full_ht_mask, crown_model, surface_model)
+
+    # ### LIMIT TO BURNED PLOTS ###
+    # Flame length and fire intensity describe a fire that occurred, so unburned plots are left missing. A tree of a
+    # burned plot with no bark char height is recorded as 0 (this should not happen, but can in a poorly filled form)
+    if burned_plot_ids is not None:
+        burned = tree_df['ParentGlobalID'].isin(burned_plot_ids)
+        fire_columns = ['tree_flame_length', 'tree_fire_intensity']
+        tree_df.loc[~burned, fire_columns] = np.nan
+        # A record without a basal area (for example, a missing DBH) is not a valid tree, so it stays missing
+        valid_tree = tree_df['tree_ba_ha'].notna() if 'tree_ba_ha' in tree_df.columns else True
+        fill_zero = burned & valid_tree
+        tree_df.loc[fill_zero, fire_columns] = tree_df.loc[fill_zero, fire_columns].fillna(0.0)
 
     return tree_df
 
@@ -1534,6 +1559,21 @@ def _gen_master_tree_df(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame
     return temp_df.reset_index(drop=True)
 
 
+def _get_burned_plot_ids(df: pd.DataFrame) -> set | None:
+    """
+    Identify the plots that burned from their treatment type.
+
+    A plot burned when its treatment_type is 'burned', ignoring case and surrounding spaces.
+
+    :param df: Plot-level DataFrame with 'GlobalID' and 'treatment_type'.
+    :return: Set of GlobalID values of the burned plots, or None when the table has no treatment_type column.
+    """
+    if 'treatment_type' not in df.columns:
+        return None
+    treatment = df['treatment_type'].astype('string').str.strip().str.lower()
+    return set(df.loc[treatment.eq('burned').fillna(False), 'GlobalID'].dropna())
+
+
 def _get_temesgen_tree_height(
         model: int,
         param_df: pd.DataFrame,
@@ -1572,6 +1612,31 @@ def _get_temesgen_tree_height(
     else:
         # If incorrect model number entered, return np.nan
         return np.nan
+
+
+def _log_char_on_unburned_plots(df: pd.DataFrame, tree_df: pd.DataFrame, burned_plot_ids: set) -> None:
+    """
+    Report bark char heights that were recorded on plots whose treatment type is not burned.
+
+    Those heights are not used for flame length or fire intensity, so the report keeps the data from being
+    dropped silently when a burned plot carries a different treatment type label.
+
+    :param df: Plot-level DataFrame with 'GlobalID' and 'unique_id'.
+    :param tree_df: Tree records with 'ParentGlobalID' and 'tree_bark_char_high'.
+    :param burned_plot_ids: GlobalID values of the burned plots.
+    :return: None.
+    """
+    unique_id_by_parent = df.drop_duplicates('GlobalID').set_index('GlobalID')['unique_id']
+    recorded = (tree_df['tree_bark_char_high'] > 0) & ~tree_df['ParentGlobalID'].isin(burned_plot_ids)
+    for parent_id in tree_df.loc[recorded, 'ParentGlobalID'].dropna().unique():
+        logger.warning(
+            'Bark char height was recorded on a plot whose treatment type is not burned; '
+            'it is not used for flame length or fire intensity',
+            extra={
+                'unique_id': unique_id_by_parent.get(parent_id, pd.NA),
+                'issue_code': 'char_height_on_unburned_plot',
+            },
+        )
 
 
 def _log_tree_density_issues(
@@ -2015,7 +2080,10 @@ def process_trees(
     # Calculate FOFEM tree attributes
     tree_df = _calc_tree_fofem_attributes(tree_df, tree_params_df)
     # Calculate fire behavior attributes
-    tree_df = _calc_tree_fire_attributes(tree_df, surface_fire_intensity_model)
+    burned_plot_ids = _get_burned_plot_ids(df)
+    tree_df = _calc_tree_fire_attributes(tree_df, surface_fire_intensity_model, burned_plot_ids)
+    if burned_plot_ids is not None:
+        _log_char_on_unburned_plots(df, tree_df, burned_plot_ids)
     # Calculate weighted attributes
     tree_df = _calc_tree_weighted_attributes(tree_df)
     # Generate Master Tree DataFrame

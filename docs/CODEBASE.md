@@ -500,7 +500,19 @@ interchangeable:
 ### Tree calculations
 
 - Many height, crown, flame, and fire-intensity means are basal-area weighted,
-  not arithmetic means.
+  not arithmetic means. The denominator is the basal area of the trees that
+  have a value for the attribute, so a tree with a missing value (for example,
+  a dead tree with no crown base height) does not dilute the mean, and a plot
+  where no tree has a value gets a missing mean instead of 0.
+- Flame length and fire intensity are calculated only for burned plots
+  (`treatment_type` of `burned`, ignoring case and spaces; see
+  `_get_burned_plot_ids`). Trees of other plots are left missing, so unburned
+  plots have missing stand values. A valid tree (one with a basal area) of a
+  burned plot with no bark char height is recorded as 0, and records without a
+  basal area stay missing. A bark char height recorded on a plot that is not
+  burned is not used and is reported as `char_height_on_unburned_plot` in the
+  Trees column of `fuelanalyst_errors.csv`. If the plot table has no
+  `treatment_type` column, no plot restriction is applied.
 - CBD is derived from crown fuel load and crown depth and therefore follows a
   separate aggregation path from attributes with direct per-hectare columns.
 - The conifer and broadleaf dead-decay thresholds are 6 and 5 respectively and
@@ -577,6 +589,36 @@ still use pooled horizontal lengths, rather than an arithmetic mean of
 per-transect correction factors. These aggregation methods differ on unequal
 slopes and must not be described as identical. The exact per-transect formula
 is given in [USFS GTR-NC-256, equation 3.1b](https://research.fs.usda.gov/download/treesearch/13164.pdf#page=23).
+
+### Tallied fines in woody output classes
+
+The thinnest pieces are tallied by count, not measured (up to the first
+`diameter_cutoffs` value of the protocol). Their mass is added to every output
+class whose range holds the tallied size class, whatever the position of its
+request in `output_request`: a class that ends at the tallied cutoff takes the
+tally, and a class that spans it (such as a Canadian `lt7cm` class of 0 to 7 cm)
+adds it to the measured pieces. A plot with only one of the measured and tallied
+masses keeps it. A request filtered on a field the tally lacks (the FOFEM sound
+and rotten requests filter on `woody_decay`) gets the tally only when it is the
+first request, so the tally is not counted twice. Earlier versions added the
+tally to the first request only, so `woody_kgpm2_can_lt7cm_7` left it out and
+disagreed with the sum of the `can_default` classes and with ConPyro's class.
+
+### Woody specific gravity by size
+
+The `SG_*` columns of `tree_parameters.csv` are breakpoints along one size
+trend: `SG_0.5`, `SG_0.635`, `SG_1`, `SG_2`, `SG_2.54`, `SG_3`, `SG_4`, `SG_5`,
+`SG_6`, `SG_7`, `SG_7.62`, and the open-ended `SG_7.62+`. A measured piece, or a
+tally class (by its upper cutoff), takes the first column whose breakpoint is at
+or above its diameter: greater than the previous breakpoint and up to and
+including its own. A diameter of 0.45 cm uses `SG_0.5`, 4.8 cm uses `SG_5`,
+7.6 cm uses `SG_7.62`, and 20 cm uses `SG_7.62+`. The bins are the non-overlapping
+`woody_debris.specific_gravity_map`, and `_get_sg_output_column()` finds the
+column for a diameter. Specific gravity therefore depends on the size of the
+piece and not on the protocol, and a custom tally cutoff such as 2.5 cm uses
+the `SG_2.54` column instead of failing for a missing column. Earlier versions
+let overlapping ranges overwrite each other, so every measured piece took its
+value from the US columns.
 
 Regenerate affected results and rebuild weather/plot merges from fresh
 fuel attributes before rerunning ConPyro/FOFEM. Reusing the checked-in
