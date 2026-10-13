@@ -14,7 +14,7 @@ import fnmatch
 from scipy.stats import linregress
 import operator
 
-from . import helper
+from . import helper, table_reader
 
 logger = logging.getLogger(__name__)
 
@@ -863,26 +863,24 @@ def _concat_spp_comp_frames(*frames: pd.DataFrame) -> pd.DataFrame:
     return result.reindex(columns=all_columns)
 
 
-def _get_merged_woody_df(in_folder: str) -> pd.DataFrame:
+def _get_merged_woody_df(in_folder: 'str | table_reader.FormSource') -> pd.DataFrame:
     """
     Merge transect woody debris CSVs into a single DataFrame, removing transect prefixes from column names.
     Adds a 'transect_id' column to indicate the transect number (1 or 2).
 
-    :param in_folder: Path to the folder containing transect CSV files.
+    :param in_folder: Path to the form folder of transect tables, or a resolved FormSource.
     :return: Merged DataFrame with unified column names and transect_id.
     """
-    # Define file paths for both transect CSVs
-    woody_df1_path = os.path.join(in_folder, 't1_woody_2.csv')
-    woody_df2_path = os.path.join(in_folder, 't2_woody_3.csv')
+    in_folder = table_reader.ensure_form_source(in_folder)
 
     # Load first transect and remove 't1_' prefix from columns
-    woody_df1 = helper.get_df(woody_df1_path)
+    woody_df1 = table_reader.read_table(in_folder, 't1_woody_2')
     woody_df1.columns = [col.replace('t1_', '') for col in woody_df1.columns]
     woody_df1['transect_id'] = 1
 
     # If second transect exists, load and remove 't2_' prefix, then concatenate
-    if os.path.exists(woody_df2_path):
-        woody_df2 = helper.get_df(woody_df2_path)
+    if table_reader.has_table(in_folder, 't2_woody_3'):
+        woody_df2 = table_reader.read_table(in_folder, 't2_woody_3')
         woody_df2.columns = [col.replace('t2_', '') for col in woody_df2.columns]
         woody_df2['transect_id'] = 2
         woody_merged_df = pd.concat([woody_df1, woody_df2], ignore_index=True)
@@ -1056,16 +1054,16 @@ def _get_van_wagner_qmd(
     return dc_df[[f'qmd{dc}' for dc in diam_classes]]
 
 
-def _load_manual_spp_comp(in_folder: str) -> pd.DataFrame:
+def _load_manual_spp_comp(in_folder: 'str | table_reader.FormSource') -> pd.DataFrame:
     """Load optional manual species composition records.
 
-    :param in_folder: Folder containing the Woody Debris Survey123 export.
+    :param in_folder: Woody Debris Survey123 form folder, or a resolved FormSource.
     :return: Manual composition rows, or an empty table with the required
         columns when Survey123 omitted the unused repeat table.
     """
-    path = os.path.join(in_folder, 'spp_comp_manual_1.csv')
-    if os.path.exists(path):
-        return helper.get_df(path)
+    in_folder = table_reader.ensure_form_source(in_folder)
+    if table_reader.has_table(in_folder, 'spp_comp_manual_1'):
+        return table_reader.read_table(in_folder, 'spp_comp_manual_1')
     return pd.DataFrame(columns=['ParentGlobalID', 'spp_comp_code', 'spp_comp_percent'])
 
 
@@ -1258,7 +1256,7 @@ def _resolve_spp_comp_type(df: pd.DataFrame, spp_comp_df: pd.DataFrame) -> tuple
 
 
 def process_woody_debris(
-        in_folder: str,
+        in_folder: 'str | table_reader.FormSource',
         out_folder: str,
         plot_df: pd.DataFrame,
         woody_debris_params: dict
@@ -1266,13 +1264,14 @@ def process_woody_debris(
     """
     Process woody debris data from a CSV file and return an updated DataFrame.
 
-    :param in_folder: Path to the folder containing the input CSV files.
+    :param in_folder: Path to the form folder of input tables, or a resolved FormSource.
     :param out_folder: Path to the folder where output CSV files will be saved.
     :param plot_df: DataFrame containing plot-level data.
     :param woody_debris_params: Dictionary containing parameters for processing woody debris.
     :return: DataFrame with processed woody debris attributes.
     """
     print('\nProcessing Woody Debris data')
+    in_folder = table_reader.ensure_form_source(in_folder)
 
     # Initialize list of columns to keep
     keep_columns = []
@@ -1284,7 +1283,7 @@ def process_woody_debris(
 
     # ### PROCESS PLOT DATA
     # Get woody debris dataframe
-    df = helper.get_df(os.path.join(in_folder, 'survey_0.csv'))
+    df = table_reader.read_table(in_folder, 'survey_0')
     # Generate a unique ID for each plot
     df = helper.get_unique_id(df)
     # Process plot attributes

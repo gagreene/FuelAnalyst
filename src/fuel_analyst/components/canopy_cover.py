@@ -10,7 +10,7 @@ import os
 import pandas as pd
 import numpy as np
 
-from . import helper
+from . import helper, table_reader
 
 
 def _process_cc_data(df: pd.DataFrame, transect_df: pd.DataFrame) -> pd.DataFrame:
@@ -67,27 +67,28 @@ def _process_transect_data(transect_df: pd.DataFrame) -> pd.DataFrame:
     return transect_df
 
 
-def process_canopy_cover(in_folder: str, out_folder: str) -> tuple[pd.DataFrame, list]:
+def process_canopy_cover(in_folder: 'str | table_reader.FormSource', out_folder: str) -> tuple[pd.DataFrame, list]:
     """
     Process canopy cover data from a CSV file and return an updated DataFrame.
 
-    :param in_folder: Path to the folder containing the input CSV files.
+    :param in_folder: Path to the form folder of input tables, or a resolved FormSource.
     :param out_folder: Path to the folder where output CSV files will be saved.
     :return: DataFrame with processed canopy cover attributes.
     """
     print('\nProcessing Canopy Cover data')
+    in_folder = table_reader.ensure_form_source(in_folder)
 
     keep_columns = []
 
     # ### PROCESS PLOT DATA
     # Get canopy cover dataframe
-    df = helper.get_df(os.path.join(in_folder, 'survey_0.csv'))
+    df = table_reader.read_table(in_folder, 'survey_0')
     # Generate a unique ID for each plot
     df = helper.get_unique_id(df)
 
     # ### PROCESS CANOPY COVER DATA
     # Get canopy cover transect dataframe
-    transect_df = helper.get_df(os.path.join(in_folder, 'canopy_cover_1.csv'))
+    transect_df = table_reader.read_table(in_folder, 'canopy_cover_1')
     # Process transect data
     transect_df = _process_transect_data(transect_df)
 

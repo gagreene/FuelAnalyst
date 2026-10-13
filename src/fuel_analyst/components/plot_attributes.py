@@ -10,22 +10,23 @@ import os
 import pandas as pd
 import numpy as np
 
-from . import helper
+from . import helper, table_reader
 
 
-def process_plot_attributes(in_folder: str, out_folder: str) -> tuple[pd.DataFrame, list]:
+def process_plot_attributes(in_folder: 'str | table_reader.FormSource', out_folder: str) -> tuple[pd.DataFrame, list]:
     """
     Get the plot attributes from a CSV file and return as an updated DataFrame.
 
-    :param in_folder: Path to the folder containing the input CSV files.
+    :param in_folder: Path to the form folder of input tables, or a resolved FormSource.
     :param out_folder: Path to the folder where output CSV files will be saved.
     :return: DataFrame with processed tree attributes.
     """
     print('\nProcessing Plot Attribute data')
+    in_folder = table_reader.ensure_form_source(in_folder)
 
     # ### PROCESS PLOT ATTRIBUTE DATA
     # Get plot attributes dataframe
-    df = helper.get_df(os.path.join(in_folder, 'survey_0.csv'))
+    df = table_reader.read_table(in_folder, 'survey_0')
     # Generate a unique ID for each plot
     df = helper.get_unique_id(df)
 
