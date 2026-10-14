@@ -61,8 +61,24 @@ def _gdb_table(raw, is_parent):
     return table
 
 
+def _plot_key(raw):
+    return raw[['treatment_area', 'treatment_unit', 'treatment_type', 'plot_id']].fillna('').agg('|'.join, axis=1)
+
+
+def _plot_coordinates(source_dir):
+    """Each plot's coordinates from the parent tables that have x and y (a form without them reuses these)."""
+    found = {}
+    for form_dir in sorted(p for p in source_dir.iterdir() if p.is_dir()):
+        raw = _raw_table(form_dir / 'survey_0.csv')
+        if 'x' in raw.columns and 'y' in raw.columns:
+            for key, x, y in zip(_plot_key(raw), pd.to_numeric(raw['x']), pd.to_numeric(raw['y'])):
+                found.setdefault(key, (x, y))
+    return found
+
+
 def _write_forms(source_dir, csv_out, gdb_out):
     """Write GUID-mapped CSV copies and ArcGIS-style geodatabases (one per form) from the example CSV tables."""
+    coordinates = _plot_coordinates(source_dir)
     for form_dir in sorted(p for p in source_dir.iterdir() if p.is_dir()):
         (csv_out / form_dir.name).mkdir(parents=True)
         (gdb_out / form_dir.name).mkdir(parents=True)
@@ -73,8 +89,11 @@ def _write_forms(source_dir, csv_out, gdb_out):
             layer, index = stem.rsplit('_', 1)
             table = _gdb_table(raw, int(index) == 0)
             if int(index) == 0:
-                x = pd.to_numeric(raw['x'], errors='coerce').fillna(0.0) if 'x' in raw.columns else pd.Series(0.0, index=raw.index)
-                y = pd.to_numeric(raw['y'], errors='coerce').fillna(0.0) if 'y' in raw.columns else pd.Series(0.0, index=raw.index)
+                if 'x' in raw.columns:
+                    x, y = pd.to_numeric(raw['x']), pd.to_numeric(raw['y'])
+                else:
+                    pairs = _plot_key(raw).map(coordinates)
+                    x, y = pairs.map(lambda p: p[0]), pairs.map(lambda p: p[1])
                 frame = gpd.GeoDataFrame(table, geometry=gpd.points_from_xy(x, y), crs='EPSG:4326')
                 frame.geometry.name = 'SHAPE'
                 pyogrio.write_dataframe(frame, str(gdb), layer=layer, driver='OpenFileGDB', geometry_type='Point',
