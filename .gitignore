@@ -48,6 +48,8 @@ rsconnect-python/
 # Output directories (contain temporary analysis results)
 output_fuel_analyst/
 Output/
+# Example datasets in every input format, written by examples/generate_multiformat_example_datasets.py
+examples/results/survey123_formats/
 
 # Sensitive credentials (NEVER commit these!)
 .env

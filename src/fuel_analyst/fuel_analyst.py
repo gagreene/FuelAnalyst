@@ -12,6 +12,7 @@ from typing import Optional
 
 from .components import error_handling
 from .components import helper
+from .components import table_reader
 from .components import plot_attributes as pa
 from .components import plants_regen as pr
 from .components import trees
@@ -589,7 +590,9 @@ def fuel_analyst(
     """
     Process Survey123 fuel attributes and write the selected result tables.
 
-    :param in_dir: Path to the input folder containing the survey data.
+    :param in_dir: Path to the input folder containing the survey data: one folder per form (1_Plot_Attributes, ...),
+        each holding that form's tables as CSV files, an Excel workbook (.xlsx, .xlsm), or an unzipped file geodatabase
+        (.gdb), as downloaded from ArcGIS Survey123 or ArcGIS Online. The format is detected for each form.
     :param out_dir: Path to the output folder where results will be saved.
     :param surface_fire_intensity_model: Model to use for surface fire intensity calculations.
     :param stand_summary_params: Dictionary containing stand summary parameters.
@@ -628,6 +631,20 @@ def fuel_analyst(
         'woody': 'Woody Debris'
     }
 
+    # Resolve where each form's tables live (CSV folder, Excel workbook, or file geodatabase), once and only when needed
+    form_sources = {}
+
+    def get_form_source(form: str):
+        """
+        Resolve a form's source on first use.
+
+        :param form: Form key ('plot', 'plants', 'trees', 'cover', or 'woody').
+        :return: FormSource for the form, or None when the form folder is absent.
+        """
+        if form not in form_sources:
+            form_sources[form] = table_reader.resolve_form_source(in_dir, dir_dict.get(form))
+        return form_sources[form]
+
     if stand_summary_params is None:
         stand_summary_params = default_stand_summary_dict
     # Work on a copy: the ConPyro and FOFEM entries are merged into it below, which must not
@@ -651,7 +668,7 @@ def fuel_analyst(
         # Verify all forms are present for ConPyro generation
         missing_forms = [
             form for form in form_select_list
-            if not os.path.exists(os.path.join(in_dir, dir_dict.get(form)))
+            if get_form_source(form) is None
         ]
         if missing_forms:
             raise FileNotFoundError(
@@ -669,7 +686,7 @@ def fuel_analyst(
         # master_tree_df, which is only produced when the Trees form is processed.
         missing_forms = [
             form for form in ['trees']
-            if not os.path.exists(os.path.join(in_dir, dir_dict.get(form)))
+            if get_form_source(form) is None
         ]
         if missing_forms:
             raise FileNotFoundError(
@@ -684,7 +701,7 @@ def fuel_analyst(
         # Debris. Canopy Cover is not required by gen_fofem_consumption_df().
         missing_forms = [
             form for form in ['trees', 'plants', 'woody']
-            if not os.path.exists(os.path.join(in_dir, dir_dict.get(form)))
+            if get_form_source(form) is None
         ]
         if missing_forms:
             raise FileNotFoundError(
@@ -711,14 +728,13 @@ def fuel_analyst(
     fofem_processing_units = None
 
     # Process plot attributes
-    plot_df, add_columns = pa.process_plot_attributes(os.path.join(in_dir, dir_dict.get('plot')),
+    plot_df, add_columns = pa.process_plot_attributes(get_form_source('plot') or os.path.join(in_dir, dir_dict.get('plot')),
                                                       os.path.join(out_dir, dir_dict.get('plot')))
     keep_columns.extend(add_columns)
 
     # Process selected forms
     for form in form_select_list:
-        # Get the input and output paths for the current form
-        in_path = os.path.join(in_dir, dir_dict.get(form))
+        # Get the output path for the current form
         out_path = os.path.join(out_dir, dir_dict.get(form))
 
         # Filter the plot_df for the current form
@@ -727,32 +743,36 @@ def fuel_analyst(
         # Get the unique IDs for the current form
         id_list = plot_df.loc[mask, 'unique_id'].tolist()
 
-        # Check if the input path exists
-        if not os.path.exists(in_path):
-            if mask.any():
-                for missing_id in id_list:
-                    error_handling.get_logger(form).warning(
-                        f'Input folder for {form_dict[form]} is missing but this plot '
-                        f'selected this form; it will have no {form_dict[form]} data.',
-                        extra={'unique_id': missing_id, 'issue_code': 'form_folder_missing'},
-                    )
+        # Nothing to do for a form that no plot selected
+        if not mask.any():
+            continue
+
+        # Resolve the form's tables (CSV folder, Excel workbook, or file geodatabase); a missing folder is reported per plot
+        form_source = get_form_source(form)
+        if form_source is None:
+            for missing_id in id_list:
+                error_handling.get_logger(form).warning(
+                    f'Input folder for {form_dict[form]} is missing but this plot '
+                    f'selected this form; it will have no {form_dict[form]} data.',
+                    extra={'unique_id': missing_id, 'issue_code': 'form_folder_missing'},
+                )
             continue
 
         # Only process the form if there are IDs to process
         if mask.any():
             if form == 'plants':
-                form_df, add_columns = pr.process_plants_regen(in_path, out_path)
+                form_df, add_columns = pr.process_plants_regen(form_source, out_path)
             elif form == 'trees':
                 (form_df, add_columns,
-                 master_tree_df) = trees.process_trees(in_path,
+                 master_tree_df) = trees.process_trees(form_source,
                                                        out_path,
                                                        surface_fire_intensity_model,
                                                        stand_summary_params,
                                                        gen_conpyro_df)
             elif form == 'cover':
-                form_df, add_columns = cc.process_canopy_cover(in_path, out_path)
+                form_df, add_columns = cc.process_canopy_cover(form_source, out_path)
             elif form == 'woody':
-                form_df, add_columns = wd.process_woody_debris(in_path, out_path, plot_df[mask], woody_debris_params)
+                form_df, add_columns = wd.process_woody_debris(form_source, out_path, plot_df[mask], woody_debris_params)
 
             # Add the new columns to the keep_columns list
             keep_columns.extend(add_columns)

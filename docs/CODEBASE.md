@@ -51,11 +51,13 @@ FuelAnalyst/
 |   |   |-- fofem_gui_emissions.py
 |   |   |-- fofem_units.py
 |   |   |-- fwis_moisture_content.py
-|   |   `-- helper.py
+|   |   |-- helper.py
+|   |   `-- table_reader.py        Survey123 table reader (CSV, Excel, file geodatabase)
 |   `-- supporting_data/           Packaged CSV and ecodivision data
 |-- models/photoload/              Reproducible PhotoLoad model-development workflow
 |-- examples/
 |   |-- data/                     Checked-in example inputs
+|   |-- generate_multiformat_example_datasets.py   Writes the example data in every input format
 |   |-- tutorial/                 Notebook and editor setup guide
 |   `-- results/                  Ignored generated outputs
 |-- tests/                         Unit, integration, regression, and test data
@@ -64,14 +66,16 @@ FuelAnalyst/
 
 FuelAnalyst uses a standard `src` package layout and is installable with
 `python -m pip install -e .`. Installable extras are declared in
-`pyproject.toml`: `fofem`, `photoload`, `test`, and `all`; contributor-only PEP 735
+`pyproject.toml`: `fofem`, `parquet`, `photoload`, `test`, and `all`; contributor-only PEP 735
 dependency groups are `dev` and `notebook`. `pyproject.toml` plus the generated `uv.lock` are the
 sources of truth for the development environment (uv is not a runtime dependency).
 The package supports Python 3.11 through 3.14, tested on Windows, Linux, and
 macOS. ConPyro (`src/fuel_analyst/_vendor/conpyro`) and BCWFT2018 (`_vendor/bcwft2018.py`) are
 vendored: generated copies of their upstream repositories, refreshed with `scripts/update_vendors.sh`
 (it shallow-clones each upstream default branch; `CONPYRO_SRC`/`BC_SRC` select a local clone instead), and the bounded
-`flame-components>=0.1.1,<0.2` distribution from PyPI is a core dependency. The `fofem` extra installs the bounded `pyfofem-fire-effects>=0.1.2,<0.2`
+`flame-components>=0.1.1,<0.2` distribution from PyPI is a core dependency, as are `openpyxl` and `pyogrio`, which read Survey123
+Excel, GeoPackage, and file geodatabase tables (`pyogrio` is called directly because geopandas before 1.0 defaults to fiona). The
+`parquet` extra (`pyarrow>=14.0`) reads Parquet and Feather tables and is part of `all` and `test`. The `fofem` extra installs the bounded `pyfofem-fire-effects>=0.1.2,<0.2`
 distribution from PyPI (imports as `pyfofem`, matching the prior GitHub checkout's
 import name) and needs no Git checkout for the Python-backed `model_select='pyfofem'`
 emissions path (mortality automation is pyfofem-only; the official FOFEM app is never
@@ -168,9 +172,48 @@ the nested `woody_debris_classes` dictionary is copied before ConPyro and
 FOFEM classes are added. Those merges leave caller-supplied
 `stand_summary_params` and `woody_debris_params` unchanged across runs.
 
+### `components/table_reader.py`
+
+Reads the tables of one Survey123 form whatever file format holds them. `resolve_form_source(in_dir, form_dir_name)` (or
+`ensure_form_source(path)`) inspects a form folder and returns a `FormSource` (`kind`, `path`, `tables`, `files`); `read_table(source, stem)`
+returns a DataFrame and `has_table(source, stem)` and `form_exists(in_dir, form_dir_name)` replace the former `os.path.exists` checks.
+The source kinds are registered in `_READERS` (a table-exists check and a reader each), so a new format is one entry. There are two
+families, and the organization follows how ArcGIS downloads are laid out:
+
+| Family | Kind | Folder content | Table names |
+|--------|------|----------------|-------------|
+| One file per table | `csv_folder` | `.csv` files | `survey_0.csv` |
+| One file per table | `parquet_folder` | `.parquet` files (needs `pyarrow`) | `survey_0.parquet` |
+| One file per table | `feather_folder` | `.feather` or `.arrow` files (needs `pyarrow`) | `survey_0.feather` |
+| One file per table | `geojson_folder` | `.geojson` files: points for the parent table, no geometry for repeat tables | `survey_0.geojson` |
+| One container per form | `workbook` | `.xlsx` or `.xlsm` workbooks (lock files `~$` ignored) | sheet `survey_0` |
+| One container per form | `gpkg` | `.gpkg` files, or `.sqlite`/`.db` files that hold GeoPackage tables | layer `survey` or `survey_0` |
+| One container per form | `sqlite` | plain `.sqlite`, `.sqlite3`, or `.db` files | table `survey_0` or `survey` |
+| One container per form | `gdb` | `*.gdb` folders in the form folder or one level below | layer `survey` or `survey_0` |
+
+A container matches a table by the full name first (`survey_0`), then by the name without its number (`survey`), ignoring case
+(`_match_name`). Detection scans file names only and picks the first format found in this order: CSV, Parquet, Feather, GeoJSON,
+Excel, GeoPackage, SQLite, geodatabase (only the chosen workbook or database is opened); when a folder holds several formats a note lists
+them. A zip with no usable tables raises an error that says to unzip it; a table in two workbooks, GeoPackages, SQLite files, or
+geodatabases raises an error naming both; an unreadable file raises a clear `ValueError`; Parquet or Feather without `pyarrow`
+raises an `ImportError` that says how to install it.
+
+Normalization makes every non-CSV table read like its CSV (`_as_csv_would`): the non-date columns are written to text and read back
+with `pd.read_csv`, so dtypes and `NA` handling are the same (including 32-bit floats, which return as their short decimal form);
+date columns stay datetimes (time zone dropped, UTC clock time kept) and `helper.get_unique_id()` accepts them. SQLite date text is
+parsed into datetimes first (also for GeoJSON; as UTC, so timestamps with different offsets normalize to UTC clock time). A GeoPackage, GeoJSON, or
+geodatabase table also gets `ObjectID` (an `ObjectID` field if the layer has one, otherwise the layer FID), cleaned `GlobalID` and
+`ParentGlobalID`, and `x` and `y` from point geometry in WGS84 degrees (`_to_wgs84`: a layer in another coordinate system is
+reprojected to EPSG:4326, and a layer with none is accepted only if its coordinates are valid longitudes and latitudes; coordinates
+within 1e-9 of zero snap to 0.0) unless the layer already has those fields. One-file-per-table kinds find their files by exact table
+name and case-insensitive extension (`_table_files`), and two files for one table (`survey_0.feather` and `survey_0.arrow`) raise an
+error naming both. Only Survey123 form tables use this module; reference tables, weather
+files, and FOFEM tables are still read with `helper.get_df()`. `fuel_analyst()` resolves each form once, lazily, and passes the
+`FormSource` to the component processors, which still accept a plain folder path.
+
 ### `components/trees.py`
 
-Processes `survey_0.csv`, `sapling_1.csv`, and `tree_plot_2.csv`. It calculates
+Processes the `survey_0`, `sapling_1`, and `tree_plot_2` tables (read through `table_reader`). It calculates
 density expansion factors, CNBE biomass, modeled heights, crown fuels, fuel
 strata gap, tree fire attributes, basal-area-weighted stand summaries, and
 species composition. It returns the processed plot table, its output-column

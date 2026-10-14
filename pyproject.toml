@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fuel-analyst"
-version = "0.1.1"
+version = "0.1.2"
 description = "Forest fuel field data processing pipeline for BC wildfire analysis"
 readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">=3.11"
@@ -37,12 +37,18 @@ dependencies = [
     "shapely>=2.0",
     "python-dateutil>=2.8.2",
     "tqdm>=4.64",
+    # Reads Survey123 Excel downloads. 3.1.5 is the floor pandas 3 requires (pandas>=2.2 also works with it).
+    "openpyxl>=3.1.5",
+    # Reads Survey123 file geodatabase downloads. geopandas<1.0 defaults to fiona, so declare pyogrio and call it directly.
+    "pyogrio>=0.7.2",
     "flame-components>=0.1.1,<0.2",
 ]
 
 [project.optional-dependencies]
 test = [
     "pytest>=7.0",
+    # Lets the Parquet and Feather input tests run (they are skipped when pyarrow is absent).
+    "pyarrow>=14.0",
 ]
 photoload = [
     "matplotlib>=3.6",
@@ -53,8 +59,12 @@ photoload = [
 fofem = [
     "pyfofem-fire-effects>=0.1.2,<0.2",
 ]
+# Reads Survey123 tables saved as Parquet or Feather files.
+parquet = [
+    "pyarrow>=14.0",
+]
 all = [
-    "fuel-analyst[fofem,photoload]",
+    "fuel-analyst[fofem,photoload,parquet]",
 ]
 
 [dependency-groups]

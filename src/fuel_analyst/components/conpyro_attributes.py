@@ -112,9 +112,6 @@ def _calc_veg_fuel_loads(df: pd.DataFrame, veg_fuel_dict: dict) -> pd.DataFrame:
     return helper.attach_columns(df, fuel_load_columns)
 
 
-_MISSING_TYPE_SENTINEL = object()
-
-
 def _join_first_seen_unique_types(columns: pd.DataFrame) -> pd.Series:
     """
     Join each row's unique values across ordered columns, preserving first-seen order.
@@ -124,13 +121,16 @@ def _join_first_seen_unique_types(columns: pd.DataFrame) -> pd.Series:
     :return: Series with each row's non-null unique values joined by a single space,
         in the order they first appear across the columns.
     """
-    filled = columns.fillna(_MISSING_TYPE_SENTINEL)
+    # Missing values are tracked with masks, not a placeholder value: Arrow-backed string columns (pandas 3 with pyarrow
+    # installed) cannot be compared with an arbitrary object.
+    present = columns.notna()
     column_names = list(columns.columns)
     joined = pd.Series('', index=columns.index)
     for position, column in enumerate(column_names):
-        first_seen = filled[column] != _MISSING_TYPE_SENTINEL
+        first_seen = present[column].astype(bool)
         for earlier_column in column_names[:position]:
-            first_seen &= filled[column] != filled[earlier_column]
+            same_as_earlier = (columns[column] == columns[earlier_column]).fillna(False).astype(bool)
+            first_seen &= ~same_as_earlier
         display = pd.Series(np.where(first_seen, columns[column], ''), index=columns.index)
         both_present = (joined != '') & (display != '')
         only_joined = (joined != '') & (display == '')

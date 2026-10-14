@@ -7,6 +7,7 @@ from fuel_analyst.components.conpyro_attributes import (
     _calc_stand_density,
     _calc_stand_type,
     _calc_veg_fuel_loads,
+    _join_first_seen_unique_types,
     _prep_fbp_df,
 )
 
@@ -198,3 +199,21 @@ def test_prep_fbp_df_accepts_current_survey123_treatment_fields():
         'treatment_type',
         'plot_id',
     ]
+
+
+@pytest.mark.parametrize('dtype', ['object', 'string[pyarrow]'])
+def test_join_first_seen_unique_types_handles_missing_values_in_any_string_dtype(dtype):
+    # With pandas 3 and pyarrow installed, string columns are Arrow-backed and cannot be compared with a placeholder
+    # object, which an earlier version of this function used for missing values.
+    if dtype == 'string[pyarrow]':
+        pytest.importorskip('pyarrow')
+    columns = pd.DataFrame({
+        'a': pd.array(['conifer', None, 'broadleaf', None], dtype=dtype),
+        'b': pd.array(['conifer', 'broadleaf', None, None], dtype=dtype),
+        'c': pd.array(['shrub', 'broadleaf', 'broadleaf', 'shrub'], dtype=dtype),
+    })
+
+    result = _join_first_seen_unique_types(columns)
+
+    assert result.tolist() == ['conifer shrub', 'broadleaf', 'broadleaf', 'shrub']
+

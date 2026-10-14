@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 import itertools
 
-from . import error_handling, helper
+from . import error_handling, helper, table_reader
 
 
 # GENERAL LIST OF CONIFER SPECIES IN BC
@@ -2002,7 +2002,7 @@ def _round_tree_data(tree_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def process_trees(
-        in_folder: str,
+        in_folder: 'str | table_reader.FormSource',
         out_folder: str,
         surface_fire_intensity_model: str,
         stand_summary_params: dict,
@@ -2011,7 +2011,7 @@ def process_trees(
     """
     Get the tree data from CSV files.
 
-    :param in_folder: Path to the folder containing the input CSV files.
+    :param in_folder: Path to the form folder of input tables, or a resolved FormSource.
     :param out_folder: Path to the folder where output CSV files will be saved.
     :param surface_fire_intensity_model: Model to use for calculating surface fireline intensity (default is 'Byram').
         Options: ['Byram', 'Thomas']
@@ -2023,6 +2023,7 @@ def process_trees(
         - Master tree DataFrame with selected attributes for export.
     """
     print('\nProcessing Tree data')
+    in_folder = table_reader.ensure_form_source(in_folder)
 
     # Initialize list of columns to keep
     keep_columns = []
@@ -2035,7 +2036,7 @@ def process_trees(
     # ### PROCESS PLOT-LEVEL ATTRIBUTES
     # Get plot dataframe and retain ambiguous parent IDs before survey
     # deduplication selects the latest record.
-    df = helper.get_df(os.path.join(in_folder, 'survey_0.csv'))
+    df = table_reader.read_table(in_folder, 'survey_0')
     ambiguous_parent_ids = set(
         df.loc[df['GlobalID'].notna() & df['GlobalID'].duplicated(keep=False), 'GlobalID']
     )
@@ -2048,7 +2049,7 @@ def process_trees(
 
     # ### PROCESS SAPLING ATTRIBUTES
     # Get sapling dataframe
-    sapling_df = helper.get_df(os.path.join(in_folder, 'sapling_1.csv'))
+    sapling_df = table_reader.read_table(in_folder, 'sapling_1')
     sapling_df = _normalize_sapling_inputs(sapling_df)
     # Calculate sapling attributes
     sapling_df = _calc_sapling_tree_type(sapling_df, tree_params_df)
@@ -2058,7 +2059,7 @@ def process_trees(
 
     # ### PROCESS INDIVIDUAL TREE ATTRIBUTES
     # Get tree dataframe
-    tree_df = helper.get_df(os.path.join(in_folder, 'tree_plot_2.csv'))
+    tree_df = table_reader.read_table(in_folder, 'tree_plot_2')
     tree_df = _normalize_tree_inputs(tree_df)
     # Merge sapling attributes
     tree_df, sapling_df = _merge_saplings_to_trees(tree_df, sapling_df)

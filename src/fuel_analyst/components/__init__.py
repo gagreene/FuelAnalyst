@@ -14,6 +14,7 @@ __all__ = [
 	'helper',
 	'plants_regen',
 	'plot_attributes',
+	'table_reader',
 	'trees',
 	'woody_debris',
 ]

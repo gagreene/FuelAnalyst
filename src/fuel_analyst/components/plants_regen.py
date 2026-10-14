@@ -11,7 +11,7 @@ import os
 import pandas as pd
 import numpy as np
 
-from . import helper
+from . import helper, table_reader
 
 logger = logging.getLogger(__name__)
 
@@ -421,21 +421,22 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     return df, keep_columns
 
 
-def process_plants_regen(in_folder: str, out_folder: str) -> tuple[pd.DataFrame, list]:
+def process_plants_regen(in_folder: 'str | table_reader.FormSource', out_folder: str) -> tuple[pd.DataFrame, list]:
     """
     Get the plant and tree regeneration data from a CSV file and return as an updated DataFrame.
 
-    :param in_folder: Path to the folder containing the input CSV files.
+    :param in_folder: Path to the form folder of input tables, or a resolved FormSource.
     :param out_folder: Path to the folder where output CSV files will be saved.
     :return: DataFrame with processed tree attributes, and a list of columns to keep.
     """
     print('\nProcessing Plant and Regeneration data')
+    in_folder = table_reader.ensure_form_source(in_folder)
 
     keep_columns = []
 
     # ### PROCESS PLOT DATA
     # Get plot dataframe
-    df = helper.get_df(os.path.join(in_folder, 'survey_0.csv'))
+    df = table_reader.read_table(in_folder, 'survey_0')
     # Generate a unique ID for each plot
     df = helper.get_unique_id(df)
     # Calculate percent flammable/nonflammable substrate cover
@@ -453,7 +454,7 @@ def process_plants_regen(in_folder: str, out_folder: str) -> tuple[pd.DataFrame,
 
     # ### PROCESS REGENERATION DATA
     # Get regen dataframe
-    regen_df = helper.get_df(os.path.join(in_folder, 'regeneration_1.csv'))
+    regen_df = table_reader.read_table(in_folder, 'regeneration_1')
 
     # ### MERGE PLANT AND REGENERATION DATA
     # Calculate regeneration attributes
