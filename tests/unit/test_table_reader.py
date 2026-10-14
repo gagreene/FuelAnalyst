@@ -284,3 +284,173 @@ def test_excel_dates_are_datetimes_not_text(tmp_path):
     result = table_reader.read_table(str(tmp_path), 'survey_0')
 
     assert result['_date'].iloc[2] == pd.Timestamp(datetime.datetime(2026, 9, 22, 8, 30))
+
+
+def _write_gdb(path, layers):
+    """
+    Write an ArcGIS-style file geodatabase.
+
+    :param layers: {layer: (DataFrame, xy)}; the DataFrame needs an 'objectid' column (the FID); xy is a
+        (x, y) pair of lists for a Point layer named SHAPE, or None for a table.
+    """
+    import geopandas as gpd
+    import pyogrio
+    for name, (df, xy) in layers.items():
+        # ArcGIS fields are 32-bit; GDAL warns when asked to write 64-bit integers.
+        df = df.astype({c: 'int32' for c in df.columns if str(df[c].dtype) == 'int64'})
+        if xy is None:
+            pyogrio.write_dataframe(df, str(path), layer=name, driver='OpenFileGDB', layer_options={'FID': 'objectid'})
+            continue
+        gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(*xy), crs='EPSG:4326')
+        gdf.geometry.name = 'SHAPE'
+        pyogrio.write_dataframe(gdf, str(path), layer=name, driver='OpenFileGDB', geometry_type='Point',
+                                layer_options={'FID': 'objectid', 'GEOMETRY_NAME': 'SHAPE'})
+    return path
+
+
+GDB_SURVEY = pd.DataFrame({
+    'objectid': [717, 725, 760],
+    'globalid': ['{4DB55FC8-C839-4C25-93B6-B73180C39247}', '{8CA667E4-11C3-41CA-AEB9-4A50A6E83FB3}', None],
+    '_date': pd.to_datetime(['2026-09-21 19:00:00', '2026-09-21 19:00:00', '2026-09-22 08:30:00']).tz_localize('UTC'),
+    'plot_id': ['GTUF3', 'GTUF4', 'GTUF5'],
+    'tree_dbh': pd.Series([33.1, None, 12.7], dtype='float32'),
+    'count': pd.Series([1, 2, None], dtype='Int32'),
+})
+GDB_TREES = pd.DataFrame({
+    'objectid': [13502, 13509],
+    'globalid': ['{5B8D3AB3-BDAB-4203-9FBB-02BC9B321486}', '{7DE0DEC5-247C-4A3A-963A-F411A6C1C691}'],
+    'tree_id': [1, 2],
+    'parentglobalid': ['{4DB55FC8-C839-4C25-93B6-B73180C39247}', '{8CA667E4-11C3-41CA-AEB9-4A50A6E83FB3}'],
+})
+
+
+def test_resolve_form_source_finds_a_geodatabase_in_the_form_folder_and_one_folder_below(tmp_path):
+    direct = tmp_path / 'direct'
+    nested = tmp_path / 'nested' / 'S123_abc_FGDB'
+    direct.mkdir()
+    nested.mkdir(parents=True)
+    layers = {'survey': (GDB_SURVEY, ([-122.7, 0.0, -121.0], [50.3, 0.0, 49.9])), 'tree_plot': (GDB_TREES, None)}
+    _write_gdb(direct / '533e7d23-a00e.gdb', layers)
+    _write_gdb(nested / '9f4829a6-b6e6.gdb', layers)
+
+    for folder, relative in ((direct, '533e7d23-a00e.gdb'), (tmp_path / 'nested', os.path.join('S123_abc_FGDB', '9f4829a6-b6e6.gdb'))):
+        source = table_reader.ensure_form_source(str(folder))
+        assert source.kind == 'gdb'
+        assert source.tables == ('survey', 'tree_plot')
+        assert source.files == (str(folder / relative),)
+        assert table_reader.has_table(source, 'survey_0')
+        assert table_reader.has_table(source, 'tree_plot_2')
+        assert not table_reader.has_table(source, 'sapling_1')
+
+
+def test_excel_is_used_before_a_geodatabase_and_csv_before_both(tmp_path):
+    _write_gdb(tmp_path / 'a.gdb', {'survey': (GDB_SURVEY, ([0.0] * 3, [0.0] * 3))})
+    _write_workbook(tmp_path / 'S123_abc_EXCEL.xlsx', {'survey_0': SURVEY})
+    assert table_reader.ensure_form_source(str(tmp_path)).kind == 'workbook'
+
+    _write_form(tmp_path, {'survey_0': pd.DataFrame({'a': [1]})})
+    assert table_reader.ensure_form_source(str(tmp_path)).kind == 'csv_folder'
+
+
+def test_geodatabase_layer_reads_like_the_csv_table(tmp_path):
+    _write_gdb(tmp_path / 'a.gdb', {'survey': (GDB_SURVEY, ([-122.7, 0.0, -121.0], [50.3, 0.0, 49.9]))})
+
+    result = table_reader.read_table(str(tmp_path), 'survey_0')
+
+    assert list(result.columns) == ['ObjectID', 'GlobalID', '_date', 'plot_id', 'tree_dbh', 'count', 'x', 'y']
+    assert 'geometry' not in result.columns and 'SHAPE' not in result.columns
+    # The layer FID is the object ID and keeps its non-consecutive values.
+    assert result['ObjectID'].tolist() == [717, 725, 760]
+    # GUIDs are lower case without braces, as in the CSV; a missing GUID stays missing.
+    assert result['GlobalID'].iloc[:2].tolist() == ['4db55fc8-c839-4c25-93b6-b73180c39247', '8ca667e4-11c3-41ca-aeb9-4a50a6e83fb3']
+    assert pd.isna(result['GlobalID'].iloc[2])
+    # UTC dates become naive datetimes with the same wall-clock value.
+    assert result['_date'].tolist() == GDB_SURVEY['_date'].dt.tz_localize(None).tolist()
+    assert result['_date'].dt.tz is None
+    # A 32-bit float comes back with its short decimal form, not as 33.099998.
+    assert result['tree_dbh'].iloc[0] == 33.1
+    assert result['tree_dbh'].dtype == 'float64'
+    assert result['count'].dtype == 'float64'
+    assert result['count'].iloc[:2].tolist() == [1.0, 2.0]
+    assert result[['x', 'y']].iloc[0].tolist() == pytest.approx([-122.7, 50.3])
+
+
+def test_geodatabase_coordinate_noise_is_snapped_to_zero(tmp_path):
+    _write_gdb(tmp_path / 'a.gdb', {'survey': (GDB_SURVEY, ([5.684341886080803e-14, -122.7, 0.0], [5.684341886080803e-14, 50.3, 0.0]))})
+
+    result = table_reader.read_table(str(tmp_path), 'survey_0')
+
+    assert result['x'].iloc[0] == 0.0 and result['y'].iloc[0] == 0.0
+    assert result['x'].iloc[1] == pytest.approx(-122.7)
+
+
+def test_geodatabase_layer_keeps_x_and_y_fields_when_it_has_them(tmp_path):
+    with_xy = GDB_SURVEY.assign(x=[1.0, 2.0, 3.0], y=[4.0, 5.0, 6.0])
+    _write_gdb(tmp_path / 'a.gdb', {'survey': (with_xy, ([9.0] * 3, [9.0] * 3))})
+
+    result = table_reader.read_table(str(tmp_path), 'survey_0')
+
+    assert result['x'].tolist() == [1.0, 2.0, 3.0]
+    assert list(result.columns).count('x') == 1
+
+
+def test_geodatabase_repeat_table_has_parent_ids_and_no_coordinates(tmp_path):
+    _write_gdb(tmp_path / 'a.gdb', {'tree_plot': (GDB_TREES, None)})
+
+    result = table_reader.read_table(str(tmp_path), 'tree_plot_2')
+
+    assert list(result.columns) == ['ObjectID', 'GlobalID', 'tree_id', 'ParentGlobalID']
+    assert result['ObjectID'].tolist() == [13502, 13509]
+    assert result['ParentGlobalID'].tolist() == ['4db55fc8-c839-4c25-93b6-b73180c39247', '8ca667e4-11c3-41ca-aeb9-4a50a6e83fb3']
+
+
+def test_empty_geodatabase_table_keeps_its_columns(tmp_path):
+    empty = pd.DataFrame({'objectid': pd.Series([], dtype='int64'), 'globalid': pd.Series([], dtype=object),
+                          'spp_comp_code': pd.Series([], dtype=object), 'spp_comp_percent': pd.Series([], dtype='float64')})
+    _write_gdb(tmp_path / 'a.gdb', {'spp_comp_manual': (empty, None)})
+
+    result = table_reader.read_table(str(tmp_path), 'spp_comp_manual_1')
+
+    assert result.empty
+    assert list(result.columns) == ['ObjectID', 'GlobalID', 'spp_comp_code', 'spp_comp_percent']
+
+
+def test_missing_geodatabase_layer_raises_or_returns_none_when_optional(tmp_path):
+    _write_gdb(tmp_path / 'a.gdb', {'tree_plot': (GDB_TREES, None)})
+    source = table_reader.ensure_form_source(str(tmp_path))
+
+    with pytest.raises(FileNotFoundError, match='t2_woody'):
+        table_reader.read_table(source, 't2_woody_3')
+    assert table_reader.read_table(source, 't2_woody_3', required=False) is None
+
+
+def test_a_layer_in_two_geodatabases_is_an_error_naming_both(tmp_path):
+    _write_gdb(tmp_path / 'first.gdb', {'tree_plot': (GDB_TREES, None)})
+    _write_gdb(tmp_path / 'second.gdb', {'tree_plot': (GDB_TREES, None)})
+    source = table_reader.ensure_form_source(str(tmp_path))
+
+    with pytest.raises(ValueError, match='first.gdb, second.gdb'):
+        table_reader.read_table(source, 'tree_plot_2')
+
+
+def test_a_zipped_download_without_tables_says_to_unzip_it(tmp_path):
+    (tmp_path / 'S123_abc_FGDB.zip').write_bytes(b'PK')
+
+    with pytest.raises(ValueError, match='Unzip it first'):
+        table_reader.ensure_form_source(str(tmp_path))
+
+
+def test_a_zip_next_to_usable_tables_is_ignored(tmp_path):
+    _write_form(tmp_path, {'survey_0': pd.DataFrame({'a': [1]})})
+    (tmp_path / 'S123_abc_FGDB.zip').write_bytes(b'PK')
+
+    assert table_reader.ensure_form_source(str(tmp_path)).kind == 'csv_folder'
+
+
+def test_an_unreadable_geodatabase_gives_a_clear_error(tmp_path):
+    broken = tmp_path / 'broken.gdb'
+    broken.mkdir()
+    (broken / 'a00000001.gdbtable').write_bytes(b'not a geodatabase table')
+
+    with pytest.raises(ValueError, match='Cannot open file geodatabase'):
+        table_reader.ensure_form_source(str(tmp_path))
