@@ -10,7 +10,8 @@ keep using ``helper.get_df()``, which must not receive Survey123 normalization o
 Each form lives in its own folder (``3_Trees``). Two kinds of format are supported:
 
 * One file per table, named like the CSV file (``survey_0``): ``'csv_folder'`` (``.csv``),
-  ``'parquet_folder'`` (``.parquet``), and ``'feather_folder'`` (``.feather`` or ``.arrow``).
+  ``'parquet_folder'`` (``.parquet``), ``'feather_folder'`` (``.feather`` or ``.arrow``), and
+  ``'geojson_folder'`` (``.geojson``: the parent table as points, repeat tables as features without geometry).
 * One container per form, holding every table: ``'workbook'`` (Excel ``.xlsx`` or ``.xlsm``, one sheet per
   table, the layout of an ArcGIS Survey123 Excel download), ``'gpkg'`` (a GeoPackage, one layer per table),
   ``'sqlite'`` (a plain SQLite database, one table per table), and ``'gdb'`` (an unzipped ArcGIS file
@@ -19,8 +20,8 @@ Each form lives in its own folder (``3_Trees``). Two kinds of format are support
 A container matches a table by its full name (``survey_0``) first, then by the name without the table number
 (``survey``, as ArcGIS geodatabases name their layers), ignoring case. Zipped downloads must be unzipped.
 
-When a form folder holds several formats, one is chosen in this order: CSV, Parquet, Feather, Excel,
-GeoPackage, SQLite, geodatabase. A SQLite file that holds GeoPackage tables is read as a GeoPackage.
+When a form folder holds several formats, one is chosen in this order: CSV, Parquet, Feather, GeoJSON,
+Excel, GeoPackage, SQLite, geodatabase. A SQLite file that holds GeoPackage tables is read as a GeoPackage.
 
 The source kinds are registered in ``_READERS``, so supporting another format means adding one reader and
 one existence check.
@@ -48,7 +49,8 @@ class FormSource:
     """
     Where one Survey123 form's tables live.
 
-    :param kind: Source kind: 'csv_folder', 'parquet_folder', 'feather_folder', 'workbook', 'gpkg', 'sqlite', or 'gdb'.
+    :param kind: Source kind: 'csv_folder', 'parquet_folder', 'feather_folder', 'geojson_folder', 'workbook', 'gpkg',
+        'sqlite', or 'gdb'.
     :param path: Path to the form folder.
     :param tables: Names of the tables found in the source when it was resolved (file names without extension,
         sheet names, or layer and table names).
@@ -67,6 +69,7 @@ _DATABASE_EXTENSIONS = ('.gpkg', '.sqlite', '.sqlite3', '.db')
 _DATE_COLUMNS = ('_date', 'CreationDate', 'EditDate')
 _FEATHER_FOLDER = 'feather_folder'
 _GDB = 'gdb'
+_GEOJSON_FOLDER = 'geojson_folder'
 _GDB_EXTENSION = '.gdb'
 _GPKG = 'gpkg'
 _GUID_COLUMNS = {'globalid': 'GlobalID', 'parentglobalid': 'ParentGlobalID'}
@@ -79,10 +82,11 @@ _FILE_KINDS = {
     _CSV_FOLDER: ('.csv',),
     _PARQUET_FOLDER: ('.parquet',),
     _FEATHER_FOLDER: ('.feather', '.arrow'),
+    _GEOJSON_FOLDER: ('.geojson',),
 }
 # Display names, used in the note printed when a folder holds several formats.
 _LABELS = {
-    _CSV_FOLDER: 'CSV', _PARQUET_FOLDER: 'Parquet', _FEATHER_FOLDER: 'Feather', _WORKBOOK: 'Excel',
+    _CSV_FOLDER: 'CSV', _PARQUET_FOLDER: 'Parquet', _FEATHER_FOLDER: 'Feather', _GEOJSON_FOLDER: 'GeoJSON', _WORKBOOK: 'Excel',
     _DATABASE_FILE: 'GeoPackage or SQLite', _GPKG: 'GeoPackage', _SQLITE: 'SQLite', _GDB: 'geodatabase',
 }
 # Coordinates this close to zero are floating-point noise from a geodatabase or GeoPackage (a point stored at
@@ -132,7 +136,7 @@ def _detect_source(folder: str) -> FormSource:
     """
     Work out which format a form folder holds and build its source.
 
-    The first format found is used, in this order: CSV, Parquet, Feather, Excel, GeoPackage, SQLite, geodatabase.
+    The first format found is used, in this order: CSV, Parquet, Feather, GeoJSON, Excel, GeoPackage, SQLite, geodatabase.
     Only file names are scanned here; a workbook or database is opened only when it is the chosen format. A folder
     with none of these is treated as an empty CSV folder, so a missing table fails later with the usual
     FileNotFoundError, unless it holds a zipped download, which raises an error that says to unzip it.
@@ -160,7 +164,7 @@ def _detect_source(folder: str) -> FormSource:
         if archives:
             raise ValueError(
                 f"Form folder {folder} holds a zipped download ({', '.join(os.path.basename(a) for a in archives)}) "
-                f"but no CSV, Parquet, Feather, Excel, GeoPackage, SQLite, or geodatabase tables. Unzip it first."
+                f"but no CSV, Parquet, Feather, GeoJSON, Excel, GeoPackage, SQLite, or geodatabase tables. Unzip it first."
             )
         return FormSource(kind=_CSV_FOLDER, path=folder, tables=())
 
@@ -302,7 +306,7 @@ def _match_name(names: tuple, stem: str) -> Optional[str]:
     return lower.get(stem.lower()) or lower.get(_layer_name(stem).lower())
 
 
-def _normalize_ogr_frame(layer_df: pd.DataFrame) -> pd.DataFrame:
+def _normalize_ogr_frame(layer_df: pd.DataFrame, parse_dates: bool = False) -> pd.DataFrame:
     """
     Turn a geodatabase or GeoPackage layer into the table the CSV download of the same form holds.
 
@@ -314,7 +318,9 @@ def _normalize_ogr_frame(layer_df: pd.DataFrame) -> pd.DataFrame:
     ``pd.read_csv`` would give.
 
     :param layer_df: Layer read with ``pyogrio.read_dataframe(..., fid_as_index=True)``.
-    :return: DataFrame with an ``ObjectID`` first column and no geometry column.
+    :param parse_dates: Also parse text in the date columns into datetimes (for formats that store dates as text).
+    :return: DataFrame with an ``ObjectID`` first column and no geometry column. ``x`` and ``y`` are added only when the
+        layer has point geometry (a table whose features have no geometry gets none).
     """
     import geopandas as gpd
     spatial = isinstance(layer_df, gpd.GeoDataFrame)
@@ -329,11 +335,17 @@ def _normalize_ogr_frame(layer_df: pd.DataFrame) -> pd.DataFrame:
     for name in _GUID_COLUMNS.values():
         if name in frame.columns:
             frame[name] = frame[name].map(_clean_guid)
-    if spatial and not {'x', 'y'} & {c.lower() for c in frame.columns}:
-        geometry = _to_wgs84(layer_df.geometry.reset_index(drop=True))
-        for axis in ('x', 'y'):
-            values = getattr(geometry, axis).to_numpy(dtype=float)
-            frame[axis] = np.where(np.abs(values) < _COORDINATE_NOISE, 0.0, values)
+    if spatial and layer_df.geometry.notna().any():
+        other_types = sorted(set(layer_df.geometry.geom_type.dropna()) - {'Point'})
+        if other_types:
+            raise ValueError(f"point geometry is needed, but the layer holds {', '.join(other_types)}")
+        if not {'x', 'y'} & {c.lower() for c in frame.columns}:
+            geometry = _to_wgs84(layer_df.geometry.reset_index(drop=True))
+            for axis in ('x', 'y'):
+                values = getattr(geometry, axis).to_numpy(dtype=float)
+                frame[axis] = np.where(np.abs(values) < _COORDINATE_NOISE, 0.0, values)
+    if parse_dates:
+        frame = _parse_date_text(frame)
     return _as_csv_would(frame)
 
 
@@ -362,6 +374,23 @@ def _ogr_table_exists(source: FormSource, stem: str) -> bool:
     return _match_name(source.tables, stem) is not None
 
 
+def _parse_date_text(frame: pd.DataFrame) -> pd.DataFrame:
+    """
+    Parse text in the date columns (``_date``, ``CreationDate``, ``EditDate``) into datetimes.
+
+    Parsing is done as UTC, so timestamps with different offsets (for example daylight-saving and standard time)
+    normalize to UTC clock time and text without an offset is read as it is. Columns that are already datetimes are kept.
+
+    :param frame: DataFrame read from a format that stores dates as text (SQLite or GeoJSON).
+    :return: DataFrame with those columns as datetimes.
+    """
+    frame = frame.copy()
+    for column in _DATE_COLUMNS:
+        if column in frame.columns and not pd.api.types.is_datetime64_any_dtype(frame[column]):
+            frame[column] = pd.to_datetime(frame[column], format='mixed', errors='coerce', utc=True)
+    return frame
+
+
 @contextlib.contextmanager
 def _quiet_openpyxl():
     """
@@ -378,7 +407,7 @@ def _quiet_openpyxl():
 
 def _read_file_table(source: FormSource, stem: str) -> pd.DataFrame:
     """
-    Read one table from a one-file-per-table source (CSV, Parquet, or Feather).
+    Read one table from a one-file-per-table source (CSV, Parquet, Feather, or GeoJSON).
 
     CSV is read with the standard CSV reader (``helper.get_df``). Parquet and Feather need the optional ``pyarrow``
     package; their tables are given the dtypes ``pd.read_csv`` would infer, and time-zone-aware dates become naive UTC.
@@ -398,6 +427,8 @@ def _read_file_table(source: FormSource, stem: str) -> pd.DataFrame:
     path = paths[0]
     if source.kind == _CSV_FOLDER:
         return helper.get_df(path)
+    if source.kind == _GEOJSON_FOLDER:
+        return _read_geojson_file(path)
     try:
         import pyarrow  # noqa: F401
     except ImportError as exc:
@@ -411,6 +442,29 @@ def _read_file_table(source: FormSource, stem: str) -> pd.DataFrame:
     except Exception as exc:
         raise ValueError(f'Cannot read {path}: {exc}') from exc
     return _as_csv_would(frame)
+
+
+def _read_geojson_file(path: str) -> pd.DataFrame:
+    """
+    Read one GeoJSON table file.
+
+    The parent table holds point features (GeoJSON coordinates are WGS84 degrees); a repeat table holds features without
+    geometry. ``ObjectID`` is the property of that name or else the feature's id, ``x`` and ``y`` come from the points,
+    and date text is parsed (as UTC).
+
+    :param path: Path to the ``.geojson`` file.
+    :return: DataFrame normalized like the CSV table (see ``_normalize_ogr_frame``).
+    """
+    import pyogrio
+    print(f'\tGetting DataFrame from GeoJSON file at: {path}')
+    try:
+        layer_df = pyogrio.read_dataframe(path, fid_as_index=True)
+    except Exception as exc:
+        raise ValueError(f'Cannot read {path}: {exc}') from exc
+    try:
+        return _normalize_ogr_frame(layer_df, parse_dates=True)
+    except ValueError as exc:
+        raise ValueError(f'{path}: {exc}') from exc
 
 
 def _read_ogr_table(source: FormSource, stem: str) -> pd.DataFrame:
@@ -479,10 +533,7 @@ def _read_sqlite_table(source: FormSource, stem: str) -> pd.DataFrame:
             frame = pd.read_sql_query('select * from "' + name.replace('"', '""') + '"', connection)
     except Exception as exc:
         raise ValueError(f"Cannot read table '{name}' from {path}: {exc}") from exc
-    for column in _DATE_COLUMNS:
-        if column in frame.columns and not pd.api.types.is_datetime64_any_dtype(frame[column]):
-            frame[column] = pd.to_datetime(frame[column], format='mixed', errors='coerce', utc=True)
-    return _as_csv_would(frame)
+    return _as_csv_would(_parse_date_text(frame))
 
 
 def _read_workbook_table(source: FormSource, stem: str) -> pd.DataFrame:
@@ -630,6 +681,7 @@ _READERS = {
     _CSV_FOLDER: (_file_table_exists, _read_file_table),
     _FEATHER_FOLDER: (_file_table_exists, _read_file_table),
     _GDB: (_ogr_table_exists, _read_ogr_table),
+    _GEOJSON_FOLDER: (_file_table_exists, _read_file_table),
     _GPKG: (_ogr_table_exists, _read_ogr_table),
     _PARQUET_FOLDER: (_file_table_exists, _read_file_table),
     _SQLITE: (_sqlite_table_exists, _read_sqlite_table),
@@ -641,8 +693,8 @@ def ensure_form_source(location: Union[str, FormSource]) -> FormSource:
     """
     Return a form source, resolving a folder path if necessary.
 
-    A path string is resolved from the files in that folder (CSV, Parquet, Feather, Excel, GeoPackage, SQLite, then
-    file geodatabase tables, whichever is found first). A folder that does not exist, or holds none of these, is
+    A path string is resolved from the files in that folder (CSV, Parquet, Feather, GeoJSON, Excel, GeoPackage, SQLite,
+    then file geodatabase tables, whichever is found first). A folder that does not exist, or holds none of these, is
     treated as an empty CSV folder, so a missing table still fails later with the same error as before. An existing
     FormSource is returned as is.
 

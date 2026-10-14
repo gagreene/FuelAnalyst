@@ -185,14 +185,15 @@ families, and the organization follows how ArcGIS downloads are laid out:
 | One file per table | `csv_folder` | `.csv` files | `survey_0.csv` |
 | One file per table | `parquet_folder` | `.parquet` files (needs `pyarrow`) | `survey_0.parquet` |
 | One file per table | `feather_folder` | `.feather` or `.arrow` files (needs `pyarrow`) | `survey_0.feather` |
+| One file per table | `geojson_folder` | `.geojson` files: points for the parent table, no geometry for repeat tables | `survey_0.geojson` |
 | One container per form | `workbook` | `.xlsx` or `.xlsm` workbooks (lock files `~$` ignored) | sheet `survey_0` |
 | One container per form | `gpkg` | `.gpkg` files, or `.sqlite`/`.db` files that hold GeoPackage tables | layer `survey` or `survey_0` |
 | One container per form | `sqlite` | plain `.sqlite`, `.sqlite3`, or `.db` files | table `survey_0` or `survey` |
 | One container per form | `gdb` | `*.gdb` folders in the form folder or one level below | layer `survey` or `survey_0` |
 
 A container matches a table by the full name first (`survey_0`), then by the name without its number (`survey`), ignoring case
-(`_match_name`). Detection scans file names only and picks the first format found in this order: CSV, Parquet, Feather, Excel,
-GeoPackage, SQLite, geodatabase (only the chosen workbook or database is opened); when a folder holds several formats a note lists
+(`_match_name`). Detection scans file names only and picks the first format found in this order: CSV, Parquet, Feather, GeoJSON,
+Excel, GeoPackage, SQLite, geodatabase (only the chosen workbook or database is opened); when a folder holds several formats a note lists
 them. A zip with no usable tables raises an error that says to unzip it; a table in two workbooks, GeoPackages, SQLite files, or
 geodatabases raises an error naming both; an unreadable file raises a clear `ValueError`; Parquet or Feather without `pyarrow`
 raises an `ImportError` that says how to install it.
@@ -200,7 +201,7 @@ raises an `ImportError` that says how to install it.
 Normalization makes every non-CSV table read like its CSV (`_as_csv_would`): the non-date columns are written to text and read back
 with `pd.read_csv`, so dtypes and `NA` handling are the same (including 32-bit floats, which return as their short decimal form);
 date columns stay datetimes (time zone dropped, UTC clock time kept) and `helper.get_unique_id()` accepts them. SQLite date text is
-parsed into datetimes first (as UTC, so timestamps with different offsets normalize to UTC clock time). A GeoPackage or
+parsed into datetimes first (also for GeoJSON; as UTC, so timestamps with different offsets normalize to UTC clock time). A GeoPackage, GeoJSON, or
 geodatabase table also gets `ObjectID` (an `ObjectID` field if the layer has one, otherwise the layer FID), cleaned `GlobalID` and
 `ParentGlobalID`, and `x` and `y` from point geometry in WGS84 degrees (`_to_wgs84`: a layer in another coordinate system is
 reprojected to EPSG:4326, and a layer with none is accepted only if its coordinates are valid longitudes and latitudes; coordinates

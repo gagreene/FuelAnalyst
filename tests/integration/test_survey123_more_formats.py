@@ -1,7 +1,7 @@
 """
-Whole-pipeline checks for the GeoPackage, SQLite, Parquet, and Feather input formats.
+Whole-pipeline checks for the GeoPackage, SQLite, GeoJSON, Parquet, and Feather input formats.
 
-One module-scoped fixture builds GUID-mapped CSV, GeoPackage, and SQLite versions of the example dataset (plus Parquet and
+One module-scoped fixture builds GUID-mapped CSV, GeoPackage, SQLite, and GeoJSON versions of the example dataset (plus Parquet and
 Feather when pyarrow is installed), runs the pipeline on each, and the tests compare the written outputs with the CSV run.
 """
 import shutil
@@ -29,7 +29,7 @@ ONE_FORMAT_PER_FORM = {
 @pytest.fixture(scope='module')
 def runs(tmp_path_factory):
     tmp = tmp_path_factory.mktemp('more_formats')
-    formats = ['csv', 'gpkg', 'sqlite'] + (['parquet', 'feather'] if HAS_PYARROW else [])
+    formats = ['csv', 'gpkg', 'sqlite', 'geojson'] + (['parquet', 'feather'] if HAS_PYARROW else [])
     roots = {fmt: tmp / fmt for fmt in formats}
     write_formats(example_dir(), roots)
     outputs = {fmt: run_pipeline(root, tmp / f'out_{fmt}') for fmt, root in roots.items()}
@@ -47,7 +47,7 @@ def runs(tmp_path_factory):
 
 @pytest.mark.integration
 @pytest.mark.slow
-@pytest.mark.parametrize('label', ['gpkg', 'sqlite', 'parquet', 'feather'])
+@pytest.mark.parametrize('label', ['gpkg', 'sqlite', 'geojson', 'parquet', 'feather'])
 def test_inputs_in_each_format_give_the_same_pipeline_outputs_as_csv(runs, label):
     if label not in runs:
         pytest.skip('Parquet and Feather need pyarrow')

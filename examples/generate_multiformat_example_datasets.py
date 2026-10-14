@@ -31,6 +31,9 @@ Other formats written from the same data (the organization FuelAnalyst reads; se
     columns and real datetimes. They need pyarrow.
   - GeoPackage: one ``<form>.gpkg`` per form with the same layers as the geodatabase (``survey``, ``tree_plot``, ...), the object ID
     as the ``fid`` column, and point geometry for ``survey``.
+  - GeoJSON: one ``<table>.geojson`` per table, named like the CSV (``survey_0``). The parent table holds point features (x and y
+    from the data; WGS84 degrees) with the other fields as properties (``ObjectID`` is a property); a repeat table holds features
+    without geometry.
   - SQLite: one ``<form>.sqlite`` per form with one plain table per CSV table (``survey_0``), x and y as columns, and dates as
     ISO text.
 
@@ -43,7 +46,7 @@ Usage (every option is optional):
 
     --src DIR          Folder of CSV example form folders (default: examples/data/Survey123_Data, the committed input data)
     --out DIR          Output folder (default: examples/results/survey123_formats, a generated, git-ignored folder)
-    --formats F ...    Formats to write, any of: csv excel gdb gpkg sqlite parquet feather (default: all; parquet and feather
+    --formats F ...    Formats to write, any of: csv excel gdb gpkg sqlite geojson parquet feather (default: all; parquet and feather
                        are skipped with a message when pyarrow is missing, and are an error when asked for explicitly)
     --no-bundle        Skip the all_formats folder (written when at least two formats are selected)
     --reference FILE   Column types of a real ArcGIS download (default: examples/data/esri_reference_types.json, schema only)
@@ -353,6 +356,39 @@ def write_gdb(form_dir: str, out_form_dir: str, reference: dict, coordinates: di
     return _write_ogr(form_dir, path, reference, coordinates, 'OpenFileGDB', 'objectid')
 
 
+def write_geojson(form_dir: str, out_form_dir: str, coordinates: dict = None) -> list:
+    """
+    Write one form's tables as GeoJSON files (one per table, named like the CSV).
+
+    The parent table holds point features (WGS84 degrees) with the other fields as properties, including ``ObjectID``; a repeat
+    table holds features without geometry. ``x`` and ``y`` stay properties only when they sit mid-table (the plot form).
+
+    :param form_dir: Source form folder with CSV tables.
+    :param out_form_dir: Output form folder.
+    :param coordinates: Plot coordinates from :func:`plot_coordinates`, used for a parent table without x and y.
+    :return: Paths of the written files.
+    """
+    coordinates = coordinates or {}
+    paths = []
+    for stem in _tables(form_dir):
+        raw = _read_raw(os.path.join(form_dir, stem + '.csv'))
+        typed = _typed_frame(raw)
+        props = typed.drop(columns=['x', 'y']) if list(raw.columns[-2:]) == ['x', 'y'] else typed
+        if int(STEM.match(stem).group('idx')) == 0:
+            if 'x' in raw.columns:
+                x, y = pd.to_numeric(raw['x'], errors='coerce'), pd.to_numeric(raw['y'], errors='coerce')
+            else:
+                pairs = _plot_key(raw).map(lambda key: coordinates.get(key, (np.nan, np.nan)))
+                x, y = pairs.map(lambda p: p[0]), pairs.map(lambda p: p[1])
+            geometry = gpd.points_from_xy(x, y)
+        else:
+            geometry = [None] * len(props)
+        path = os.path.join(out_form_dir, f'{stem}.geojson')
+        gpd.GeoDataFrame(props, geometry=geometry, crs='EPSG:4326').to_file(path, driver='GeoJSON')
+        paths.append(path)
+    return paths
+
+
 def write_gpkg(form_dir: str, out_form_dir: str, reference: dict, coordinates: dict = None) -> str:
     """
     Write one form's GeoPackage (one file, the same layers as the geodatabase, the object ID as the ``fid`` column).
@@ -444,7 +480,7 @@ def _write_ogr(form_dir: str, path: str, reference: dict, coordinates: dict, dri
     return path
 
 
-FORMATS = ('csv', 'excel', 'gdb', 'gpkg', 'sqlite', 'parquet', 'feather')
+FORMATS = ('csv', 'excel', 'gdb', 'gpkg', 'sqlite', 'geojson', 'parquet', 'feather')
 
 
 def _selected_formats(requested: list = None) -> list:
@@ -494,6 +530,7 @@ def main(src: str, out: str, reference_path: str, formats: list = None, bundle: 
         'gdb': lambda form_dir, out_form: write_gdb(form_dir, out_form, reference, coordinates),
         'gpkg': lambda form_dir, out_form: write_gpkg(form_dir, out_form, reference, coordinates),
         'sqlite': lambda form_dir, out_form: write_sqlite(form_dir, out_form),
+        'geojson': lambda form_dir, out_form: write_geojson(form_dir, out_form, coordinates),
         'parquet': lambda form_dir, out_form: write_table_files(form_dir, out_form, 'parquet'),
         'feather': lambda form_dir, out_form: write_table_files(form_dir, out_form, 'feather'),
     }

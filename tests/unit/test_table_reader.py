@@ -636,18 +636,20 @@ def test_every_format_is_chosen_in_the_documented_order(tmp_path):
     _write_form(folder, {'survey_0': pd.DataFrame({'a': [1]})})
     pd.DataFrame({'a': [1]}).to_parquet(folder / 'survey_0.parquet', index=False)
     pd.DataFrame({'a': [1]}).to_feather(folder / 'survey_0.feather')
+    _write_geojson(folder / 'survey_0.geojson', pd.DataFrame({'a': [1]}), ([-122.7], [50.3]))
     _write_workbook(folder / 'form_EXCEL.xlsx', {'survey_0': pd.DataFrame({'a': [1]})})
     _write_gpkg(folder / 'form.gpkg', {'survey': (pd.DataFrame({'fid': [1], 'a': [1]}), None)})
     _write_sqlite(folder / 'form.sqlite', {'survey_0': pd.DataFrame({'a': [1]})})
     _write_gdb(folder / 'form.gdb', {'survey': (pd.DataFrame({'objectid': [1], 'a': [1]}), None)})
 
     order = []
-    for remove in ('survey_0.csv', 'survey_0.parquet', 'survey_0.feather', 'form_EXCEL.xlsx', 'form.gpkg', 'form.sqlite', None):
+    for remove in ('survey_0.csv', 'survey_0.parquet', 'survey_0.feather', 'survey_0.geojson', 'form_EXCEL.xlsx', 'form.gpkg',
+                   'form.sqlite', None):
         order.append(table_reader.ensure_form_source(str(folder)).kind)
         if remove:
             os.remove(folder / remove)
 
-    assert order == ['csv_folder', 'parquet_folder', 'feather_folder', 'workbook', 'gpkg', 'sqlite', 'gdb']
+    assert order == ['csv_folder', 'parquet_folder', 'feather_folder', 'geojson_folder', 'workbook', 'gpkg', 'sqlite', 'gdb']
 
 
 # ---------------------------------------------------------------- review fixes: coordinate system, SQLite offsets, table files
@@ -741,3 +743,81 @@ def test_parquet_files_with_an_uppercase_extension_are_read(tmp_path):
 
     assert source.kind == 'parquet_folder'
     assert table_reader.read_table(source, 'survey_0')['a'].tolist() == [1, 2]
+
+
+# ---------------------------------------------------------------- GeoJSON
+
+def _write_geojson(path, df, xy=None):
+    """Write a GeoJSON file: point features when ``xy`` is (x list, y list), otherwise features without geometry."""
+    import geopandas as gpd
+    geometry = gpd.points_from_xy(*xy) if xy else [None] * len(df)
+    gpd.GeoDataFrame(df, geometry=geometry, crs='EPSG:4326').to_file(path, driver='GeoJSON')
+    return path
+
+
+def test_geojson_tables_read_like_the_csv_tables(tmp_path):
+    survey = pd.DataFrame({
+        'ObjectID': [717, 725, 760],
+        'GlobalID': ['4db55fc8-c839-4c25-93b6-b73180c39247', '8ca667e4-11c3-41ca-aeb9-4a50a6e83fb3', None],
+        '_date': ['2026-09-21T19:00:00Z', '2026-09-21T19:00:00Z', '2026-09-22T08:30:00Z'],
+        'plot_id': ['GTUF3', 'GTUF4', 'GTUF5'],
+        'tree_dbh': [33.1, None, 12.7],
+        'count': [1, 2, 3],
+    })
+    trees = pd.DataFrame({
+        'ObjectID': [13502, 13509], 'GlobalID': ['5b8d3ab3-bdab-4203-9fbb-02bc9b321486', '7de0dec5-247c-4a3a-963a-f411a6c1c691'],
+        'tree_id': [1, 2], 'ParentGlobalID': ['4db55fc8-c839-4c25-93b6-b73180c39247', '8ca667e4-11c3-41ca-aeb9-4a50a6e83fb3'],
+    })
+    _write_geojson(tmp_path / 'survey_0.geojson', survey, ([-122.7, 0.0, -121.0], [50.3, 0.0, 49.9]))
+    _write_geojson(tmp_path / 'tree_plot_2.geojson', trees)
+
+    source = table_reader.ensure_form_source(str(tmp_path))
+    survey_df = table_reader.read_table(source, 'survey_0')
+    trees_df = table_reader.read_table(source, 'tree_plot_2')
+
+    assert source.kind == 'geojson_folder'
+    assert source.tables == ('survey_0', 'tree_plot_2')
+    # The parent table gets x and y from its points; ObjectID comes from the property.
+    assert list(survey_df.columns) == ['ObjectID', 'GlobalID', '_date', 'plot_id', 'tree_dbh', 'count', 'x', 'y']
+    assert survey_df['ObjectID'].tolist() == [717, 725, 760]
+    assert survey_df[['x', 'y']].iloc[0].tolist() == pytest.approx([-122.7, 50.3])
+    assert survey_df['count'].dtype == 'int64'
+    assert survey_df['tree_dbh'].iloc[0] == 33.1
+    # Date text becomes naive datetimes (UTC clock time) that get_unique_id accepts.
+    assert survey_df['_date'].dt.tz is None
+    assert survey_df['_date'].iloc[0] == pd.Timestamp('2026-09-21 19:00:00')
+    # A repeat table has no geometry, so it gets no x and y.
+    assert list(trees_df.columns) == ['ObjectID', 'GlobalID', 'tree_id', 'ParentGlobalID']
+    assert trees_df['ObjectID'].tolist() == [13502, 13509]
+
+
+def test_geojson_dates_give_the_same_unique_ids_as_csv_text(tmp_path):
+    parent = pd.DataFrame({
+        'ObjectID': [1], 'treatment_area': ['Demo'], 'treatment_unit': ['TU1'], 'treatment_type': ['burned'],
+        'plot_id': ['P04'], '_date': ['2021-10-26T12:00:00-07:00'],
+    })
+    _write_geojson(tmp_path / 'survey_0.geojson', parent, ([-120.5], [50.4]))
+
+    result = helper.get_unique_id(table_reader.read_table(str(tmp_path), 'survey_0'))
+
+    assert result['unique_id'].tolist() == ['Demo_TU1_burned_P04_2021']
+
+
+def test_geojson_features_that_are_not_points_are_an_error(tmp_path):
+    import geopandas as gpd
+    from shapely.geometry import LineString
+    lines = gpd.GeoDataFrame({'ObjectID': [1]}, geometry=[LineString([(0, 0), (1, 1)])], crs='EPSG:4326')
+    lines.to_file(tmp_path / 'survey_0.geojson', driver='GeoJSON')
+
+    with pytest.raises(ValueError, match='point geometry is needed'):
+        table_reader.read_table(str(tmp_path), 'survey_0')
+
+
+def test_a_geojson_table_in_two_files_is_an_error_naming_both(tmp_path):
+    _write_geojson(tmp_path / 'survey_0.geojson', pd.DataFrame({'ObjectID': [1]}), ([0.0], [0.0]))
+    _write_geojson(tmp_path / 'survey_0.GEOJSON', pd.DataFrame({'ObjectID': [2]}), ([0.0], [0.0]))
+    if len(os.listdir(tmp_path)) < 2:
+        pytest.skip('this file system ignores letter case in file names')
+
+    with pytest.raises(ValueError, match='more than one GeoJSON file'):
+        table_reader.read_table(str(tmp_path), 'survey_0')

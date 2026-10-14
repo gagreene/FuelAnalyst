@@ -128,7 +128,8 @@ def write_formats(source_dir, roots):
     Write the example tables in several formats, one folder per form under each format's root folder.
 
     The data are GUID-mapped copies of the example tables. ``roots`` maps a format to its output root:
-    'csv', 'parquet', 'feather' (one file per table), 'gdb' (one ``<guid>.gdb`` per form, layers without the table
+    'csv', 'parquet', 'feather', 'geojson' (one file per table; GeoJSON holds the parent table as points and the repeat
+    tables as features without geometry), 'gdb' (one ``<guid>.gdb`` per form, layers without the table
     number), 'gpkg' (one GeoPackage per form, same layers), and 'sqlite' (one plain database per form, with x and y
     columns and dates as ISO text).
     """
@@ -150,6 +151,16 @@ def write_formats(source_dir, roots):
                     typed.to_parquet(outs['parquet'] / f'{stem}.parquet', index=False)
                 if 'feather' in outs:
                     typed.to_feather(outs['feather'] / f'{stem}.feather')
+                if 'geojson' in outs:
+                    geometry_only = list(raw.columns[-2:]) == ['x', 'y']
+                    props = typed.drop(columns=['x', 'y']) if geometry_only else typed
+                    if int(stem.rsplit('_', 1)[1]) == 0:
+                        x, y = _parent_xy(raw, coordinates)
+                        geometry = gpd.points_from_xy(x, y)
+                    else:
+                        geometry = [None] * len(props)
+                    gpd.GeoDataFrame(props, geometry=geometry, crs='EPSG:4326').to_file(
+                        outs['geojson'] / f'{stem}.geojson', driver='GeoJSON')
                 if connection is not None:
                     iso = typed.copy()
                     for column in DATE_COLUMNS:
@@ -164,17 +175,21 @@ def write_formats(source_dir, roots):
                         continue
                     table = _gdb_table(raw).rename(columns={'objectid': fid})
                     if int(index) == 0:
-                        if 'x' in raw.columns:
-                            x, y = pd.to_numeric(raw['x']), pd.to_numeric(raw['y'])
-                        else:
-                            pairs = plot_key(raw).map(coordinates)
-                            x, y = pairs.map(lambda p: p[0]), pairs.map(lambda p: p[1])
+                        x, y = _parent_xy(raw, coordinates)
                         frame = gpd.GeoDataFrame(table, geometry=gpd.points_from_xy(x, y), crs='EPSG:4326')
                         frame.geometry.name = 'SHAPE'
                         pyogrio.write_dataframe(frame, str(target), layer=layer, driver=driver, geometry_type='Point',
                                                 layer_options={'FID': fid, 'GEOMETRY_NAME': 'SHAPE'})
                     else:
                         pyogrio.write_dataframe(table, str(target), layer=layer, driver=driver, layer_options={'FID': fid})
+
+
+def _parent_xy(raw, coordinates):
+    """x and y of a parent table: its own columns, or (for a form without them) the plot form's coordinates."""
+    if 'x' in raw.columns:
+        return pd.to_numeric(raw['x']), pd.to_numeric(raw['y'])
+    pairs = plot_key(raw).map(coordinates)
+    return pairs.map(lambda p: p[0]), pairs.map(lambda p: p[1])
 
 
 def _typed_table(raw):

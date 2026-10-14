@@ -69,7 +69,7 @@ External fire-behaviour and fire-effects calculations are separate downstream st
 
 ```mermaid
 flowchart LR
-    A[Survey123 tables<br/>CSV, Excel, GeoPackage, SQLite,<br/>Parquet, Feather, or geodatabase] --> B[FuelAnalyst core processing]
+    A[Survey123 tables<br/>CSV, Excel, GeoPackage, SQLite, GeoJSON,<br/>Parquet, Feather, or geodatabase] --> B[FuelAnalyst core processing]
     B --> T[Master tree df]
     B --> D[ConPyro df]
     B --> C[Master fuel df]
@@ -350,6 +350,7 @@ data that were cleaned in QGIS, ArcGIS Pro, Python, or R.
 | CSV | One `.csv` file per table, as in the layout above | the file name: `survey_0`, `tree_plot_2` |
 | Parquet | One `.parquet` file per table | the file name, like CSV |
 | Feather | One `.feather` (or `.arrow`) file per table | the file name, like CSV |
+| GeoJSON | One `.geojson` file per table: the parent table (`survey_0`) as point features, repeat tables as features without geometry | the file name, like CSV |
 | Excel | One workbook (`.xlsx` or `.xlsm`, any file name) | one sheet per table |
 | GeoPackage | One `.gpkg` file | one layer per table |
 | SQLite | One `.sqlite`, `.sqlite3`, or `.db` file with plain tables | one table per table |
@@ -364,7 +365,7 @@ Rules that apply to every format:
 - **One format per form is enough, and forms can differ.** A run can read, for example, the plot form from Excel and the trees form
   from a geodatabase.
 - **If one form folder holds several formats** (unusual, but handled), exactly one is used, chosen in this order: CSV, Parquet,
-  Feather, Excel, GeoPackage, SQLite, geodatabase. The run prints a note naming the formats it found and the one it used. A
+  Feather, GeoJSON, Excel, GeoPackage, SQLite, geodatabase. The run prints a note naming the formats it found and the one it used. A
   `.sqlite` or `.db` file that holds GeoPackage tables is read as a GeoPackage. Keep one file of a kind per form: a table found in two
   workbooks, two GeoPackages, two SQLite files, or two geodatabases is an error that names both files, and so is a table file that
   exists twice in the same family (for example `survey_0.feather` and `survey_0.arrow`). File extensions are matched ignoring case.
@@ -372,13 +373,15 @@ Rules that apply to every format:
 - **Only the container changes.** The tables must still use the Survey123 field names (`ObjectID`, `GlobalID`, `ParentGlobalID`,
   `_date`, `x`, `y`, and so on), whatever the format. Excel and Parquet or Feather files, and SQLite tables, need `x` and `y` columns
   where the CSV has them (the plot form).
+- **GeoJSON** coordinates are WGS84 degrees by definition. Keep the parent table as point features, give repeat tables features with
+  `null` geometry, and store `ObjectID` as a property (otherwise the feature's id is used); the other fields are properties.
 - **From a geodatabase or GeoPackage:** the object ID becomes `ObjectID` (an `ObjectID` field wins over the row ID, which QGIS and
   ArcGIS Pro renumber when you edit), `globalid` and `parentglobalid` become `GlobalID` and `ParentGlobalID` (lower case, without
   braces), and point geometry becomes `x` and `y` in WGS84 degrees unless the layer already has those fields. A layer in another
   coordinate system (for example a projected one such as BC Albers) is reprojected to EPSG:4326; a layer with no coordinate system
   is accepted only if its coordinates are valid longitudes and latitudes, and otherwise raises an error asking you to define one.
-- **Dates** in Excel, Parquet, Feather, GeoPackage, and geodatabase files are read as dates rather than text, and SQLite date text
-  (ISO such as `2026-09-21 19:00:00`, or the CSV formats) is parsed. Time zones are dropped (UTC clock time is kept; timestamps
+- **Dates** in Excel, Parquet, Feather, GeoPackage, and geodatabase files are read as dates rather than text, and SQLite and GeoJSON
+  date text (ISO such as `2026-09-21 19:00:00`, or the CSV formats) is parsed. Time zones are dropped (UTC clock time is kept; timestamps
   with different offsets, such as daylight-saving and standard time, are converted to UTC).
 - **Outputs and their file names are the same for every input format** (the result tables are always written as CSV), so existing
   workflows do not change.
@@ -388,7 +391,7 @@ Rules that apply to every format:
 
 To see each layout, run `python examples/generate_multiformat_example_datasets.py`. It writes the example dataset in every format
 to the git-ignored `examples/results/survey123_formats/`, one complete input folder per format (`csv/`, `excel/`, `gdb/`, `gpkg/`,
-`sqlite/`, `parquet/`, `feather/`) that you can pass as `in_dir`, plus an `all_formats/` bundle with every format in each form folder.
+`sqlite/`, `geojson/`, `parquet/`, `feather/`) that you can pass as `in_dir`, plus an `all_formats/` bundle with every format in each form folder.
 It reads the committed CSV examples in `examples/data/Survey123_Data` and never changes them. Choose formats with `--formats` (for
 example `--formats gpkg sqlite`), skip the bundle with `--no-bundle`, and pick the output folder with `--out`.
 
