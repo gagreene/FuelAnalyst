@@ -819,5 +819,18 @@ def test_a_geojson_table_in_two_files_is_an_error_naming_both(tmp_path):
     if len(os.listdir(tmp_path)) < 2:
         pytest.skip('this file system ignores letter case in file names')
 
-    with pytest.raises(ValueError, match='more than one GeoJSON file'):
+    with pytest.raises(ValueError, match='More than one GeoJSON file holds the table'):
         table_reader.read_table(str(tmp_path), 'survey_0')
+
+
+def test_two_files_for_one_table_are_an_error_on_any_file_system(tmp_path, monkeypatch):
+    # The test above needs a case-sensitive file system, so it is skipped on Windows. This one reports the same error
+    # wherever the tests run, by presenting two files for the table.
+    first, second = str(tmp_path / 'survey_0.geojson'), str(tmp_path / 'survey_0.GEOJSON')
+    source = table_reader.FormSource(kind='geojson_folder', path=str(tmp_path), tables=('survey_0',))
+    monkeypatch.setattr(table_reader, '_table_files', lambda src, stem: [second, first])
+
+    with pytest.raises(ValueError, match='More than one GeoJSON file holds the table') as error:
+        table_reader.read_table(source, 'survey_0')
+
+    assert 'survey_0.GEOJSON, survey_0.geojson' in str(error.value) or 'survey_0.geojson, survey_0.GEOJSON' in str(error.value)
