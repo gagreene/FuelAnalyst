@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 import openpyxl
@@ -70,3 +71,34 @@ def test_excel_inputs_give_the_same_pipeline_outputs_as_csv_inputs(tmp_path):
         expected = _read_output(outputs['csv'] / name)
         actual = _read_output(outputs['excel'] / name)
         pd.testing.assert_frame_equal(actual, expected, obj=name)
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_a_mix_of_excel_and_csv_forms_gives_the_same_outputs_as_all_csv(tmp_path):
+    project_root = Path(__file__).resolve().parents[2]
+    csv_dir = project_root / 'examples' / 'data' / 'Survey123_Data'
+    mixed_dir = tmp_path / 'mixed_in'
+    excel_forms = {'1_Plot_Attributes', '3_Trees', '5_Woody_Debris'}
+    for form_dir in sorted(p for p in csv_dir.iterdir() if p.is_dir()):
+        if form_dir.name in excel_forms:
+            _csv_form_to_workbook(form_dir, mixed_dir / form_dir.name)
+        else:
+            shutil.copytree(form_dir, mixed_dir / form_dir.name)
+
+    outputs = {}
+    for label, source in (('csv', csv_dir), ('mixed', mixed_dir)):
+        out_dir = tmp_path / f'out_{label}'
+        fuel_analyst(
+            in_dir=str(source),
+            out_dir=str(out_dir),
+            surface_fire_intensity_model='Byram',
+            gen_conpyro_df=True,
+            gen_fofem_gui_app_tree_df=True,
+            gen_fofem_consume_df=True,
+        )
+        outputs[label] = out_dir
+
+    for name in COMPARED_OUTPUTS:
+        pd.testing.assert_frame_equal(_read_output(outputs['mixed'] / name), _read_output(outputs['csv'] / name), obj=name)
+

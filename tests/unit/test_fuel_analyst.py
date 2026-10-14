@@ -151,6 +151,47 @@ def test_missing_form_folder_logs_per_plot_warning(tmp_path, caplog):
     )
 
 
+def _write_woody_plot(in_dir):
+    plot_dir = in_dir / '1_Plot_Attributes'
+    plot_dir.mkdir(parents=True)
+    pd.DataFrame({
+        'GlobalID': ['g1'], 'ParentGlobalID': [None],
+        'treatment_area': ['A'], 'treatment_unit': ['U'], 'treatment_type': ['Pre'],
+        'plot_id': [1], '_date': ['01/01/2025 10:00'], 'form_select': ['woody'],
+        'plot_slope_units': ['percent'], 'plot_slope': [10.0],
+    }).to_csv(plot_dir / 'survey_0.csv', index=False)
+
+
+def test_a_broken_workbook_in_a_form_no_plot_selected_is_never_opened(tmp_path, caplog):
+    _write_woody_plot(tmp_path / 'in')
+    trees_dir = tmp_path / 'in' / '3_Trees'
+    trees_dir.mkdir()
+    (trees_dir / 'broken_EXCEL.xlsx').write_bytes(b'this is not a workbook')
+
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.components.woody_debris'):
+        fuel_analyst(
+            in_dir=str(tmp_path / 'in'),
+            out_dir=str(tmp_path / 'out'),
+            surface_fire_intensity_model='Byram',
+        )
+
+    assert any('no Woody Debris data' in record.message for record in caplog.records)
+
+
+def test_a_selected_form_with_only_a_zipped_download_says_to_unzip_it(tmp_path):
+    _write_woody_plot(tmp_path / 'in')
+    woody_dir = tmp_path / 'in' / '5_Woody_Debris'
+    woody_dir.mkdir()
+    (woody_dir / 'S123_abc_FGDB.zip').write_bytes(b'PK')
+
+    with pytest.raises(ValueError, match='Unzip it first'):
+        fuel_analyst(
+            in_dir=str(tmp_path / 'in'),
+            out_dir=str(tmp_path / 'out'),
+            surface_fire_intensity_model='Byram',
+        )
+
+
 def _patch_fofem_consumption_generation(monkeypatch):
     """
     Stub gen_fofem_consumption_df() so filename-selection tests don't need real FOFEM inputs.
