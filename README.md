@@ -69,7 +69,7 @@ External fire-behaviour and fire-effects calculations are separate downstream st
 
 ```mermaid
 flowchart LR
-    A[Survey123 CSV exports] --> B[FuelAnalyst core processing]
+    A[Survey123 exports<br/>CSV, Excel, or file geodatabase] --> B[FuelAnalyst core processing]
     B --> T[Master tree df]
     B --> D[ConPyro df]
     B --> C[Master fuel df]
@@ -335,6 +335,27 @@ Survey123_Data/
     |-- t1_woody_2.csv
     `-- t2_woody_3.csv
 ```
+
+#### Supported file formats
+
+Each form folder can hold its tables in any of the three formats that ArcGIS Survey123 and ArcGIS Online offer for download.
+FuelAnalyst detects the format of each form, so no setting is needed, and different forms can use different formats.
+
+| Format | What the form folder holds |
+|--------|----------------------------|
+| CSV | One CSV file per table, as in the layout above |
+| Excel | One workbook (`.xlsx` or `.xlsm`, any file name) with one sheet per table, named like the CSV file without its extension (`survey_0`, `tree_plot_2`) |
+| File geodatabase | One unzipped `.gdb` folder (any name, in the form folder or one folder below it) with one layer per table, named like the CSV file without its table number (`survey`, `tree_plot`, `t1_woody`) |
+
+- Downloads must be unzipped. A form folder that holds only a zipped download raises an error that says to unzip it.
+- If a folder holds more than one format, CSV is used first, then Excel, then the geodatabase. Two workbooks (or two geodatabases) that
+  hold the same table are an error: keep one per form.
+- Only the container changes. The tables must still use the Survey123 field names, whatever the format.
+- From a geodatabase, the object ID becomes `ObjectID`, `globalid` and `parentglobalid` become `GlobalID` and `ParentGlobalID`
+  (lower case, without braces), and the point geometry becomes `x` and `y` unless the layer already has those fields.
+- Dates in Excel and geodatabase files are read as dates rather than text. Outputs and their file names are the same for every input
+  format (the result tables are always written as CSV).
+- Reading these formats uses the `openpyxl` and `pyogrio` packages, which install with FuelAnalyst.
 
 The included [example dataset](examples/data/Survey123_Data) is the best schema reference for a complete run. The spreadsheet in [docs/reference](docs/reference) describes result fields.
 

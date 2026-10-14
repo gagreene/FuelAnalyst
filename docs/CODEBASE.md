@@ -51,7 +51,8 @@ FuelAnalyst/
 |   |   |-- fofem_gui_emissions.py
 |   |   |-- fofem_units.py
 |   |   |-- fwis_moisture_content.py
-|   |   `-- helper.py
+|   |   |-- helper.py
+|   |   `-- table_reader.py        Survey123 table reader (CSV, Excel, file geodatabase)
 |   `-- supporting_data/           Packaged CSV and ecodivision data
 |-- models/photoload/              Reproducible PhotoLoad model-development workflow
 |-- examples/
@@ -71,7 +72,8 @@ The package supports Python 3.11 through 3.14, tested on Windows, Linux, and
 macOS. ConPyro (`src/fuel_analyst/_vendor/conpyro`) and BCWFT2018 (`_vendor/bcwft2018.py`) are
 vendored: generated copies of their upstream repositories, refreshed with `scripts/update_vendors.sh`
 (it shallow-clones each upstream default branch; `CONPYRO_SRC`/`BC_SRC` select a local clone instead), and the bounded
-`flame-components>=0.1.1,<0.2` distribution from PyPI is a core dependency. The `fofem` extra installs the bounded `pyfofem-fire-effects>=0.1.2,<0.2`
+`flame-components>=0.1.1,<0.2` distribution from PyPI is a core dependency, as are `openpyxl` and `pyogrio`, which read Survey123
+Excel and file geodatabase downloads (`pyogrio` is called directly because geopandas before 1.0 defaults to fiona). The `fofem` extra installs the bounded `pyfofem-fire-effects>=0.1.2,<0.2`
 distribution from PyPI (imports as `pyfofem`, matching the prior GitHub checkout's
 import name) and needs no Git checkout for the Python-backed `model_select='pyfofem'`
 emissions path (mortality automation is pyfofem-only; the official FOFEM app is never
@@ -168,9 +170,32 @@ the nested `woody_debris_classes` dictionary is copied before ConPyro and
 FOFEM classes are added. Those merges leave caller-supplied
 `stand_summary_params` and `woody_debris_params` unchanged across runs.
 
+### `components/table_reader.py`
+
+Reads the tables of one Survey123 form whatever file format holds them. `resolve_form_source(in_dir, form_dir_name)` (or
+`ensure_form_source(path)`) inspects a form folder and returns a `FormSource` (`kind`, `path`, `tables`, `files`); `read_table(source, stem)`
+returns a DataFrame and `has_table(source, stem)` and `form_exists(in_dir, form_dir_name)` replace the former `os.path.exists` checks.
+The source kinds are registered in `_READERS` (a table-exists check and a reader each), so a new format is one entry:
+
+| Kind | Folder content | Table names |
+|------|----------------|-------------|
+| `csv_folder` | CSV files | `survey_0.csv` |
+| `workbook` | `.xlsx` or `.xlsm` workbooks (lock files `~$` ignored) | sheet `survey_0` |
+| `gdb` | `*.gdb` folders in the form folder or one level below | layer `survey` (the table name without its index) |
+
+Detection order is CSV, then Excel, then geodatabase. A zip with no usable tables raises an error that says to unzip it, a table in two
+workbooks or two geodatabases raises an error naming both, and an unreadable file raises a clear `ValueError`. Normalization makes a
+workbook or geodatabase table read like its CSV: the non-date columns are written to text and read back with `pd.read_csv`, so dtypes
+and `NA` handling are the same (including 32-bit geodatabase floats, which return as their short decimal form); dates stay
+datetimes (time zone dropped, UTC wall-clock value) and `helper.get_unique_id()` accepts them. A geodatabase table also gets
+`ObjectID` from the layer FID, cleaned `GlobalID` and `ParentGlobalID`, and `x` and `y` from point geometry (coordinates within 1e-9
+of zero snap to 0.0) unless the layer already has those fields. Only Survey123 form tables use this module; reference tables, weather
+files, and FOFEM tables are still read with `helper.get_df()`. `fuel_analyst()` resolves each form once, lazily, and passes the
+`FormSource` to the component processors, which still accept a plain folder path.
+
 ### `components/trees.py`
 
-Processes `survey_0.csv`, `sapling_1.csv`, and `tree_plot_2.csv`. It calculates
+Processes the `survey_0`, `sapling_1`, and `tree_plot_2` tables (read through `table_reader`). It calculates
 density expansion factors, CNBE biomass, modeled heights, crown fuels, fuel
 strata gap, tree fire attributes, basal-area-weighted stand summaries, and
 species composition. It returns the processed plot table, its output-column

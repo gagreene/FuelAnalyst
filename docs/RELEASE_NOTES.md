@@ -1,5 +1,17 @@
 # Release notes
 
+## 0.1.2
+
+- `fuel_analyst()` now reads the Excel and file geodatabase downloads of ArcGIS Survey123 and ArcGIS Online as well as CSV. Each form folder can hold CSV files, one Excel workbook (`.xlsx` or `.xlsm`) with one sheet per table, or an unzipped `.gdb` folder with one layer per table; the format is detected for each form, and forms can differ. See "Supported file formats" in the README.
+- Detection order is CSV, then Excel, then geodatabase, so existing CSV inputs behave exactly as before: on the example dataset every output file is byte-identical to 0.1.1.
+- Downloads must be unzipped. A form folder that holds only a zip raises an error that says to unzip it. Two workbooks (or two geodatabases) that hold the same table raise an error naming both files.
+- Tables from Excel and geodatabase files are converted to read like their CSV: the same dtypes and missing-value handling as `pd.read_csv`; dates stay datetimes; a geodatabase table gets `ObjectID` from the layer's object ID, lower-case `GlobalID` and `ParentGlobalID` without braces, and `x` and `y` from point geometry unless the layer already has those fields (coordinate noise below 1e-9 degrees snaps to 0). Geodatabase coordinates can differ from CSV values by about 1e-10 degrees, and geodatabase 32-bit numbers can carry a few more digits than the CSV text.
+- With Excel or geodatabase inputs, the processed copies of the input tables that `fuel_analyst()` writes beside the results still use the CSV layout, with dates written as ISO text rather than the original text format. The result tables are the same as for CSV inputs.
+- New core dependencies: `openpyxl` (3.1.5 or newer) and `pyogrio` (0.7.2 or newer). They install with the package.
+- New module `fuel_analyst.components.table_reader` (`FormSource`, `resolve_form_source`, `ensure_form_source`, `form_exists`, `has_table`, `read_table`). The component processors (`process_plot_attributes`, `process_plants_regen`, `process_trees`, `process_canopy_cover`, `process_woody_debris`) accept a `FormSource` as well as a folder path. No existing signature, key, or file name changed.
+
+No action is needed for existing CSV workflows. To use an Excel or geodatabase download, unzip it into the form folder (`1_Plot_Attributes` and so on) beside, or instead of, the CSV files.
+
 ## 0.1.1
 
 - The FOFEM consumption file now adds the sound and rotten classes of the 1-hour, 10-hour, and 100-hour woody fuels (`wfl1Hour`, `wfl10Hour`, `wfl100Hour`) with a missing class counted as 0. Before, a plot with only one of the two classes got 0 for the whole class, so `wfl1Hour` was always 0 (no rotten pieces exist in the finest class) and sound mass was lost wherever a plot had no rotten pieces in the 10-hour or 100-hour class. These loads feed the FOFEM consumption and emissions calculations.
