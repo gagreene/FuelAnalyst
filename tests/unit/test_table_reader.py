@@ -1,3 +1,4 @@
+import contextlib
 import datetime
 import os
 import shutil
@@ -452,5 +453,198 @@ def test_an_unreadable_geodatabase_gives_a_clear_error(tmp_path):
     broken.mkdir()
     (broken / 'a00000001.gdbtable').write_bytes(b'not a geodatabase table')
 
-    with pytest.raises(ValueError, match='Cannot open file geodatabase'):
+    with pytest.raises(ValueError, match='Cannot open broken.gdb'):
         table_reader.ensure_form_source(str(tmp_path))
+
+
+# ---------------------------------------------------------------- GeoPackage, SQLite, Parquet, and Feather
+
+def _write_gpkg(path, layers):
+    """Write a GeoPackage: {layer: (DataFrame with an 'fid' column, xy or None)}; xy is (x list, y list) for a Point layer."""
+    import geopandas as gpd
+    import pyogrio
+    for name, (df, xy) in layers.items():
+        df = df.astype({c: 'int32' for c in df.columns if str(df[c].dtype) == 'int64'})
+        if xy is None:
+            pyogrio.write_dataframe(df, str(path), layer=name, driver='GPKG', layer_options={'FID': 'fid'})
+            continue
+        gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(*xy), crs='EPSG:4326')
+        pyogrio.write_dataframe(gdf, str(path), layer=name, driver='GPKG', geometry_type='Point', layer_options={'FID': 'fid'})
+    return path
+
+
+def _write_sqlite(path, tables):
+    """Write plain SQLite tables: {table: DataFrame}; datetimes are stored as ISO text, as SQLite does."""
+    import sqlite3
+    with contextlib.closing(sqlite3.connect(path)) as connection:
+        for name, df in tables.items():
+            df = df.copy()
+            for column in df.columns:
+                if pd.api.types.is_datetime64_any_dtype(df[column]):
+                    df[column] = df[column].dt.strftime('%Y-%m-%d %H:%M:%S')
+            df.to_sql(name, connection, index=False)
+    return path
+
+
+GPKG_SURVEY = GDB_SURVEY.rename(columns={'objectid': 'fid'})
+GPKG_TREES = GDB_TREES.rename(columns={'objectid': 'fid'})
+
+
+def test_geopackage_layers_read_like_the_csv_tables(tmp_path):
+    _write_gpkg(tmp_path / 'trees_form.gpkg', {
+        'survey': (GPKG_SURVEY, ([-122.7, 0.0, -121.0], [50.3, 0.0, 49.9])), 'tree_plot': (GPKG_TREES, None),
+    })
+
+    source = table_reader.ensure_form_source(str(tmp_path))
+    survey = table_reader.read_table(source, 'survey_0')
+    trees = table_reader.read_table(source, 'tree_plot_2')
+
+    assert source.kind == 'gpkg'
+    assert source.tables == ('survey', 'tree_plot')
+    assert list(survey.columns) == ['ObjectID', 'GlobalID', '_date', 'plot_id', 'tree_dbh', 'count', 'x', 'y']
+    assert survey['ObjectID'].tolist() == [717, 725, 760]
+    assert survey['GlobalID'].iloc[0] == '4db55fc8-c839-4c25-93b6-b73180c39247'
+    assert survey['tree_dbh'].iloc[0] == 33.1
+    assert survey['_date'].dt.tz is None
+    assert list(trees.columns) == ['ObjectID', 'GlobalID', 'tree_id', 'ParentGlobalID']
+    assert trees['ObjectID'].tolist() == [13502, 13509]
+
+
+def test_an_objectid_field_wins_over_the_row_id(tmp_path):
+    # Editing in QGIS or ArcGIS Pro renumbers the row IDs (fid) but keeps an ObjectID field.
+    edited = GPKG_TREES.assign(ObjectID=[500, 501])
+    _write_gpkg(tmp_path / 'form.gpkg', {'tree_plot': (edited, None)})
+
+    result = table_reader.read_table(str(tmp_path), 'tree_plot_2')
+
+    assert list(result.columns)[0] == 'ObjectID'
+    assert result['ObjectID'].tolist() == [500, 501]
+    assert list(result.columns).count('ObjectID') == 1
+
+
+def test_containers_match_a_table_with_or_without_its_number_ignoring_case(tmp_path):
+    _write_workbook(tmp_path / 'form_EXCEL.xlsx', {'Survey': SURVEY, 'tree_plot_2': SURVEY.iloc[:1]})
+    source = table_reader.ensure_form_source(str(tmp_path))
+
+    assert table_reader.has_table(source, 'survey_0')
+    assert table_reader.has_table(source, 'tree_plot_2')
+    assert len(table_reader.read_table(source, 'survey_0')) == 3
+
+
+def test_plain_sqlite_tables_read_like_the_csv_tables(tmp_path):
+    plain = SURVEY.assign(x=[-122.7, 0.0, -121.0], y=[50.3, 0.0, 49.9])
+    _write_sqlite(tmp_path / 'form.sqlite', {'survey_0': plain, 'tree_plot': GDB_TREES.drop(columns='objectid')})
+
+    source = table_reader.ensure_form_source(str(tmp_path))
+    survey = table_reader.read_table(source, 'survey_0')
+
+    assert source.kind == 'sqlite'
+    assert source.tables == ('survey_0', 'tree_plot')
+    assert table_reader.has_table(source, 'tree_plot_2')
+    # SQLite keeps dates as text, so they are parsed back into datetimes, and the other columns read like a CSV.
+    assert survey['_date'].tolist() == SURVEY['_date'].tolist()
+    assert survey['code'].dtype == 'int64'
+    assert survey['height'].isna().tolist() == [False, True, False]
+    assert survey['x'].tolist() == [-122.7, 0.0, -121.0]
+    assert 'sqlite_sequence' not in source.tables
+
+
+def test_sqlite_dates_give_the_same_unique_ids_as_csv_text(tmp_path):
+    parent = pd.DataFrame({
+        'treatment_area': ['Demo'], 'treatment_unit': ['TU1'], 'treatment_type': ['burned'], 'plot_id': ['P04'],
+        '_date': pd.to_datetime(['2021-10-26 12:00:00']),
+    })
+    _write_sqlite(tmp_path / 'form.db', {'survey_0': parent})
+
+    result = helper.get_unique_id(table_reader.read_table(str(tmp_path), 'survey_0'))
+
+    assert result['unique_id'].tolist() == ['Demo_TU1_burned_P04_2021']
+
+
+def test_a_sqlite_file_holding_geopackage_tables_is_read_as_a_geopackage(tmp_path):
+    _write_gpkg(tmp_path / 'form.gpkg', {'tree_plot': (GPKG_TREES, None)})
+    os.rename(tmp_path / 'form.gpkg', tmp_path / 'form.sqlite')
+
+    source = table_reader.ensure_form_source(str(tmp_path))
+
+    assert source.kind == 'gpkg'
+    assert table_reader.read_table(source, 'tree_plot_2')['ObjectID'].tolist() == [13502, 13509]
+
+
+def test_a_table_in_two_geopackages_or_two_sqlite_files_is_an_error_naming_both(tmp_path):
+    for name in ('first.gpkg', 'second.gpkg'):
+        _write_gpkg(tmp_path / name, {'tree_plot': (GPKG_TREES, None)})
+    with pytest.raises(ValueError, match='first.gpkg, second.gpkg'):
+        table_reader.read_table(str(tmp_path), 'tree_plot_2')
+
+    other = tmp_path / 'sql'
+    other.mkdir()
+    for name in ('one.sqlite', 'two.sqlite'):
+        _write_sqlite(other / name, {'survey_0': SURVEY})
+    with pytest.raises(ValueError, match='one.sqlite, two.sqlite'):
+        table_reader.read_table(str(other), 'survey_0')
+
+
+def test_an_unreadable_sqlite_or_geopackage_file_gives_a_clear_error(tmp_path):
+    (tmp_path / 'broken.sqlite').write_bytes(b'this is not a database')
+
+    with pytest.raises(ValueError, match='Cannot open SQLite file'):
+        table_reader.ensure_form_source(str(tmp_path))
+
+
+@pytest.mark.parametrize('kind, extension', [('parquet_folder', '.parquet'), ('feather_folder', '.feather'),
+                                             ('feather_folder', '.arrow')])
+def test_parquet_and_feather_tables_read_like_the_equivalent_csv(tmp_path, kind, extension):
+    pytest.importorskip('pyarrow')
+    typed = SURVEY.assign(_date=SURVEY['_date'].dt.tz_localize('UTC'))
+    for stem, df in (('survey_0', typed), ('tree_plot_2', typed.iloc[:2])):
+        path = tmp_path / f'{stem}{extension}'
+        df.to_parquet(path, index=False) if extension == '.parquet' else df.reset_index(drop=True).to_feather(path)
+    csv_folder = tmp_path / 'csv'
+    _write_form(csv_folder, {'survey_0': SURVEY.assign(_date=SURVEY['_date'].dt.strftime('%m/%d/%Y %H:%M'))})
+
+    source = table_reader.ensure_form_source(str(tmp_path))
+    result = table_reader.read_table(source, 'survey_0')
+    from_csv = table_reader.read_table(str(csv_folder), 'survey_0')
+
+    assert source.kind == kind
+    assert source.tables == ('survey_0', 'tree_plot_2')
+    assert len(table_reader.read_table(source, 'tree_plot_2')) == 2
+    assert list(result.columns) == list(from_csv.columns)
+    # Text cells that hold only numbers become numbers, a time-zone-aware date becomes a naive datetime, as for a CSV.
+    assert str(result['code'].dtype) == str(from_csv['code'].dtype) == 'int64'
+    assert result['_date'].tolist() == SURVEY['_date'].tolist()
+    assert result['_date'].dt.tz is None
+    for column in from_csv.columns.drop('_date'):
+        pd.testing.assert_series_equal(result[column], from_csv[column], check_names=False)
+
+
+def test_parquet_and_feather_say_how_to_install_pyarrow_when_it_is_missing(tmp_path, monkeypatch):
+    pd.DataFrame({'a': [1]}).to_csv(tmp_path / 'seed.csv', index=False)
+    (tmp_path / 'survey_0.parquet').write_bytes(b'PAR1')
+    os.remove(tmp_path / 'seed.csv')
+    monkeypatch.setitem(__import__('sys').modules, 'pyarrow', None)
+
+    with pytest.raises(ImportError, match='pyarrow'):
+        table_reader.read_table(str(tmp_path), 'survey_0')
+
+
+def test_every_format_is_chosen_in_the_documented_order(tmp_path):
+    pytest.importorskip('pyarrow')
+    folder = tmp_path / 'form'
+    folder.mkdir()
+    _write_form(folder, {'survey_0': pd.DataFrame({'a': [1]})})
+    pd.DataFrame({'a': [1]}).to_parquet(folder / 'survey_0.parquet', index=False)
+    pd.DataFrame({'a': [1]}).to_feather(folder / 'survey_0.feather')
+    _write_workbook(folder / 'form_EXCEL.xlsx', {'survey_0': pd.DataFrame({'a': [1]})})
+    _write_gpkg(folder / 'form.gpkg', {'survey': (pd.DataFrame({'fid': [1], 'a': [1]}), None)})
+    _write_sqlite(folder / 'form.sqlite', {'survey_0': pd.DataFrame({'a': [1]})})
+    _write_gdb(folder / 'form.gdb', {'survey': (pd.DataFrame({'objectid': [1], 'a': [1]}), None)})
+
+    order = []
+    for remove in ('survey_0.csv', 'survey_0.parquet', 'survey_0.feather', 'form_EXCEL.xlsx', 'form.gpkg', 'form.sqlite', None):
+        order.append(table_reader.ensure_form_source(str(folder)).kind)
+        if remove:
+            os.remove(folder / remove)
+
+    assert order == ['csv_folder', 'parquet_folder', 'feather_folder', 'workbook', 'gpkg', 'sqlite', 'gdb']

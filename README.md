@@ -69,7 +69,7 @@ External fire-behaviour and fire-effects calculations are separate downstream st
 
 ```mermaid
 flowchart LR
-    A[Survey123 exports<br/>CSV, Excel, or file geodatabase] --> B[FuelAnalyst core processing]
+    A[Survey123 tables<br/>CSV, Excel, GeoPackage, SQLite,<br/>Parquet, Feather, or geodatabase] --> B[FuelAnalyst core processing]
     B --> T[Master tree df]
     B --> D[ConPyro df]
     B --> C[Master fuel df]
@@ -193,6 +193,9 @@ python -m pip install -e .
 ```shell
 python -m pip install -e ".[test,photoload,fofem]"
 ```
+
+The `test` extra includes `pyarrow`, so the Parquet and Feather input tests run. Install the `parquet` extra on its own
+(`python -m pip install -e ".[parquet]"`) to read Parquet or Feather tables without the test tools.
 
 The full suite collects PhotoLoad tests, so its image-analysis dependencies
 must be installed even when the change does not modify PhotoLoad.
@@ -338,24 +341,52 @@ Survey123_Data/
 
 #### Supported file formats
 
-Each form folder can hold its tables in any of the three formats that ArcGIS Survey123 and ArcGIS Online offer for download.
-FuelAnalyst detects the format of each form, so no setting is needed, and different forms can use different formats.
+Each form folder can hold its tables in any of the formats below. FuelAnalyst detects the format of each form, so no setting is
+needed. The first three are the downloads ArcGIS Survey123 and ArcGIS Online offer (CSV, Excel, and file geodatabase); the others suit
+data that were cleaned in QGIS, ArcGIS Pro, Python, or R.
 
-| Format | What the form folder holds |
-|--------|----------------------------|
-| CSV | One CSV file per table, as in the layout above |
-| Excel | One workbook (`.xlsx` or `.xlsm`, any file name) with one sheet per table, named like the CSV file without its extension (`survey_0`, `tree_plot_2`) |
-| File geodatabase | One unzipped `.gdb` folder (any name, in the form folder or one folder below it) with one layer per table, named like the CSV file without its table number (`survey`, `tree_plot`, `t1_woody`) |
+| Format | What the form folder holds | Table names |
+|--------|----------------------------|-------------|
+| CSV | One `.csv` file per table, as in the layout above | the file name: `survey_0`, `tree_plot_2` |
+| Parquet | One `.parquet` file per table | the file name, like CSV |
+| Feather | One `.feather` (or `.arrow`) file per table | the file name, like CSV |
+| Excel | One workbook (`.xlsx` or `.xlsm`, any file name) | one sheet per table |
+| GeoPackage | One `.gpkg` file | one layer per table |
+| SQLite | One `.sqlite`, `.sqlite3`, or `.db` file with plain tables | one table per table |
+| File geodatabase | One unzipped `.gdb` folder (in the form folder or one folder below it) | one layer per table |
 
-- Downloads must be unzipped. A form folder that holds only a zipped download raises an error that says to unzip it.
-- If a folder holds more than one format, CSV is used first, then Excel, then the geodatabase. Two workbooks (or two geodatabases) that
-  hold the same table are an error: keep one per form.
-- Only the container changes. The tables must still use the Survey123 field names, whatever the format.
-- From a geodatabase, the object ID becomes `ObjectID`, `globalid` and `parentglobalid` become `GlobalID` and `ParentGlobalID`
-  (lower case, without braces), and the point geometry becomes `x` and `y` unless the layer already has those fields.
-- Dates in Excel and geodatabase files are read as dates rather than text. Outputs and their file names are the same for every input
-  format (the result tables are always written as CSV).
-- Reading these formats uses the `openpyxl` and `pyogrio` packages, which install with FuelAnalyst.
+How tables are matched in the containers (Excel, GeoPackage, SQLite, geodatabase): by the full name first (`survey_0`), then by the
+name without the table number (`survey`, as ArcGIS geodatabases name their layers), ignoring case. So a geodatabase layer `tree_plot`
+and an Excel sheet `tree_plot_2` both hold the table `tree_plot_2`.
+
+Rules that apply to every format:
+
+- **One format per form is enough, and forms can differ.** A run can read, for example, the plot form from Excel and the trees form
+  from a geodatabase.
+- **If one form folder holds several formats** (unusual, but handled), exactly one is used, chosen in this order: CSV, Parquet,
+  Feather, Excel, GeoPackage, SQLite, geodatabase. The run prints a note naming the formats it found and the one it used. A
+  `.sqlite` or `.db` file that holds GeoPackage tables is read as a GeoPackage. Keep one file of a kind per form: a table found in two
+  workbooks, two GeoPackages, two SQLite files, or two geodatabases is an error that names both files.
+- **Downloads must be unzipped.** A form folder that holds only a zipped download raises an error that says to unzip it.
+- **Only the container changes.** The tables must still use the Survey123 field names (`ObjectID`, `GlobalID`, `ParentGlobalID`,
+  `_date`, `x`, `y`, and so on), whatever the format. Excel and Parquet or Feather files, and SQLite tables, need `x` and `y` columns
+  where the CSV has them (the plot form).
+- **From a geodatabase or GeoPackage:** the object ID becomes `ObjectID` (an `ObjectID` field wins over the row ID, which QGIS and
+  ArcGIS Pro renumber when you edit), `globalid` and `parentglobalid` become `GlobalID` and `ParentGlobalID` (lower case, without
+  braces), and point geometry becomes `x` and `y` unless the layer already has those fields.
+- **Dates** in Excel, Parquet, Feather, GeoPackage, and geodatabase files are read as dates rather than text, and SQLite date text
+  (ISO such as `2026-09-21 19:00:00`, or the CSV formats) is parsed. Time zones are dropped (UTC clock time is kept).
+- **Outputs and their file names are the same for every input format** (the result tables are always written as CSV), so existing
+  workflows do not change.
+- **Packages:** `openpyxl` (Excel) and `pyogrio` (GeoPackage and geodatabase) install with FuelAnalyst; SQLite uses Python's built-in
+  `sqlite3`. Parquet and Feather need `pyarrow`, an optional extra: `python -m pip install "fuel-analyst[parquet]"` (or
+  `pip install pyarrow`). Without it, reading a Parquet or Feather table says how to install it.
+
+To see each layout, run `python examples/generate_multiformat_example_datasets.py`. It writes the example dataset in every format
+to the git-ignored `examples/results/survey123_formats/`, one complete input folder per format (`csv/`, `excel/`, `gdb/`, `gpkg/`,
+`sqlite/`, `parquet/`, `feather/`) that you can pass as `in_dir`, plus an `all_formats/` bundle with every format in each form folder.
+It reads the committed CSV examples in `examples/data/Survey123_Data` and never changes them. Choose formats with `--formats` (for
+example `--formats gpkg sqlite`), skip the bundle with `--no-bundle`, and pick the output folder with `--out`.
 
 The included [example dataset](examples/data/Survey123_Data) is the best schema reference for a complete run. The spreadsheet in [docs/reference](docs/reference) describes result fields.
 

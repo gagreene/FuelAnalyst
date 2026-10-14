@@ -47,6 +47,8 @@ dependencies = [
 [project.optional-dependencies]
 test = [
     "pytest>=7.0",
+    # Lets the Parquet and Feather input tests run (they are skipped when pyarrow is absent).
+    "pyarrow>=14.0",
 ]
 photoload = [
     "matplotlib>=3.6",
@@ -57,8 +59,12 @@ photoload = [
 fofem = [
     "pyfofem-fire-effects>=0.1.2,<0.2",
 ]
+# Reads Survey123 tables saved as Parquet or Feather files.
+parquet = [
+    "pyarrow>=14.0",
+]
 all = [
-    "fuel-analyst[fofem,photoload]",
+    "fuel-analyst[fofem,photoload,parquet]",
 ]
 
 [dependency-groups]

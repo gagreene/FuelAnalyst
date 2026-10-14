@@ -7,18 +7,23 @@ A form's data is resolved once into a :class:`FormSource` (``resolve_form_source
 the Survey123 form tables go through this module. Reference tables, weather files, and FOFEM outputs
 keep using ``helper.get_df()``, which must not receive Survey123 normalization or schema checks.
 
-The source kinds are registered in ``_READERS``, so supporting another file format means adding one
-reader and one existence check. Currently supported:
+Each form lives in its own folder (``3_Trees``). Two kinds of format are supported:
 
-* ``'csv_folder'``: a folder of CSV files, one per table (``survey_0.csv``).
-* ``'workbook'``: one or more Excel workbooks (``.xlsx``, ``.xlsm``) in the form folder, with one
-  sheet per table, named like the CSV file (``survey_0``). This is the layout of an ArcGIS Survey123
-  Excel download.
-* ``'gdb'``: one or more file geodatabases (``<name>.gdb`` folders, in the form folder or one folder
-  below it, for example after unzipping an ArcGIS download). Layers are named like the CSV tables
-  without the table index (``survey``, ``tree_plot``, ``t1_woody``). Zipped downloads must be unzipped.
+* One file per table, named like the CSV file (``survey_0``): ``'csv_folder'`` (``.csv``),
+  ``'parquet_folder'`` (``.parquet``), and ``'feather_folder'`` (``.feather`` or ``.arrow``).
+* One container per form, holding every table: ``'workbook'`` (Excel ``.xlsx`` or ``.xlsm``, one sheet per
+  table, the layout of an ArcGIS Survey123 Excel download), ``'gpkg'`` (a GeoPackage, one layer per table),
+  ``'sqlite'`` (a plain SQLite database, one table per table), and ``'gdb'`` (an unzipped ArcGIS file
+  geodatabase, a ``*.gdb`` folder in the form folder or one folder below it, one layer per table).
 
-When a form folder holds several formats, CSV is used first, then Excel, then geodatabase.
+A container matches a table by its full name (``survey_0``) first, then by the name without the table number
+(``survey``, as ArcGIS geodatabases name their layers), ignoring case. Zipped downloads must be unzipped.
+
+When a form folder holds several formats, one is chosen in this order: CSV, Parquet, Feather, Excel,
+GeoPackage, SQLite, geodatabase. A SQLite file that holds GeoPackage tables is read as a GeoPackage.
+
+The source kinds are registered in ``_READERS``, so supporting another format means adding one reader and
+one existence check.
 """
 __author__ = ['Gregory A. Greene']
 
@@ -26,8 +31,10 @@ import contextlib
 import io
 import os
 import re
+import sqlite3
 import warnings
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional, Union
 
 import numpy as np
@@ -41,11 +48,12 @@ class FormSource:
     """
     Where one Survey123 form's tables live.
 
-    :param kind: Source kind: 'csv_folder', 'workbook', or 'gdb'.
+    :param kind: Source kind: 'csv_folder', 'parquet_folder', 'feather_folder', 'workbook', 'gpkg', 'sqlite', or 'gdb'.
     :param path: Path to the form folder.
-    :param tables: Names of the tables found in the source when it was resolved (CSV names, sheet names, or
-        geodatabase layer names).
-    :param files: Paths of the workbooks or geodatabases that hold the tables (empty for a CSV folder).
+    :param tables: Names of the tables found in the source when it was resolved (file names without extension,
+        sheet names, or layer and table names).
+    :param files: Paths of the workbooks, GeoPackages, SQLite files, or geodatabases that hold the tables (empty for
+        the one-file-per-table kinds).
     """
     kind: str
     path: str
@@ -53,15 +61,32 @@ class FormSource:
     files: tuple = ()
 
 
-_CSV_EXTENSION = '.csv'
 _CSV_FOLDER = 'csv_folder'
+_DATABASE_FILE = 'database_file'
+_DATABASE_EXTENSIONS = ('.gpkg', '.sqlite', '.sqlite3', '.db')
+_DATE_COLUMNS = ('_date', 'CreationDate', 'EditDate')
+_FEATHER_FOLDER = 'feather_folder'
 _GDB = 'gdb'
 _GDB_EXTENSION = '.gdb'
+_GPKG = 'gpkg'
 _GUID_COLUMNS = {'globalid': 'GlobalID', 'parentglobalid': 'ParentGlobalID'}
+_PARQUET_FOLDER = 'parquet_folder'
+_SQLITE = 'sqlite'
 _WORKBOOK = 'workbook'
 _WORKBOOK_EXTENSIONS = ('.xlsx', '.xlsm')
-# Coordinates this close to zero are floating-point noise from the geodatabase (a record without a location
-# is stored at 0, 0 and reads back as about 5.7e-14), so they are snapped to exactly zero.
+# Table files, one per table: kind -> file extensions.
+_FILE_KINDS = {
+    _CSV_FOLDER: ('.csv',),
+    _PARQUET_FOLDER: ('.parquet',),
+    _FEATHER_FOLDER: ('.feather', '.arrow'),
+}
+# Display names, used in the note printed when a folder holds several formats.
+_LABELS = {
+    _CSV_FOLDER: 'CSV', _PARQUET_FOLDER: 'Parquet', _FEATHER_FOLDER: 'Feather', _WORKBOOK: 'Excel',
+    _DATABASE_FILE: 'GeoPackage or SQLite', _GPKG: 'GeoPackage', _SQLITE: 'SQLite', _GDB: 'geodatabase',
+}
+# Coordinates this close to zero are floating-point noise from a geodatabase or GeoPackage (a point stored at
+# 0, 0 can read back as about 5.7e-14), so they are snapped to exactly zero.
 _COORDINATE_NOISE = 1e-9
 
 
@@ -71,11 +96,16 @@ def _as_csv_would(frame: pd.DataFrame) -> pd.DataFrame:
 
     The non-date columns are written to text and read back with the CSV reader, so the result is the same
     as reading the equivalent CSV file (for example text cells that hold only numbers become numbers, and
-    32-bit floats come back with their short decimal form). Datetime columns are kept as datetimes.
+    32-bit floats come back with their short decimal form). Datetime columns are kept as datetimes, and a
+    time-zone-aware one becomes a naive UTC datetime.
 
-    :param frame: DataFrame read from a spreadsheet or geodatabase.
+    :param frame: DataFrame read from a spreadsheet, database, or table file.
     :return: DataFrame with the same columns and column order.
     """
+    frame = frame.copy()
+    for column in frame.columns:
+        if isinstance(frame[column].dtype, pd.DatetimeTZDtype):
+            frame[column] = frame[column].dt.tz_convert('UTC').dt.tz_localize(None)
     date_columns = [c for c in frame.columns if pd.api.types.is_datetime64_any_dtype(frame[c])]
     buffer = io.StringIO()
     frame.drop(columns=date_columns).to_csv(buffer, index=False)
@@ -98,70 +128,107 @@ def _clean_guid(value):
     return str(value).strip().strip('{}').lower()
 
 
-def _csv_stems(folder: str) -> tuple:
+def _detect_source(folder: str) -> FormSource:
     """
-    List the CSV table names (file names without extension) in a folder.
+    Work out which format a form folder holds and build its source.
+
+    The first format found is used, in this order: CSV, Parquet, Feather, Excel, GeoPackage, SQLite, geodatabase.
+    Only file names are scanned here; a workbook or database is opened only when it is the chosen format. A folder
+    with none of these is treated as an empty CSV folder, so a missing table fails later with the usual
+    FileNotFoundError, unless it holds a zipped download, which raises an error that says to unzip it.
+
+    :param folder: Path to the form folder.
+    :return: FormSource for the folder.
+    """
+    found = {}
+    for kind, extensions in _FILE_KINDS.items():
+        stems = _file_stems(folder, extensions)
+        if stems:
+            found[kind] = stems
+    workbooks = _files_with_extension(folder, _WORKBOOK_EXTENSIONS)
+    if workbooks:
+        found[_WORKBOOK] = workbooks
+    databases = _files_with_extension(folder, _DATABASE_EXTENSIONS)
+    if databases:
+        found[_DATABASE_FILE] = databases
+    gdbs = _gdb_folders(folder)
+    if gdbs:
+        found[_GDB] = gdbs
+
+    if not found:
+        archives = _files_with_extension(folder, ('.zip',))
+        if archives:
+            raise ValueError(
+                f"Form folder {folder} holds a zipped download ({', '.join(os.path.basename(a) for a in archives)}) "
+                f"but no CSV, Parquet, Feather, Excel, GeoPackage, SQLite, or geodatabase tables. Unzip it first."
+            )
+        return FormSource(kind=_CSV_FOLDER, path=folder, tables=())
+
+    chosen = next(kind for kind in (*_FILE_KINDS, _WORKBOOK, _DATABASE_FILE, _GDB) if kind in found)
+    kind, files = chosen, found[chosen]
+    if chosen == _DATABASE_FILE:
+        geopackages = [f for f in files if f.lower().endswith('.gpkg') or _is_geopackage(f)]
+        kind, files = (_GPKG, tuple(geopackages)) if geopackages else (_SQLITE, files)
+    others = [_LABELS[k] for k in found if k != chosen]
+    if others:
+        print(f'\tForm folder {folder} holds {_LABELS[kind]} and {" and ".join(others)} files; using the {_LABELS[kind]} tables')
+
+    if kind in _FILE_KINDS:
+        return FormSource(kind=kind, path=folder, tables=files)
+    tables = []
+    for path in files:
+        names = {
+            _WORKBOOK: _sheet_names, _GPKG: _ogr_layer_names, _GDB: _ogr_layer_names, _SQLITE: _sqlite_table_names,
+        }[kind](path)
+        tables.extend(name for name in names if name not in tables)
+    return FormSource(kind=kind, path=folder, tables=tuple(tables), files=tuple(files))
+
+
+def _file_stems(folder: str, extensions: tuple) -> tuple:
+    """
+    List the table names (file names without extension) of the files with the given extensions in a folder.
 
     :param folder: Path to the folder to inspect.
-    :return: Sorted tuple of CSV table names, or an empty tuple if the folder cannot be listed.
+    :param extensions: File extensions to match, such as ('.csv',).
+    :return: Sorted tuple of table names, or an empty tuple if the folder cannot be listed.
     """
     try:
         names = os.listdir(folder)
     except OSError:
         return ()
     return tuple(sorted(
-        os.path.splitext(name)[0] for name in names if name.lower().endswith(_CSV_EXTENSION)
+        os.path.splitext(name)[0] for name in names
+        if name.lower().endswith(extensions) and os.path.isfile(os.path.join(folder, name))
     ))
 
 
-def _csv_table_exists(source: FormSource, stem: str) -> bool:
+def _file_table_exists(source: FormSource, stem: str) -> bool:
     """
-    Check whether a CSV table exists in a CSV-folder source.
+    Check whether a one-file-per-table source has a table.
 
-    :param source: Resolved CSV-folder source.
+    :param source: Resolved CSV, Parquet, or Feather source.
     :param stem: Table name without extension.
-    :return: True if '<stem>.csv' exists in the source folder.
+    :return: True if '<stem>' plus one of the kind's extensions exists in the source folder.
     """
-    return os.path.exists(os.path.join(source.path, f'{stem}{_CSV_EXTENSION}'))
+    return _table_file(source, stem) is not None
 
 
-def _detect_source(folder: str) -> FormSource:
+def _files_with_extension(folder: str, extensions: tuple) -> tuple:
     """
-    Work out which format a form folder holds: CSV files first, then Excel workbooks, then geodatabases.
+    List the files in a folder that have one of the given extensions, skipping Excel's '~$' lock files.
 
-    A folder with none of these is treated as an empty CSV folder, so a missing table fails later with the
-    usual FileNotFoundError, unless it holds a zipped download, which raises an error that says to unzip it.
-
-    :param folder: Path to the form folder.
-    :return: FormSource for the folder.
+    :param folder: Path to the folder to inspect.
+    :param extensions: File extensions to match, such as ('.xlsx', '.xlsm').
+    :return: Sorted tuple of file paths, or an empty tuple if the folder cannot be listed.
     """
-    csv_tables = _csv_stems(folder)
-    workbooks = _workbook_files(folder)
-    gdbs = _gdb_folders(folder)
-    if csv_tables:
-        others = [label for label, found in (('Excel', workbooks), ('geodatabase', gdbs)) if found]
-        if others:
-            print(f'\tForm folder {folder} holds CSV and {" and ".join(others)} files; using the CSV tables')
-        return FormSource(kind=_CSV_FOLDER, path=folder, tables=csv_tables)
-    if workbooks:
-        if gdbs:
-            print(f'\tForm folder {folder} holds Excel and geodatabase files; using the Excel tables')
-        tables = []
-        for workbook in workbooks:
-            tables.extend(name for name in _sheet_names(workbook) if name not in tables)
-        return FormSource(kind=_WORKBOOK, path=folder, tables=tuple(tables), files=workbooks)
-    if gdbs:
-        tables = []
-        for gdb in gdbs:
-            tables.extend(name for name in _gdb_layer_names(gdb) if name not in tables)
-        return FormSource(kind=_GDB, path=folder, tables=tuple(tables), files=gdbs)
-    archives = _zip_files(folder)
-    if archives:
-        raise ValueError(
-            f"Form folder {folder} holds a zipped download ({', '.join(os.path.basename(a) for a in archives)}) "
-            f"but no CSV, Excel, or geodatabase tables. Unzip it first."
-        )
-    return FormSource(kind=_CSV_FOLDER, path=folder, tables=())
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return ()
+    return tuple(sorted(
+        os.path.join(folder, name) for name in names
+        if name.lower().endswith(extensions) and not name.startswith('~$') and os.path.isfile(os.path.join(folder, name))
+    ))
 
 
 def _gdb_folders(folder: str) -> tuple:
@@ -196,29 +263,19 @@ def _gdb_folders(folder: str) -> tuple:
     return tuple(sorted(found))
 
 
-def _gdb_layer_names(gdb: str) -> tuple:
+def _is_geopackage(path: str) -> bool:
     """
-    List the layer and table names of a file geodatabase.
+    Check whether a SQLite file is a GeoPackage (it has the 'gpkg_contents' table).
 
-    :param gdb: Path to the geodatabase folder.
-    :return: Tuple of layer names, in geodatabase order.
+    :param path: Path to the SQLite file.
+    :return: True for a GeoPackage; False for any other file, including one that cannot be opened.
     """
-    import pyogrio
     try:
-        return tuple(str(name) for name, _geometry in pyogrio.list_layers(gdb))
-    except Exception as exc:
-        raise ValueError(f'Cannot open file geodatabase {gdb}: {exc}') from exc
-
-
-def _gdb_table_exists(source: FormSource, stem: str) -> bool:
-    """
-    Check whether a geodatabase source has a layer for a table.
-
-    :param source: Resolved geodatabase source.
-    :param stem: Table name without extension (for example 'survey_0').
-    :return: True if a layer with the name of the table (without its index) exists.
-    """
-    return _layer_name(stem).lower() in {name.lower() for name in source.tables}
+        with contextlib.closing(sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)) as connection:
+            row = connection.execute("select 1 from sqlite_master where name = 'gpkg_contents'").fetchone()
+        return row is not None
+    except sqlite3.Error:
+        return False
 
 
 def _layer_name(stem: str) -> str:
@@ -231,14 +288,29 @@ def _layer_name(stem: str) -> str:
     return re.sub(r'_\d+$', '', stem)
 
 
-def _normalize_gdb_frame(layer_df: pd.DataFrame) -> pd.DataFrame:
+def _match_name(names: tuple, stem: str) -> Optional[str]:
     """
-    Turn a geodatabase layer into the table the CSV download of the same form holds.
+    Find the name in a container (sheet, layer, or table) that holds a table.
 
-    The object ID (the layer's FID, which is the index here) becomes the ``ObjectID`` column; ``globalid`` and
-    ``parentglobalid`` become ``GlobalID`` and ``ParentGlobalID`` with lower-case GUIDs and no braces; point
-    geometry becomes ``x`` and ``y`` columns (unless the layer has them as fields); time-zone-aware dates
-    become naive UTC datetimes; and the remaining columns get the dtypes ``pd.read_csv`` would give.
+    The full name ('survey_0') is tried first, then the name without the table number ('survey'), ignoring case.
+
+    :param names: Names found in the container.
+    :param stem: Table name without extension.
+    :return: The matching name as the container spells it, or None.
+    """
+    lower = {name.lower(): name for name in names}
+    return lower.get(stem.lower()) or lower.get(_layer_name(stem).lower())
+
+
+def _normalize_ogr_frame(layer_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Turn a geodatabase or GeoPackage layer into the table the CSV download of the same form holds.
+
+    The object ID becomes the ``ObjectID`` column: an ``ObjectID`` field wins when the layer has one (editing in
+    QGIS or ArcGIS Pro renumbers the row IDs but keeps the field), otherwise the layer's FID, which is the index
+    here, is used. ``globalid`` and ``parentglobalid`` become ``GlobalID`` and ``ParentGlobalID`` with lower-case
+    GUIDs and no braces; point geometry becomes ``x`` and ``y`` columns (unless the layer has them as fields);
+    and the remaining columns get the dtypes ``pd.read_csv`` would give.
 
     :param layer_df: Layer read with ``pyogrio.read_dataframe(..., fid_as_index=True)``.
     :return: DataFrame with an ``ObjectID`` first column and no geometry column.
@@ -246,8 +318,12 @@ def _normalize_gdb_frame(layer_df: pd.DataFrame) -> pd.DataFrame:
     import geopandas as gpd
     spatial = isinstance(layer_df, gpd.GeoDataFrame)
     frame = pd.DataFrame(layer_df.drop(columns=layer_df.geometry.name)) if spatial else pd.DataFrame(layer_df)
-    frame.insert(0, 'ObjectID', layer_df.index.to_numpy(dtype='int64'))
     frame = frame.reset_index(drop=True)
+    object_id = next((c for c in frame.columns if c.lower() == 'objectid'), None)
+    if object_id is None:
+        frame.insert(0, 'ObjectID', layer_df.index.to_numpy(dtype='int64'))
+    else:
+        frame.insert(0, 'ObjectID', frame.pop(object_id))
     frame = frame.rename(columns={c: _GUID_COLUMNS[c.lower()] for c in frame.columns if c.lower() in _GUID_COLUMNS})
     for name in _GUID_COLUMNS.values():
         if name in frame.columns:
@@ -257,10 +333,32 @@ def _normalize_gdb_frame(layer_df: pd.DataFrame) -> pd.DataFrame:
         for axis in ('x', 'y'):
             values = getattr(geometry, axis).to_numpy(dtype=float)
             frame[axis] = np.where(np.abs(values) < _COORDINATE_NOISE, 0.0, values)
-    for column in frame.columns:
-        if isinstance(frame[column].dtype, pd.DatetimeTZDtype):
-            frame[column] = frame[column].dt.tz_convert('UTC').dt.tz_localize(None)
     return _as_csv_would(frame)
+
+
+def _ogr_layer_names(path: str) -> tuple:
+    """
+    List the layer and table names of a file geodatabase or GeoPackage.
+
+    :param path: Path to the geodatabase folder or GeoPackage file.
+    :return: Tuple of layer names, in file order.
+    """
+    import pyogrio
+    try:
+        return tuple(str(name) for name, _geometry in pyogrio.list_layers(path))
+    except Exception as exc:
+        raise ValueError(f'Cannot open {os.path.basename(path)} ({path}): {exc}') from exc
+
+
+def _ogr_table_exists(source: FormSource, stem: str) -> bool:
+    """
+    Check whether a geodatabase or GeoPackage source has a layer for a table.
+
+    :param source: Resolved geodatabase or GeoPackage source.
+    :param stem: Table name without extension (for example 'survey_0').
+    :return: True if a layer with the table's name, or its name without the table number, exists.
+    """
+    return _match_name(source.tables, stem) is not None
 
 
 @contextlib.contextmanager
@@ -277,46 +375,102 @@ def _quiet_openpyxl():
         yield
 
 
-def _read_csv_table(source: FormSource, stem: str) -> pd.DataFrame:
+def _read_file_table(source: FormSource, stem: str) -> pd.DataFrame:
     """
-    Read one CSV table from a CSV-folder source.
+    Read one table from a one-file-per-table source (CSV, Parquet, or Feather).
 
-    :param source: Resolved CSV-folder source.
+    CSV is read with the standard CSV reader (``helper.get_df``). Parquet and Feather need the optional ``pyarrow``
+    package; their tables are given the dtypes ``pd.read_csv`` would infer, and time-zone-aware dates become naive UTC.
+
+    :param source: Resolved source.
     :param stem: Table name without extension.
-    :return: DataFrame read with the standard CSV reader (``helper.get_df``).
+    :return: DataFrame with the table data.
     """
-    return helper.get_df(os.path.join(source.path, f'{stem}{_CSV_EXTENSION}'))
+    path = _table_file(source, stem)
+    if path is None:
+        raise FileNotFoundError(f"No '{stem}' table ({', '.join(_FILE_KINDS[source.kind])}) in {source.path}")
+    if source.kind == _CSV_FOLDER:
+        return helper.get_df(path)
+    try:
+        import pyarrow  # noqa: F401
+    except ImportError as exc:
+        raise ImportError(
+            f'Reading {_LABELS[source.kind]} tables needs the pyarrow package: pip install pyarrow '
+            f'(or pip install "fuel-analyst[parquet]")'
+        ) from exc
+    print(f'\tGetting DataFrame from {_LABELS[source.kind]} file at: {path}')
+    try:
+        frame = pd.read_parquet(path) if source.kind == _PARQUET_FOLDER else pd.read_feather(path)
+    except Exception as exc:
+        raise ValueError(f'Cannot read {path}: {exc}') from exc
+    return _as_csv_would(frame)
 
 
-def _read_gdb_table(source: FormSource, stem: str) -> pd.DataFrame:
+def _read_ogr_table(source: FormSource, stem: str) -> pd.DataFrame:
     """
-    Read one table (layer) from a geodatabase source.
+    Read one table (layer) from a geodatabase or GeoPackage source.
 
-    :param source: Resolved geodatabase source.
-    :param stem: Table name without extension (for example 'survey_0'); the layer is the name without the index.
-    :return: DataFrame normalized like the CSV table (see ``_normalize_gdb_frame``).
+    :param source: Resolved geodatabase or GeoPackage source.
+    :param stem: Table name without extension (for example 'survey_0').
+    :return: DataFrame normalized like the CSV table (see ``_normalize_ogr_frame``).
     """
     import pyogrio
-    layer = _layer_name(stem).lower()
+    label = _LABELS[source.kind]
     holders = []
-    for gdb in source.files:
-        names = {name.lower(): name for name in _gdb_layer_names(gdb)}
-        if layer in names:
-            holders.append((gdb, names[layer]))
+    for path in source.files:
+        name = _match_name(_ogr_layer_names(path), stem)
+        if name is not None:
+            holders.append((path, name))
     if not holders:
-        raise FileNotFoundError(f"No layer named '{_layer_name(stem)}' in the geodatabases of {source.path}")
+        raise FileNotFoundError(f"No layer for '{stem}' in the {label} files of {source.path}")
     if len(holders) > 1:
         raise ValueError(
-            f"Layer '{_layer_name(stem)}' is in more than one geodatabase in {source.path}: "
-            f"{', '.join(os.path.relpath(gdb, source.path) for gdb, _name in holders)}. Keep one geodatabase per form."
+            f"A layer for '{stem}' is in more than one {label} in {source.path}: "
+            f"{', '.join(os.path.relpath(path, source.path) for path, _name in holders)}. Keep one {label} per form."
         )
-    gdb, name = holders[0]
-    print(f"\tGetting DataFrame from geodatabase layer '{name}' at: {gdb}")
+    path, name = holders[0]
+    print(f"\tGetting DataFrame from {label} layer '{name}' at: {path}")
     try:
-        layer_df = pyogrio.read_dataframe(gdb, layer=name, fid_as_index=True)
+        layer_df = pyogrio.read_dataframe(path, layer=name, fid_as_index=True)
     except Exception as exc:
-        raise ValueError(f"Cannot read layer '{name}' from {gdb}: {exc}") from exc
-    return _normalize_gdb_frame(layer_df)
+        raise ValueError(f"Cannot read layer '{name}' from {path}: {exc}") from exc
+    return _normalize_ogr_frame(layer_df)
+
+
+def _read_sqlite_table(source: FormSource, stem: str) -> pd.DataFrame:
+    """
+    Read one table from a plain SQLite source.
+
+    SQLite stores dates as text, so the ``_date``, ``CreationDate``, and ``EditDate`` columns are parsed into datetimes
+    (ISO text and the CSV date formats both work). The other columns get the dtypes ``pd.read_csv`` would infer.
+
+    :param source: Resolved SQLite source.
+    :param stem: Table name without extension (for example 'survey_0').
+    :return: DataFrame with the table data.
+    """
+    holders = []
+    for path in source.files:
+        name = _match_name(_sqlite_table_names(path), stem)
+        if name is not None:
+            holders.append((path, name))
+    if not holders:
+        raise FileNotFoundError(f"No table for '{stem}' in the SQLite files of {source.path}")
+    if len(holders) > 1:
+        raise ValueError(
+            f"A table for '{stem}' is in more than one SQLite file in {source.path}: "
+            f"{', '.join(os.path.basename(path) for path, _name in holders)}. Keep one SQLite file per form."
+        )
+    path, name = holders[0]
+    print(f"\tGetting DataFrame from SQLite table '{name}' at: {path}")
+    try:
+        with contextlib.closing(sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)) as connection:
+            frame = pd.read_sql_query('select * from "' + name.replace('"', '""') + '"', connection)
+    except Exception as exc:
+        raise ValueError(f"Cannot read table '{name}' from {path}: {exc}") from exc
+    for column in _DATE_COLUMNS:
+        if column in frame.columns and not pd.api.types.is_datetime64_any_dtype(frame[column]):
+            frame[column] = pd.to_datetime(frame[column], format='mixed', errors='coerce')
+    return _as_csv_would(frame)
 
 
 def _read_workbook_table(source: FormSource, stem: str) -> pd.DataFrame:
@@ -328,23 +482,28 @@ def _read_workbook_table(source: FormSource, stem: str) -> pd.DataFrame:
     Date columns stay datetimes, which ``helper.get_unique_id`` accepts.
 
     :param source: Resolved workbook source.
-    :param stem: Sheet name (the table name without extension).
+    :param stem: Table name without extension; the sheet is the table name, or the name without its number.
     :return: DataFrame with the sheet data.
     """
-    holders = [path for path in source.files if stem in _sheet_names(path)]
+    holders = []
+    for path in source.files:
+        name = _match_name(_sheet_names(path), stem)
+        if name is not None:
+            holders.append((path, name))
     if not holders:
-        raise FileNotFoundError(f"No sheet named '{stem}' in the Excel workbooks of {source.path}")
+        raise FileNotFoundError(f"No sheet for '{stem}' in the Excel workbooks of {source.path}")
     if len(holders) > 1:
         raise ValueError(
-            f"Sheet '{stem}' is in more than one workbook in {source.path}: "
-            f"{', '.join(os.path.basename(path) for path in holders)}. Keep one workbook per form."
+            f"A sheet for '{stem}' is in more than one workbook in {source.path}: "
+            f"{', '.join(os.path.basename(path) for path, _name in holders)}. Keep one workbook per form."
         )
-    print(f"\tGetting DataFrame from Excel sheet '{stem}' at: {holders[0]}")
+    path, name = holders[0]
+    print(f"\tGetting DataFrame from Excel sheet '{name}' at: {path}")
     try:
         with _quiet_openpyxl():
-            frame = pd.read_excel(holders[0], sheet_name=stem, header=0, engine='openpyxl')
+            frame = pd.read_excel(path, sheet_name=name, header=0, engine='openpyxl')
     except Exception as exc:
-        raise ValueError(f"Cannot read sheet '{stem}' from {holders[0]}: {exc}") from exc
+        raise ValueError(f"Cannot read sheet '{name}' from {path}: {exc}") from exc
     return _as_csv_would(frame)
 
 
@@ -367,21 +526,47 @@ def _sheet_names(workbook: str) -> tuple:
         book.close()
 
 
-def _workbook_files(folder: str) -> tuple:
+def _sqlite_table_exists(source: FormSource, stem: str) -> bool:
     """
-    List the Excel workbooks in a folder, skipping Excel's temporary lock files ('~$name.xlsx').
+    Check whether a SQLite source has a table for a table name.
 
-    :param folder: Path to the folder to inspect.
-    :return: Sorted tuple of workbook paths, or an empty tuple if the folder cannot be listed.
+    :param source: Resolved SQLite source.
+    :param stem: Table name without extension (for example 'survey_0').
+    :return: True if a table with that name, or its name without the table number, exists.
+    """
+    return _match_name(source.tables, stem) is not None
+
+
+def _sqlite_table_names(path: str) -> tuple:
+    """
+    List the tables of a plain SQLite database (without SQLite's own 'sqlite_' tables).
+
+    :param path: Path to the SQLite file.
+    :return: Tuple of table names.
     """
     try:
-        names = os.listdir(folder)
-    except OSError:
-        return ()
-    return tuple(sorted(
-        os.path.join(folder, name) for name in names
-        if name.lower().endswith(_WORKBOOK_EXTENSIONS) and not name.startswith('~$')
-    ))
+        with contextlib.closing(sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)) as connection:
+            rows = connection.execute(
+                "select name from sqlite_master where type = 'table' and name not like 'sqlite_%' order by rowid"
+            ).fetchall()
+    except sqlite3.Error as exc:
+        raise ValueError(f'Cannot open SQLite file {path}: {exc}') from exc
+    return tuple(row[0] for row in rows)
+
+
+def _table_file(source: FormSource, stem: str) -> Optional[str]:
+    """
+    Find the file of a table in a one-file-per-table source.
+
+    :param source: Resolved CSV, Parquet, or Feather source.
+    :param stem: Table name without extension.
+    :return: Path of the file, or None when the table has no file.
+    """
+    for extension in _FILE_KINDS[source.kind]:
+        path = os.path.join(source.path, f'{stem}{extension}')
+        if os.path.isfile(path):
+            return path
+    return None
 
 
 def _workbook_table_exists(source: FormSource, stem: str) -> bool:
@@ -389,30 +574,20 @@ def _workbook_table_exists(source: FormSource, stem: str) -> bool:
     Check whether a workbook source has a sheet for a table.
 
     :param source: Resolved workbook source.
-    :param stem: Sheet name (the table name without extension).
-    :return: True if any workbook of the source has a sheet with that name.
+    :param stem: Table name without extension (for example 'survey_0').
+    :return: True if a sheet has the table's name, or its name without the table number.
     """
-    return stem in source.tables
-
-
-def _zip_files(folder: str) -> tuple:
-    """
-    List the zip archives in a folder.
-
-    :param folder: Path to the folder to inspect.
-    :return: Sorted tuple of zip file paths, or an empty tuple if the folder cannot be listed.
-    """
-    try:
-        names = os.listdir(folder)
-    except OSError:
-        return ()
-    return tuple(sorted(os.path.join(folder, name) for name in names if name.lower().endswith('.zip')))
+    return _match_name(source.tables, stem) is not None
 
 
 # Registry of source kinds: (table-exists check, table reader). Add a format by adding one entry.
 _READERS = {
-    _CSV_FOLDER: (_csv_table_exists, _read_csv_table),
-    _GDB: (_gdb_table_exists, _read_gdb_table),
+    _CSV_FOLDER: (_file_table_exists, _read_file_table),
+    _FEATHER_FOLDER: (_file_table_exists, _read_file_table),
+    _GDB: (_ogr_table_exists, _read_ogr_table),
+    _GPKG: (_ogr_table_exists, _read_ogr_table),
+    _PARQUET_FOLDER: (_file_table_exists, _read_file_table),
+    _SQLITE: (_sqlite_table_exists, _read_sqlite_table),
     _WORKBOOK: (_workbook_table_exists, _read_workbook_table),
 }
 
@@ -421,9 +596,10 @@ def ensure_form_source(location: Union[str, FormSource]) -> FormSource:
     """
     Return a form source, resolving a folder path if necessary.
 
-    A path string is resolved from the files in that folder (CSV tables first, then Excel workbooks, then file
-    geodatabases). A folder that does not exist, or holds none of these, is treated as an empty CSV folder, so a
-    missing table still fails later with the same error as before. An existing FormSource is returned as is.
+    A path string is resolved from the files in that folder (CSV, Parquet, Feather, Excel, GeoPackage, SQLite, then
+    file geodatabase tables, whichever is found first). A folder that does not exist, or holds none of these, is
+    treated as an empty CSV folder, so a missing table still fails later with the same error as before. An existing
+    FormSource is returned as is.
 
     :param location: A FormSource, or the path to a form folder.
     :return: The corresponding FormSource.
