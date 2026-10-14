@@ -366,16 +366,20 @@ Rules that apply to every format:
 - **If one form folder holds several formats** (unusual, but handled), exactly one is used, chosen in this order: CSV, Parquet,
   Feather, Excel, GeoPackage, SQLite, geodatabase. The run prints a note naming the formats it found and the one it used. A
   `.sqlite` or `.db` file that holds GeoPackage tables is read as a GeoPackage. Keep one file of a kind per form: a table found in two
-  workbooks, two GeoPackages, two SQLite files, or two geodatabases is an error that names both files.
+  workbooks, two GeoPackages, two SQLite files, or two geodatabases is an error that names both files, and so is a table file that
+  exists twice in the same family (for example `survey_0.feather` and `survey_0.arrow`). File extensions are matched ignoring case.
 - **Downloads must be unzipped.** A form folder that holds only a zipped download raises an error that says to unzip it.
 - **Only the container changes.** The tables must still use the Survey123 field names (`ObjectID`, `GlobalID`, `ParentGlobalID`,
   `_date`, `x`, `y`, and so on), whatever the format. Excel and Parquet or Feather files, and SQLite tables, need `x` and `y` columns
   where the CSV has them (the plot form).
 - **From a geodatabase or GeoPackage:** the object ID becomes `ObjectID` (an `ObjectID` field wins over the row ID, which QGIS and
   ArcGIS Pro renumber when you edit), `globalid` and `parentglobalid` become `GlobalID` and `ParentGlobalID` (lower case, without
-  braces), and point geometry becomes `x` and `y` unless the layer already has those fields.
+  braces), and point geometry becomes `x` and `y` in WGS84 degrees unless the layer already has those fields. A layer in another
+  coordinate system (for example a projected one such as BC Albers) is reprojected to EPSG:4326; a layer with no coordinate system
+  is accepted only if its coordinates are valid longitudes and latitudes, and otherwise raises an error asking you to define one.
 - **Dates** in Excel, Parquet, Feather, GeoPackage, and geodatabase files are read as dates rather than text, and SQLite date text
-  (ISO such as `2026-09-21 19:00:00`, or the CSV formats) is parsed. Time zones are dropped (UTC clock time is kept).
+  (ISO such as `2026-09-21 19:00:00`, or the CSV formats) is parsed. Time zones are dropped (UTC clock time is kept; timestamps
+  with different offsets, such as daylight-saving and standard time, are converted to UTC).
 - **Outputs and their file names are the same for every input format** (the result tables are always written as CSV), so existing
   workflows do not change.
 - **Packages:** `openpyxl` (Excel) and `pyogrio` (GeoPackage and geodatabase) install with FuelAnalyst; SQLite uses Python's built-in

@@ -200,9 +200,13 @@ raises an `ImportError` that says how to install it.
 Normalization makes every non-CSV table read like its CSV (`_as_csv_would`): the non-date columns are written to text and read back
 with `pd.read_csv`, so dtypes and `NA` handling are the same (including 32-bit floats, which return as their short decimal form);
 date columns stay datetimes (time zone dropped, UTC clock time kept) and `helper.get_unique_id()` accepts them. SQLite date text is
-parsed into datetimes first. A GeoPackage or geodatabase table also gets `ObjectID` (an `ObjectID` field if the layer has one,
-otherwise the layer FID), cleaned `GlobalID` and `ParentGlobalID`, and `x` and `y` from point geometry (coordinates within 1e-9 of
-zero snap to 0.0) unless the layer already has those fields. Only Survey123 form tables use this module; reference tables, weather
+parsed into datetimes first (as UTC, so timestamps with different offsets normalize to UTC clock time). A GeoPackage or
+geodatabase table also gets `ObjectID` (an `ObjectID` field if the layer has one, otherwise the layer FID), cleaned `GlobalID` and
+`ParentGlobalID`, and `x` and `y` from point geometry in WGS84 degrees (`_to_wgs84`: a layer in another coordinate system is
+reprojected to EPSG:4326, and a layer with none is accepted only if its coordinates are valid longitudes and latitudes; coordinates
+within 1e-9 of zero snap to 0.0) unless the layer already has those fields. One-file-per-table kinds find their files by exact table
+name and case-insensitive extension (`_table_files`), and two files for one table (`survey_0.feather` and `survey_0.arrow`) raise an
+error naming both. Only Survey123 form tables use this module; reference tables, weather
 files, and FOFEM tables are still read with `helper.get_df()`. `fuel_analyst()` resolves each form once, lazily, and passes the
 `FormSource` to the component processors, which still accept a plain folder path.
 

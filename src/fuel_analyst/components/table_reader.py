@@ -196,10 +196,10 @@ def _file_stems(folder: str, extensions: tuple) -> tuple:
         names = os.listdir(folder)
     except OSError:
         return ()
-    return tuple(sorted(
+    return tuple(sorted({
         os.path.splitext(name)[0] for name in names
         if name.lower().endswith(extensions) and os.path.isfile(os.path.join(folder, name))
-    ))
+    }))
 
 
 def _file_table_exists(source: FormSource, stem: str) -> bool:
@@ -208,9 +208,9 @@ def _file_table_exists(source: FormSource, stem: str) -> bool:
 
     :param source: Resolved CSV, Parquet, or Feather source.
     :param stem: Table name without extension.
-    :return: True if '<stem>' plus one of the kind's extensions exists in the source folder.
+    :return: True if '<stem>' plus one of the kind's extensions (in any letter case) exists in the source folder.
     """
-    return _table_file(source, stem) is not None
+    return bool(_table_files(source, stem))
 
 
 def _files_with_extension(folder: str, extensions: tuple) -> tuple:
@@ -309,8 +309,9 @@ def _normalize_ogr_frame(layer_df: pd.DataFrame) -> pd.DataFrame:
     The object ID becomes the ``ObjectID`` column: an ``ObjectID`` field wins when the layer has one (editing in
     QGIS or ArcGIS Pro renumbers the row IDs but keeps the field), otherwise the layer's FID, which is the index
     here, is used. ``globalid`` and ``parentglobalid`` become ``GlobalID`` and ``ParentGlobalID`` with lower-case
-    GUIDs and no braces; point geometry becomes ``x`` and ``y`` columns (unless the layer has them as fields);
-    and the remaining columns get the dtypes ``pd.read_csv`` would give.
+    GUIDs and no braces; point geometry becomes ``x`` and ``y`` columns in WGS84 degrees, reprojected if the layer uses
+    another coordinate system (unless the layer has them as fields); and the remaining columns get the dtypes
+    ``pd.read_csv`` would give.
 
     :param layer_df: Layer read with ``pyogrio.read_dataframe(..., fid_as_index=True)``.
     :return: DataFrame with an ``ObjectID`` first column and no geometry column.
@@ -329,7 +330,7 @@ def _normalize_ogr_frame(layer_df: pd.DataFrame) -> pd.DataFrame:
         if name in frame.columns:
             frame[name] = frame[name].map(_clean_guid)
     if spatial and not {'x', 'y'} & {c.lower() for c in frame.columns}:
-        geometry = layer_df.geometry.reset_index(drop=True)
+        geometry = _to_wgs84(layer_df.geometry.reset_index(drop=True))
         for axis in ('x', 'y'):
             values = getattr(geometry, axis).to_numpy(dtype=float)
             frame[axis] = np.where(np.abs(values) < _COORDINATE_NOISE, 0.0, values)
@@ -386,9 +387,15 @@ def _read_file_table(source: FormSource, stem: str) -> pd.DataFrame:
     :param stem: Table name without extension.
     :return: DataFrame with the table data.
     """
-    path = _table_file(source, stem)
-    if path is None:
+    paths = _table_files(source, stem)
+    if not paths:
         raise FileNotFoundError(f"No '{stem}' table ({', '.join(_FILE_KINDS[source.kind])}) in {source.path}")
+    if len(paths) > 1:
+        raise ValueError(
+            f"More than one {_LABELS[source.kind]} file holds the table '{stem}' in {source.path}: "
+            f"{', '.join(os.path.basename(path) for path in paths)}. Keep one file per table."
+        )
+    path = paths[0]
     if source.kind == _CSV_FOLDER:
         return helper.get_df(path)
     try:
@@ -434,7 +441,10 @@ def _read_ogr_table(source: FormSource, stem: str) -> pd.DataFrame:
         layer_df = pyogrio.read_dataframe(path, layer=name, fid_as_index=True)
     except Exception as exc:
         raise ValueError(f"Cannot read layer '{name}' from {path}: {exc}") from exc
-    return _normalize_ogr_frame(layer_df)
+    try:
+        return _normalize_ogr_frame(layer_df)
+    except ValueError as exc:
+        raise ValueError(f"Layer '{name}' in {path}: {exc}") from exc
 
 
 def _read_sqlite_table(source: FormSource, stem: str) -> pd.DataFrame:
@@ -442,7 +452,9 @@ def _read_sqlite_table(source: FormSource, stem: str) -> pd.DataFrame:
     Read one table from a plain SQLite source.
 
     SQLite stores dates as text, so the ``_date``, ``CreationDate``, and ``EditDate`` columns are parsed into datetimes
-    (ISO text and the CSV date formats both work). The other columns get the dtypes ``pd.read_csv`` would infer.
+    (ISO text and the CSV date formats both work). Parsing is done as UTC, so timestamps with different offsets (for example
+    daylight-saving and standard time) normalize to UTC clock time and text without an offset is read as it is. The other
+    columns get the dtypes ``pd.read_csv`` would infer.
 
     :param source: Resolved SQLite source.
     :param stem: Table name without extension (for example 'survey_0').
@@ -469,7 +481,7 @@ def _read_sqlite_table(source: FormSource, stem: str) -> pd.DataFrame:
         raise ValueError(f"Cannot read table '{name}' from {path}: {exc}") from exc
     for column in _DATE_COLUMNS:
         if column in frame.columns and not pd.api.types.is_datetime64_any_dtype(frame[column]):
-            frame[column] = pd.to_datetime(frame[column], format='mixed', errors='coerce')
+            frame[column] = pd.to_datetime(frame[column], format='mixed', errors='coerce', utc=True)
     return _as_csv_would(frame)
 
 
@@ -554,19 +566,52 @@ def _sqlite_table_names(path: str) -> tuple:
     return tuple(row[0] for row in rows)
 
 
-def _table_file(source: FormSource, stem: str) -> Optional[str]:
+def _table_files(source: FormSource, stem: str) -> list:
     """
-    Find the file of a table in a one-file-per-table source.
+    Find the files of a table in a one-file-per-table source, as they are spelled on disk.
+
+    The table name must match exactly; the extension is matched ignoring letter case, so 'survey_0.PARQUET' counts.
 
     :param source: Resolved CSV, Parquet, or Feather source.
     :param stem: Table name without extension.
-    :return: Path of the file, or None when the table has no file.
+    :return: Sorted list of matching file paths (more than one means an ambiguous table).
     """
-    for extension in _FILE_KINDS[source.kind]:
-        path = os.path.join(source.path, f'{stem}{extension}')
-        if os.path.isfile(path):
-            return path
-    return None
+    try:
+        names = os.listdir(source.path)
+    except OSError:
+        return []
+    extensions = _FILE_KINDS[source.kind]
+    return sorted(
+        os.path.join(source.path, name) for name in names
+        if os.path.splitext(name)[0] == stem and os.path.splitext(name)[1].lower() in extensions
+        and os.path.isfile(os.path.join(source.path, name))
+    )
+
+
+def _to_wgs84(geometry):
+    """
+    Return point geometry in geographic WGS84 degrees (EPSG:4326), so x and y can be used as longitude and latitude.
+
+    A layer in another coordinate system (for example a projected one such as BC Albers, as QGIS and ArcGIS Pro often save)
+    is reprojected. A layer with no coordinate system (or an undefined one) is accepted only when every coordinate is a valid
+    longitude and latitude; anything else cannot be interpreted and raises an error.
+
+    :param geometry: GeoSeries of points.
+    :return: GeoSeries in EPSG:4326 (or unchanged if it has no valid points).
+    """
+    # Older GDAL versions read a layer saved without a coordinate system as 'Undefined geographic SRS', not as None.
+    if geometry.crs is not None and 'undefined' not in str(geometry.crs.name).lower():
+        return geometry if geometry.crs.to_epsg() == 4326 else geometry.to_crs(4326)
+    min_x, min_y, max_x, max_y = geometry.total_bounds
+    if np.isnan([min_x, min_y, max_x, max_y]).all():
+        return geometry
+    if min_x < -180 or max_x > 180 or min_y < -90 or max_y > 90:
+        raise ValueError(
+            'the layer has no coordinate system and its coordinates are not longitude and latitude in degrees; '
+            'define its coordinate system (for example EPSG:4326) in the file'
+        )
+    print('\tThe layer has no coordinate system; its coordinates are read as WGS84 longitude and latitude')
+    return geometry
 
 
 def _workbook_table_exists(source: FormSource, stem: str) -> bool:

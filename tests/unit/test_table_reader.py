@@ -648,3 +648,96 @@ def test_every_format_is_chosen_in_the_documented_order(tmp_path):
             os.remove(folder / remove)
 
     assert order == ['csv_folder', 'parquet_folder', 'feather_folder', 'workbook', 'gpkg', 'sqlite', 'gdb']
+
+
+# ---------------------------------------------------------------- review fixes: coordinate system, SQLite offsets, table files
+
+def _write_point_gpkg(path, x, y, crs):
+    """Write a one-layer GeoPackage of points given in the coordinates of ``crs`` (None writes no coordinate system)."""
+    import geopandas as gpd
+    import pyogrio
+    df = pd.DataFrame({'fid': list(range(1, len(x) + 1)), 'globalid': ['{A}'] * len(x), 'plot_id': ['P'] * len(x)})
+    gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(x, y), crs=crs)
+    pyogrio.write_dataframe(gdf, str(path), layer='survey', driver='GPKG', layer_options={'FID': 'fid'})
+
+
+def test_a_projected_layer_is_reprojected_to_longitude_and_latitude(tmp_path):
+    import geopandas as gpd
+    # About 122.7 W, 50.3 N, 123.0 W, 49.9 N in BC Albers (EPSG:3005), as QGIS or ArcGIS Pro often saves a layer.
+    albers = gpd.GeoSeries.from_xy([-122.7, -123.0], [50.3, 49.9], crs='EPSG:4326').to_crs('EPSG:3005')
+    _write_point_gpkg(tmp_path / 'form.gpkg', albers.x.tolist(), albers.y.tolist(), 'EPSG:3005')
+
+    result = table_reader.read_table(str(tmp_path), 'survey_0')
+
+    assert result['x'].tolist() == pytest.approx([-122.7, -123.0], abs=1e-6)
+    assert result['y'].tolist() == pytest.approx([50.3, 49.9], abs=1e-6)
+
+
+def test_a_layer_already_in_wgs84_is_read_as_it_is(tmp_path):
+    _write_point_gpkg(tmp_path / 'form.gpkg', [-122.7, 0.0], [50.3, 0.0], 'EPSG:4326')
+
+    result = table_reader.read_table(str(tmp_path), 'survey_0')
+
+    assert result['x'].tolist() == pytest.approx([-122.7, 0.0], abs=1e-9)
+    assert result['y'].tolist() == pytest.approx([50.3, 0.0], abs=1e-9)
+
+
+@pytest.mark.filterwarnings('ignore:.*crs.*')
+def test_a_layer_without_a_coordinate_system_is_accepted_only_if_it_holds_degrees(tmp_path):
+    _write_point_gpkg(tmp_path / 'form.gpkg', [-122.7, -123.0], [50.3, 49.9], None)
+
+    result = table_reader.read_table(str(tmp_path), 'survey_0')
+
+    assert result['x'].tolist() == pytest.approx([-122.7, -123.0], abs=1e-9)
+
+    projected = tmp_path / 'projected'
+    projected.mkdir()
+    _write_point_gpkg(projected / 'form.gpkg', [1234955.0, 1200000.0], [592636.0, 580000.0], None)
+    with pytest.raises(ValueError, match='no coordinate system'):
+        table_reader.read_table(str(projected), 'survey_0')
+
+
+def test_sqlite_timestamps_with_different_offsets_are_normalized_to_utc(tmp_path):
+    parent = pd.DataFrame({
+        'treatment_area': ['Demo', 'Demo'], 'treatment_unit': ['TU1', 'TU1'], 'treatment_type': ['burned', 'burned'],
+        'plot_id': ['P04', 'P05'],
+        '_date': ['2026-01-15T10:00:00-08:00', '2026-07-15T10:00:00-07:00'],
+    })
+    _write_sqlite(tmp_path / 'form.sqlite', {'survey_0': parent})
+
+    result = table_reader.read_table(str(tmp_path), 'survey_0')
+
+    assert result['_date'].dt.tz is None
+    assert result['_date'].tolist() == [pd.Timestamp('2026-01-15 18:00:00'), pd.Timestamp('2026-07-15 17:00:00')]
+    assert helper.get_unique_id(result)['year'].tolist() == [2026, 2026]
+
+
+def test_a_feather_table_in_two_files_is_an_error_naming_both(tmp_path):
+    pytest.importorskip('pyarrow')
+    pd.DataFrame({'a': [1]}).to_feather(tmp_path / 'survey_0.feather')
+    pd.DataFrame({'a': [2]}).to_feather(tmp_path / 'survey_0.arrow')
+
+    with pytest.raises(ValueError, match='survey_0.arrow, survey_0.feather'):
+        table_reader.read_table(str(tmp_path), 'survey_0')
+
+
+@pytest.mark.parametrize('extension', ['.CSV', '.Csv'])
+def test_table_files_are_found_whatever_the_case_of_their_extension(tmp_path, extension):
+    pd.DataFrame({'a': [1, 2]}).to_csv(tmp_path / f'survey_0{extension}', index=False)
+
+    source = table_reader.ensure_form_source(str(tmp_path))
+
+    assert source.kind == 'csv_folder'
+    assert source.tables == ('survey_0',)
+    assert table_reader.has_table(source, 'survey_0')
+    assert table_reader.read_table(source, 'survey_0')['a'].tolist() == [1, 2]
+
+
+def test_parquet_files_with_an_uppercase_extension_are_read(tmp_path):
+    pytest.importorskip('pyarrow')
+    pd.DataFrame({'a': [1, 2]}).to_parquet(tmp_path / 'survey_0.PARQUET', index=False)
+
+    source = table_reader.ensure_form_source(str(tmp_path))
+
+    assert source.kind == 'parquet_folder'
+    assert table_reader.read_table(source, 'survey_0')['a'].tolist() == [1, 2]
