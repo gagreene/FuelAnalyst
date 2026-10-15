@@ -23,8 +23,11 @@ import sys
 _AI_TOOLS = r'(?:claude|anthropic|copilot|chatgpt|openai|codex|gemini|cursor)'
 
 PATTERNS = (
-    ('generated-with line', re.compile(r'generated\s+(?:with|by)\s+\[?\s*' + _AI_TOOLS, re.I)),
-    ('co-author trailer naming an AI tool', re.compile(r'^\s*co-authored-by:.*' + _AI_TOOLS, re.I | re.M)),
+    ('generated-with line',
+     re.compile(r'generated\s+(?:with|by)\s+(?:\[\s*)?(?:github\s+)?' + _AI_TOOLS + r'\b', re.I)),
+    # Only the display name before the address is searched, so an AI company's mail domain is not enough to match.
+    ('co-author trailer naming an AI tool',
+     re.compile(r'^\s*co-authored-by:[^<\r\n]*\b' + _AI_TOOLS + r'\b', re.I | re.M)),
     ('AI tool noreply address', re.compile(r'noreply@anthropic\.com', re.I)),
     ('AI tool link', re.compile(r'claude\.com/claude-code', re.I)),
     ('robot emoji', re.compile('\U0001F916')),
