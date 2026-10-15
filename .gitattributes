@@ -6,3 +6,6 @@ examples/data/weather/*.csv filter=lfs diff=lfs merge=lfs -text
 
 # uv rewrites uv.lock with LF; keep it LF in every checkout so relocking never produces line-ending diffs.
 uv.lock text eol=lf
+
+# The local git hooks run under sh on any platform, so they must stay LF.
+scripts/git-hooks/* text eol=lf
