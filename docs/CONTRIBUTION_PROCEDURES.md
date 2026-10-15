@@ -11,7 +11,11 @@ These procedures apply to changes proposed for FuelAnalyst. The root
    committing.
 2. Use commits that describe the actual change. Do not add AI authorship or
    attribution statements to commit messages, PR titles, or PR descriptions.
-   All commits must be verified and authored by a human.
+   All commits must be verified and authored by a human. The `No AI attribution`
+   workflow checks every PR's title, description, and commit messages and fails
+   on any such statement, so a PR cannot merge until it is removed. Install the
+   matching local check with `bash scripts/install_git_hooks.sh`, which rejects
+   the commit before it exists.
 3. Coding agents must obtain the user's **direct permission** before creating
    or amending any commit. They must obtain **separate direct permission** before
    pushing a commit, branch, or tag. Permission to edit, test, stage, prepare a
