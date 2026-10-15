@@ -1,0 +1,8 @@
+#!/bin/sh
+# Reject a commit message that carries an AI authorship or attribution statement.
+# Install with: bash scripts/install_git_hooks.sh
+root="$(git rev-parse --show-toplevel)"
+for py in python python3 py; do
+    command -v "$py" >/dev/null 2>&1 && exec "$py" "$root/scripts/check_ai_attribution.py" --label "commit message" "$1"
+done
+echo "commit-msg hook: no Python found, attribution check skipped" >&2
