@@ -190,7 +190,7 @@ def _biomass_case(species, tree_type, cnfr=np.nan, brdlf=np.nan):
         'tree_ht': np.nan,
         'tree_ht_modeled': 15.0,
         'tree_dens_ha': 100.0,
-    }, index=[0]) if isinstance(species, str) else None
+    }, index=[0])
     params = pd.DataFrame({
         f'BIOMASS_CNBE_DBH-HT_B{component}{number}': [1.0 if number < 3 else 0.0]
         for component in ('wood', 'bark', 'branches', 'foliage') for number in (1, 2, 3)
