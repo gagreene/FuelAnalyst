@@ -15,6 +15,11 @@ from . import helper, table_reader
 
 logger = logging.getLogger(__name__)
 
+#: Value the Survey123 form records when a plot has no surface plant species.
+_NO_SPECIES_CODE = 'NO_SPP'
+#: PhotoLoad series that _get_photoload_biomass() can evaluate (MOSS and TREE give zero biomass).
+_PHOTOLOAD_CODES = ('AMAL', 'ARLA', 'CARU', 'FESC', 'MARE', 'MOSS', 'SYAL', 'TREE', 'VAGL', 'VASC', 'XETE')
+
 
 def _calc_pc_flammable(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     """
@@ -225,6 +230,45 @@ def _get_photoload_biomass(photoload_code: str, pct_cover: float, height: float)
     return photoload_dict.get(photoload_code, np.nan)
 
 
+def _log_species_table_issues(df: pd.DataFrame, species_number: int) -> None:
+    """
+    Log a warning for each plot whose recorded species cannot be converted to biomass.
+
+    A species is reported when its code is not in plant_photoload.csv (it then adds no biomass to any functional
+    group) or when its table entry names a PhotoLoad series that has no biomass equation. The Survey123 value
+    'NO_SPP' and empty entries are not reported. The warnings are collected by error_handling for the error report.
+
+    :param df: DataFrame with the species code (pc_species_N) and its PhotoLoad series (pc_species_N_plCode).
+    :param species_number: Position of the species within the plot (1 to 5).
+    :return: None. Writes warnings to the module logger, keyed by unique_id when that column exists.
+    """
+    code_col = f'pc_species_{species_number}'
+    series_col = f'pc_species_{species_number}_plCode'
+    code = df[code_col]
+    recorded = code.notna() & (code.astype(str).str.strip() != '') & (code != _NO_SPECIES_CODE)
+    unlisted = recorded & df[series_col].isna()
+    no_equation = recorded & df[series_col].notna() & ~df[series_col].isin(_PHOTOLOAD_CODES)
+
+    for idx in df.index[unlisted]:
+        logger.warning(
+            f"Plant species '{code[idx]}' (species {species_number}) is not in plant_photoload.csv (codes are "
+            "case-sensitive), so it adds no biomass to any functional group.",
+            extra={
+                'unique_id': df.loc[idx, 'unique_id'] if 'unique_id' in df.columns else idx,
+                'issue_code': 'plant_species_not_in_table',
+            },
+        )
+    for idx in df.index[no_equation]:
+        logger.warning(
+            f"Plant species '{code[idx]}' (species {species_number}) lists PhotoLoad series "
+            f"'{df.loc[idx, series_col]}' in plant_photoload.csv, which has no biomass equation.",
+            extra={
+                'unique_id': df.loc[idx, 'unique_id'] if 'unique_id' in df.columns else idx,
+                'issue_code': 'plant_species_no_equation',
+            },
+        )
+
+
 def _process_regen(df: pd.DataFrame, regen_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, list]:
     """
     Calculates stand-level (per hectare) regeneration metrics for small and tall, live and dead trees,
@@ -327,6 +371,7 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
 
         # Get the Photoload species code for each species
         df[f'pc_species_{x}_plCode'] = df[f'pc_species_{x}'].map(pl_code_map)
+        _log_species_table_issues(df, x)
         df[f'pc_species_{x}_kgpm2'] = df.apply(
             lambda y: _get_photoload_biomass(
                 y[f'pc_species_{x}_plCode'],

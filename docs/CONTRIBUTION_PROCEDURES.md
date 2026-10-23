@@ -124,6 +124,36 @@ The checkbox is currently a reviewer-enforced rule, not a GitHub-required
 status check. A checked box records the author's local test result; it does not
 replace review of the test output or prove that other operating systems passed.
 
+## Adding a plant species
+
+`plants_regen` converts each recorded surface plant species to biomass through
+`src/fuel_analyst/supporting_data/plant_photoload.csv`. A species code that is not in the table adds
+no biomass to any functional group. `fuel_analyst()` prints a warning for each affected plot and
+records it in `fuelanalyst_errors.csv`, in the Plants and Regeneration column. To add a species,
+open a patch PR (see the versioned merge routing above) that does the following:
+
+1. Add one row to `plant_photoload.csv`:
+   - `name`: a unique code, exactly as it is entered in `pc_species_N` or `pc_species_N_other`
+     (codes are case-sensitive).
+   - `label`: `[Group] CODE - common name`. The group must be `Herb/Forb`, `Grass`, `Shrub`, or
+     `Moss/Lichen`. `plants_regen` reads the functional group from this text, not from `func_group`.
+   - `pl_code`: the PhotoLoad series whose equation estimates the biomass: `AMAL`, `MARE`, `SYAL`,
+     `VAGL`, `VASC`, `ARLA`, `CARU`, `FESC`, or `XETE`, or `MOSS` or `TREE` for zero biomass. Use
+     the series of the closest listed species in growth form, starting with the same genus.
+   - `scientific_name`, `func_group`, `pl_code_alt` (an alternative series considered), `other_name`,
+     and `notes` are informational. Complete them for the new row.
+2. Copy the file unchanged to
+   `docs/survey123/survey123_forms/CWC Fuels 2 - Plants and Regen/media/plant_photoload.csv`. The
+   Survey123 form builds its species list from that copy, so the two files must stay identical, and
+   the form must be republished before field crews can select the new species.
+3. Pass the full test suite. `tests/unit/test_plants_regen.py` checks that names are unique, every
+   series has an equation, and every label starts with a valid group.
+4. State the species and the series chosen in the PR, with the reason. The series is a scientific
+   assumption, so describe it as one.
+
+Until a PR is merged, a user can enter the species under a listed code of similar growth form, or
+add the row to a local copy of the file.
+
 ## GitHub Actions test schedule
 
 The GitHub `Tests` workflow runs the full matrix on pushed `v*` release tags
