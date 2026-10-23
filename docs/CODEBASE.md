@@ -232,6 +232,15 @@ list, and `master_tree_df`. `master_tree_df` includes both live and dead
 trees, distinguished by a `status` column; `dens_live_ha`/`ba_live_ha` are 0
 for dead trees, while `dens_ha`/`ba_ha` hold real totals for every tree.
 
+Before any calculation, `_check_species_in_table()` logs each affected plot through `error_handling` (issue code
+`tree_species_not_in_table`; a record whose plot cannot be resolved goes to the General Error row) and raises
+`UnlistedSpeciesError` (a `ValueError`) that names every tree or sapling species missing from
+`supporting_data/tree_parameters.csv`, with a record count per table. `fuel_analyst()` catches it, writes
+`fuelanalyst_errors.csv`, and re-raises. Empty entries, sapling rows
+without a live or dead count, and the `NO_SAPLINGS` and `NO_REGEN` values are ignored. Conifer status comes from the
+`TreeType` column of the same file. See `docs/CONTRIBUTION_PROCEDURES.md` > Updating plant_photoload.csv and
+tree_parameters.csv.
+
 ### `components/woody_debris.py`
 
 Processes the Survey123 woody transects with configurable Canadian, U.S.,

@@ -42,8 +42,9 @@ the row to a local copy of the file.
 
 ### Adding a tree species
 
-A tree species code that is not in `tree_parameters.csv` currently stops `fuel_analyst()` with a `KeyError`
-that names the code (raised in the biomass step). To add a species:
+A tree or sapling species code that is not in `tree_parameters.csv` stops `fuel_analyst()` before any tree
+calculation, with an error that names each missing code and the table it came from. Each affected plot is also
+listed in the Trees column of `fuelanalyst_errors.csv`, which is written before the run stops. To add a species:
 
 1. Add one row to `tree_parameters.csv`. `Species` is the code exactly as it is entered in the forms
    (case-sensitive) and must be unique, and `sppNumCD` is a unique numeric code. The code reads these

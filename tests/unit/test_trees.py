@@ -1,4 +1,6 @@
 import logging
+import shutil
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -20,6 +22,7 @@ from fuel_analyst.components.trees import (
     _calc_tree_fire_attributes,
     _calc_tree_fsg,
     _calc_tree_type,
+    _check_species_in_table,
     _gen_master_tree_df,
     _get_temesgen_tree_height,
     _log_tree_density_issues,
@@ -29,7 +32,9 @@ from fuel_analyst.components.trees import (
     _print_tree_density_summary,
     _round_plot_data,
     _round_tree_data,
+    UnlistedSpeciesError,
 )
+from fuel_analyst.fuel_analyst import fuel_analyst
 
 
 def test_calc_plot_multipliers_classifies_invalid_source_values():
@@ -512,3 +517,101 @@ def test_unused_invalid_radius_is_logged_as_warning_not_error(caplog):
     assert len(caplog.records) == 1
     assert caplog.records[0].levelname == 'WARNING'
     assert caplog.records[0].issue_code == 'missing_plot_radius'
+
+
+# ── Species that are not in tree_parameters.csv ──────────────────────────────────────────────────────────────────────
+
+def _species_tables(tree_species, sapling_species=None, live=None, dead=None, tree_parents=None, sapling_parents=None):
+    """Build a plot table (two plots, P1 and P2), raw tree and sapling tables, and a parameter table of FDI and PLI."""
+    sapling_species = sapling_species if sapling_species is not None else []
+    plot_df = pd.DataFrame({'GlobalID': ['g1', 'g2'], 'unique_id': ['P1', 'P2']})
+    tree_df = pd.DataFrame({
+        'ParentGlobalID': tree_parents if tree_parents is not None else ['g1'] * len(tree_species),
+        'tree_species': tree_species,
+    })
+    sapling_df = pd.DataFrame({
+        'ParentGlobalID': sapling_parents if sapling_parents is not None else ['g2'] * len(sapling_species),
+        'sapling_species': sapling_species,
+        'sapling_live_count': live if live is not None else [1] * len(sapling_species),
+        'sapling_dead_count': dead if dead is not None else [0] * len(sapling_species),
+    })
+    return plot_df, tree_df, sapling_df, pd.DataFrame(index=['FDI', 'PLI'])
+
+
+def test_check_species_in_table_accepts_listed_species():
+    _check_species_in_table(*_species_tables(['FDI', 'PLI', 'FDI'], ['PLI']))
+
+
+def test_check_species_in_table_names_unlisted_tree_species_with_counts():
+    with pytest.raises(UnlistedSpeciesError) as error:
+        _check_species_in_table(*_species_tables(['FDI', 'ZZ', 'ZZ', 'QQ']))
+    message = str(error.value)
+    assert "'QQ' (1 record in the tree table)" in message
+    assert "'ZZ' (2 records in the tree table)" in message
+    assert 'tree_parameters.csv' in message and 'Adding a tree species' in message
+
+
+def test_unlisted_species_error_is_a_value_error():
+    assert issubclass(UnlistedSpeciesError, ValueError)
+
+
+def test_check_species_in_table_reports_tree_and_sapling_species_together():
+    with pytest.raises(UnlistedSpeciesError) as error:
+        _check_species_in_table(*_species_tables(['ZZ'], ['QQ', 'FDI']))
+    message = str(error.value)
+    assert "'ZZ' (1 record in the tree table)" in message
+    assert "'QQ' (1 record in the sapling table)" in message
+
+
+def test_check_species_in_table_ignores_empty_entries_and_no_sapling_values():
+    tables = _species_tables(['FDI', None, np.nan], ['NO_SAPLINGS', 'NO_REGEN', None], live=[1, 1, 1])
+    _check_species_in_table(*tables)
+
+
+def test_check_species_in_table_ignores_unlisted_sapling_rows_without_a_count():
+    # A zero or missing count never reaches the height or biomass calculations, so it never stopped a run.
+    _check_species_in_table(*_species_tables(['FDI'], ['ZZ', 'QQ'], live=[0, np.nan], dead=[0, np.nan]))
+
+
+def test_check_species_in_table_counts_a_dead_only_sapling_and_text_counts():
+    with pytest.raises(UnlistedSpeciesError, match="'ZZ' \\(1 record in the sapling table\\)"):
+        _check_species_in_table(*_species_tables([], ['ZZ'], live=[0], dead=['2']))
+
+
+def test_check_species_in_table_logs_each_affected_plot(caplog):
+    tables = _species_tables(['ZZ', 'ZZ'], ['QQ'], tree_parents=['g1', 'g2'])
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.trees'):
+        with pytest.raises(UnlistedSpeciesError):
+            _check_species_in_table(*tables)
+    logged = {(r.unique_id, r.issue_code): r.getMessage() for r in caplog.records}
+    assert {('P1', 'tree_species_not_in_table'), ('P2', 'tree_species_not_in_table')} <= set(logged)
+    assert "Species 'ZZ' (1 record in the tree table) is not in tree_parameters.csv" in logged[
+        ('P1', 'tree_species_not_in_table')]
+    sapling_messages = [m for m in logged.values() if 'sapling table' in m]
+    assert len(sapling_messages) == 1 and "'QQ'" in sapling_messages[0]
+
+
+def test_check_species_in_table_sends_an_unresolved_parent_to_the_general_error_row(caplog):
+    tables = _species_tables(['ZZ'], tree_parents=['missing-parent'])
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.trees'):
+        with pytest.raises(UnlistedSpeciesError):
+            _check_species_in_table(*tables)
+    assert len(caplog.records) == 1
+    assert pd.isna(caplog.records[0].unique_id)
+
+
+def test_fuel_analyst_saves_the_error_report_when_a_tree_species_is_unlisted(tmp_path):
+    source = Path(__file__).resolve().parents[2] / 'examples' / 'data' / 'Survey123_Data'
+    in_dir = tmp_path / 'Survey123_Data'
+    shutil.copytree(source, in_dir)
+    trees = pd.read_csv(in_dir / '3_Trees' / 'tree_plot_2.csv')
+    trees.loc[trees['tree_species'].first_valid_index(), 'tree_species'] = 'ZZ'
+    trees.to_csv(in_dir / '3_Trees' / 'tree_plot_2.csv', index=False)
+    out_dir = tmp_path / 'out'
+
+    with pytest.raises(UnlistedSpeciesError, match="Species not found in tree_parameters.csv: 'ZZ' \\(1 record in the tree table\\)"):
+        fuel_analyst(in_dir=str(in_dir), out_dir=str(out_dir), surface_fire_intensity_model='Byram')
+
+    errors = pd.read_csv(out_dir / 'fuelanalyst_errors.csv', low_memory=False)
+    assert errors['Trees'].astype(str).str.contains("Species 'ZZ'").any()
+    assert not (out_dir / 'master_fuel_df.csv').exists()

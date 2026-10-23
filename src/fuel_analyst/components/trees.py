@@ -74,6 +74,10 @@ _PLOT_RADIUS_FIELDS = {
 logger = logging.getLogger(__name__)
 
 
+class UnlistedSpeciesError(ValueError):
+    """Raised when a recorded tree or sapling species is missing from tree_parameters.csv."""
+
+
 def _calc_plot_multipliers(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate per-hectare expansion factors from circular plot radii.
@@ -1464,6 +1468,69 @@ def _calc_tree_weighted_attributes(tree_df: pd.DataFrame) -> pd.DataFrame:
     return tree_df
 
 
+def _check_species_in_table(
+        df: pd.DataFrame,
+        tree_df: pd.DataFrame,
+        sapling_df: pd.DataFrame,
+        tree_params_df: pd.DataFrame
+) -> None:
+    """
+    Log and raise an error for every recorded tree or sapling species that is missing from tree_parameters.csv.
+
+    The tree and sapling calculations look each species up in the table for its height, biomass, and fuel parameters,
+    so an unlisted species would otherwise stop the run with a bare KeyError. Each affected plot is logged through
+    error_handling (a record whose plot cannot be resolved goes to the General Error row), and one UnlistedSpeciesError
+    then names every species, so fuel_analyst() can save the error report before the run stops. Empty species
+    entries are ignored. Sapling records count only when a live or dead count is above zero, and the form values
+    for no saplings ('NO_SAPLINGS', and 'NO_REGEN' in older exports) never count.
+
+    :param df: Plot-level DataFrame with GlobalID and unique_id columns.
+    :param tree_df: Raw tree table, with ParentGlobalID and tree_species columns.
+    :param sapling_df: Raw sapling table, with ParentGlobalID, sapling_species, sapling_live_count, and
+        sapling_dead_count columns.
+    :param tree_params_df: Species parameter table indexed by species code.
+    :return: None. Raises UnlistedSpeciesError when any recorded species is not in tree_params_df.
+    """
+    known = set(tree_params_df.index)
+
+    unlisted_trees = tree_df[tree_df['tree_species'].notna() & ~tree_df['tree_species'].isin(known)]
+    live = pd.to_numeric(sapling_df['sapling_live_count'], errors='coerce').fillna(0)
+    dead = pd.to_numeric(sapling_df['sapling_dead_count'], errors='coerce').fillna(0)
+    recorded = (
+        sapling_df['sapling_species'].notna() & ((live > 0) | (dead > 0)) &
+        ~sapling_df['sapling_species'].isin(['NO_SAPLINGS', 'NO_REGEN'])
+    )
+    unlisted_saplings = sapling_df[recorded & ~sapling_df['sapling_species'].isin(known)]
+
+    summary = []
+    for label, records, species_col in (('tree', unlisted_trees, 'tree_species'),
+                                        ('sapling', unlisted_saplings, 'sapling_species')):
+        if records.empty:
+            continue
+        plots = _resolve_parent_unique_ids(df, records['ParentGlobalID'])
+        for (species, unique_id), count in (
+                records.assign(_plot=plots.values).groupby([species_col, '_plot'], dropna=False).size().items()
+        ):
+            logger.error(
+                f"Species '{species}' ({count} {'record' if count == 1 else 'records'} in the {label} table) is not in "
+                f"tree_parameters.csv; the run was stopped.",
+                extra={'unique_id': unique_id, 'issue_code': 'tree_species_not_in_table'},
+            )
+        for species, count in records[species_col].value_counts().items():
+            summary.append((species, label, count))
+
+    if summary:
+        problems = [f"'{species}' ({count} {'record' if count == 1 else 'records'} in the {label} table)"
+                    for species, label, count in sorted(summary, key=lambda item: (item[1] != 'tree', str(item[0])))]
+        raise UnlistedSpeciesError(
+            'Species not found in tree_parameters.csv: ' + '; '.join(problems) + '. FuelAnalyst needs every recorded '
+            'species in that table to estimate its height and biomass. If a code is a typo, correct it in the input '
+            'data (codes are case-sensitive). To add a species, add a row to '
+            'src/fuel_analyst/supporting_data/tree_parameters.csv, as described under "Adding a tree species" in '
+            'docs/CONTRIBUTION_PROCEDURES.md.'
+        )
+
+
 def _classify_numeric_input(raw: pd.Series, numeric: pd.Series, prefix: str, allow_zero: bool) -> pd.Series:
     """
     Return a stable validation code for each numeric source value.
@@ -1952,6 +2019,24 @@ def _print_tree_density_summary(partial_log: list[tuple]) -> None:
     print('\tSee the run-level error report (fuelanalyst_errors.csv) for full details.')
 
 
+def _resolve_parent_unique_ids(df: pd.DataFrame, parent_ids: pd.Series) -> pd.Series:
+    """
+    Map Survey123 parent record IDs to plot unique IDs, leaving ambiguous or unknown parents missing.
+
+    A parent is ambiguous when its GlobalID repeats in the plot table or the plot table marks it ambiguous. This is the
+    same rule _log_tree_density_issues() applies to its records.
+
+    :param df: Plot-level DataFrame with GlobalID and unique_id columns, and optionally _parent_id_ambiguous.
+    :param parent_ids: Parent record IDs of the tree or sapling records.
+    :return: Series of plot unique IDs aligned with parent_ids, missing where the parent cannot be resolved safely.
+    """
+    ambiguous = df.get('_parent_id_ambiguous', pd.Series(False, index=df.index)).fillna(False).astype(bool)
+    duplicate_ids = set(df.loc[df['GlobalID'].duplicated(keep=False), 'GlobalID'].dropna())
+    duplicate_ids.update(df.loc[ambiguous, 'GlobalID'].dropna())
+    valid = df.loc[~df['GlobalID'].isin(duplicate_ids)].drop_duplicates('GlobalID').set_index('GlobalID')['unique_id']
+    return parent_ids.map(valid)
+
+
 def _round_plot_data(df: pd.DataFrame) -> pd.DataFrame:
     """
     Rounds plot data columns to appropriate decimal places.
@@ -2035,9 +2120,14 @@ def process_trees(
     df = _calc_plot_multipliers(df)
     df = _round_plot_data(df)
 
-    # ### PROCESS SAPLING ATTRIBUTES
-    # Get sapling dataframe
+    # Read the sapling and tree tables, and stop before any calculation if a recorded species is not in
+    # tree_parameters.csv, so that every missing species is reported together
     sapling_df = table_reader.read_table(in_folder, 'sapling_1')
+    tree_df = table_reader.read_table(in_folder, 'tree_plot_2')
+    _check_species_in_table(df, tree_df, sapling_df, tree_params_df)
+
+    # ### PROCESS SAPLING ATTRIBUTES
+    # Normalize the sapling dataframe read above
     sapling_df = _normalize_sapling_inputs(sapling_df)
     # Calculate sapling attributes
     sapling_df = _calc_sapling_tree_type(sapling_df, tree_params_df)
@@ -2046,8 +2136,7 @@ def process_trees(
     sapling_df = _calc_sapling_ht(sapling_df, tree_params_df)
 
     # ### PROCESS INDIVIDUAL TREE ATTRIBUTES
-    # Get tree dataframe
-    tree_df = table_reader.read_table(in_folder, 'tree_plot_2')
+    # Normalize the tree dataframe read above
     tree_df = _normalize_tree_inputs(tree_df)
     # Merge sapling attributes
     tree_df, sapling_df = _merge_saplings_to_trees(tree_df, sapling_df)
