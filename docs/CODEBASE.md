@@ -220,7 +220,7 @@ a functional group. A species whose code is not in the table adds no biomass to 
 whose series has no equation (anything outside `_PHOTOLOAD_CODES`) is also reported. Both cases log a
 warning per plot (issue codes `plant_species_not_in_table` and `plant_species_no_equation`), which prints on
 the console and appears in the Plants and Regeneration column of `fuelanalyst_errors.csv`. The form value
-`NO_SPP` and empty entries are not reported. See `docs/CONTRIBUTION_PROCEDURES.md` > Adding a plant species.
+`NO_SPP` and empty entries are not reported. See `docs/CONTRIBUTION_PROCEDURES.md` > Updating plant_photoload.csv and tree_parameters.csv.
 
 ### `components/trees.py`
 

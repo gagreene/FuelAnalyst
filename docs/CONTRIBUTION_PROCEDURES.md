@@ -3,6 +3,82 @@
 These procedures apply to changes proposed for FuelAnalyst. The root
 [`README.md`](../README.md#contributing) covers the shorter contributor checklist.
 
+## Updating plant_photoload.csv and tree_parameters.csv
+
+Two tables in `src/fuel_analyst/supporting_data/` hold the species lookups: `plant_photoload.csv` (surface
+plant species to biomass equations) and `tree_parameters.csv` (tree species to height, biomass, fuel, and FOFEM
+parameters). Both are keyed on the species codes recorded in the field. A change to either is a scientific
+change as well as a data change. In addition to the steps below, follow the rest of this document: branch from
+`master`, open a patch PR (see the versioned merge routing), pass the full test suite, and describe the source
+and the effect of the change in the PR.
+
+### Adding a plant species
+
+A plant species code that is not in `plant_photoload.csv` adds no biomass to any functional group.
+`fuel_analyst()` prints a warning for each affected plot and records it in `fuelanalyst_errors.csv`, in the
+Plants and Regeneration column. To add a species:
+
+1. Add one row to `plant_photoload.csv`:
+   - `name`: a unique code, exactly as it is entered in `pc_species_N` or `pc_species_N_other` (codes are
+     case-sensitive).
+   - `label`: `[Group] CODE - common name`. The group must be `Herb/Forb`, `Grass`, `Shrub`, or
+     `Moss/Lichen`. `plants_regen` reads the functional group from this text, not from `func_group`.
+   - `pl_code`: the PhotoLoad series whose equation estimates the biomass: `AMAL`, `MARE`, `SYAL`,
+     `VAGL`, `VASC`, `ARLA`, `CARU`, `FESC`, or `XETE`, or `MOSS` or `TREE` for zero biomass. Use
+     the series of the closest listed species in growth form, starting with the same genus.
+   - `scientific_name`, `func_group`, `pl_code_alt` (an alternative series considered), `other_name`,
+     and `notes` are informational. Complete them for the new row.
+2. Copy the file unchanged to
+   `docs/survey123/survey123_forms/CWC Fuels 2 - Plants and Regen/media/plant_photoload.csv`. The
+   Survey123 form builds its species list from that copy, so the two files must stay identical, and
+   the form must be republished before field crews can select the new species.
+3. Pass the full test suite. `tests/unit/test_plants_regen.py` checks that names are unique, every
+   series has an equation, and every label starts with a valid group.
+4. State the species and the series chosen in the PR, with the reason. The series is a scientific
+   assumption, so describe it as one.
+
+Until a PR is merged, a user can enter the species under a listed code of similar growth form, or add
+the row to a local copy of the file.
+
+### Adding a tree species
+
+A tree species code that is not in `tree_parameters.csv` currently stops `fuel_analyst()` with a `KeyError`
+that names the code (raised in the biomass step). To add a species:
+
+1. Add one row to `tree_parameters.csv`. `Species` is the code exactly as it is entered in the forms
+   (case-sensitive) and must be unique, and `sppNumCD` is a unique numeric code. The code reads these
+   columns, so each needs a value for the new species:
+   - `TreeType`: `conifer` or `broadleaf`.
+   - `Temesgen_M2a`, `Temesgen_M2b`, and `Temesgen_M2c`: the height-diameter model 2 coefficients.
+   - The twelve `BIOMASS_CNBE_DBH-HT_B{wood,bark,branches,foliage}{1,2,3}` coefficients: the CNBE tree
+     biomass equations.
+   - `FOFEM_sppCD` and `FOFEM_BrkThck_Vsp`: the FOFEM species code and bark thickness coefficient.
+   - `ConPyro_StandType`: `D`, `P`, or `S`, as in the existing rows.
+   - The twelve `SG_*` specific gravity values, `Duff_BD`, and `Litter_BD`.
+
+   The remaining columns (labels, reference text, and coefficient groups for equations the code does not
+   call, such as Temesgen model 7, the Cruz crown fuel equations, and the canopy cover equation) are
+   informational. Fill them in where the source gives them and name the source in the `*_Ref` columns. Take
+   each coefficient from a published equation for the species or its closest relative, and say in the PR
+   where every group came from.
+2. For a conifer, add the code to `conifer_list` in `src/fuel_analyst/components/trees.py`. That list, not
+   `TreeType`, selects the decay-class retention fractions in the biomass calculation, so keep the two
+   consistent.
+3. Add the species to the Survey123 forms: the `list_tree_species` choices of every form that uses it (Plot
+   Attributes, Plants and Regeneration, Trees, and Woody Debris), and a row (`Species`, `Species_Label`,
+   `Type`) in `docs/survey123/survey123_forms/CWC Fuels 3 - Trees/media/Tree_Types.csv`, which the Trees form
+   uses to calculate the tree type. Update the manual-entry forms in `docs/survey123/manual_entry_forms/`,
+   then republish the forms.
+4. Pass the full test suite, and add a test for the new species. The rows `JD`, `JH`, and `DECAYED`
+   intentionally have no allometric coefficients (they are shrubs and a decay placeholder), so a check of
+   the table must skip them.
+
+### Changing existing values
+
+A corrected coefficient, specific gravity, or series assignment changes the results of every plot with that
+species. Give the old and new values and the source in the PR, rerun `examples/run_fuel_analyst_conpyro_demo.py`
+to report which example outputs change, and add a line to `docs/RELEASE_NOTES.md`.
+
 ## Branches, commits, and pushes
 
 1. Create a focused work branch from its intended PR base under the versioned
@@ -123,36 +199,6 @@ current PR head.
 The checkbox is currently a reviewer-enforced rule, not a GitHub-required
 status check. A checked box records the author's local test result; it does not
 replace review of the test output or prove that other operating systems passed.
-
-## Adding a plant species
-
-`plants_regen` converts each recorded surface plant species to biomass through
-`src/fuel_analyst/supporting_data/plant_photoload.csv`. A species code that is not in the table adds
-no biomass to any functional group. `fuel_analyst()` prints a warning for each affected plot and
-records it in `fuelanalyst_errors.csv`, in the Plants and Regeneration column. To add a species,
-open a patch PR (see the versioned merge routing above) that does the following:
-
-1. Add one row to `plant_photoload.csv`:
-   - `name`: a unique code, exactly as it is entered in `pc_species_N` or `pc_species_N_other`
-     (codes are case-sensitive).
-   - `label`: `[Group] CODE - common name`. The group must be `Herb/Forb`, `Grass`, `Shrub`, or
-     `Moss/Lichen`. `plants_regen` reads the functional group from this text, not from `func_group`.
-   - `pl_code`: the PhotoLoad series whose equation estimates the biomass: `AMAL`, `MARE`, `SYAL`,
-     `VAGL`, `VASC`, `ARLA`, `CARU`, `FESC`, or `XETE`, or `MOSS` or `TREE` for zero biomass. Use
-     the series of the closest listed species in growth form, starting with the same genus.
-   - `scientific_name`, `func_group`, `pl_code_alt` (an alternative series considered), `other_name`,
-     and `notes` are informational. Complete them for the new row.
-2. Copy the file unchanged to
-   `docs/survey123/survey123_forms/CWC Fuels 2 - Plants and Regen/media/plant_photoload.csv`. The
-   Survey123 form builds its species list from that copy, so the two files must stay identical, and
-   the form must be republished before field crews can select the new species.
-3. Pass the full test suite. `tests/unit/test_plants_regen.py` checks that names are unique, every
-   series has an equation, and every label starts with a valid group.
-4. State the species and the series chosen in the PR, with the reason. The series is a scientific
-   assumption, so describe it as one.
-
-Until a PR is merged, a user can enter the species under a listed code of similar growth form, or
-add the row to a local copy of the file.
 
 ## GitHub Actions test schedule
 
