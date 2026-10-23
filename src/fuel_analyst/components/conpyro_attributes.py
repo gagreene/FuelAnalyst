@@ -6,11 +6,14 @@ Created on Tue Oct 21, 09:00:00 2025
 """
 __author__ = ['Gregory A. Greene']
 
+import logging
 import os
 import numpy as np
 import pandas as pd
 
 from . import helper
+
+logger = logging.getLogger(__name__)
 
 
 def _calc_stand_density(df: pd.DataFrame, cc_field: str) -> pd.DataFrame:
@@ -56,14 +59,23 @@ def _calc_stand_type(df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataF
     present_codes = stand_type_df[spp_code_cols].stack()
     present_codes = present_codes[present_codes.notna()]
     unknown_codes = present_codes[~present_codes.isin(tree_type_lookup.index)]
-    if not unknown_codes.empty:
-        raise KeyError(unknown_codes.iloc[0])
+    unknown_by_plot = {}
+    for (row_label, _), code in unknown_codes.items():
+        unknown_by_plot.setdefault(stand_type_df.loc[row_label, 'unique_id'], []).append(code)
+    for unique_id, codes in unknown_by_plot.items():
+        logger.error(
+            f"Species code(s) {', '.join(repr(code) for code in dict.fromkeys(codes))} in SPECIES_CD_1 to SPECIES_CD_6 "
+            f"are not in tree_parameters.csv; the stand type for this plot was left empty.",
+            extra={'unique_id': unique_id, 'issue_code': 'stand_type_species_not_in_table'},
+        )
+    unknown_plot = stand_type_df['unique_id'].isin(unknown_by_plot)
 
     stand_type_df[spp_code_cols] = pd.DataFrame(
         {column: stand_type_df[column].map(tree_type_lookup) for column in spp_code_cols},
         index=stand_type_df.index,
     )
     stand_type_df['tree_type'] = _join_first_seen_unique_types(stand_type_df[spp_code_cols])
+    stand_type_df.loc[unknown_plot, 'tree_type'] = ''
     tree_type = df['unique_id'].map(stand_type_df.set_index('unique_id')['tree_type'])
 
     # Create masks for each condition
@@ -86,6 +98,9 @@ def _calc_stand_type(df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataF
     conpyro_stand_type.loc[cd1_mask & ~mw_mask & ~pct80_mask] = df.loc[
         cd1_mask & ~mw_mask & ~pct80_mask, 'SPECIES_CD_1'
     ].map(tree_params_df['ConPyro_StandType'])
+
+    # A plot with a species code that is not in the table gets no stand type, whatever its other codes give
+    conpyro_stand_type.loc[df['unique_id'].isin(unknown_by_plot)] = ''
 
     stand_columns = {
         'tree_type': tree_type,

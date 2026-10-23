@@ -763,17 +763,12 @@ def fuel_analyst(
             if form == 'plants':
                 form_df, add_columns = pr.process_plants_regen(form_source, out_path)
             elif form == 'trees':
-                try:
-                    (form_df, add_columns,
-                     master_tree_df) = trees.process_trees(form_source,
-                                                           out_path,
-                                                           surface_fire_intensity_model,
-                                                           stand_summary_params,
-                                                           gen_conpyro_df)
-                except trees.UnlistedSpeciesError:
-                    # The species were logged for the error report, so save it before the run stops
-                    error_handling.write_report(os.path.join(out_dir, 'fuelanalyst_errors.csv'), plot_df=plot_df)
-                    raise
+                (form_df, add_columns,
+                 master_tree_df) = trees.process_trees(form_source,
+                                                       out_path,
+                                                       surface_fire_intensity_model,
+                                                       stand_summary_params,
+                                                       gen_conpyro_df)
             elif form == 'cover':
                 form_df, add_columns = cc.process_canopy_cover(form_source, out_path)
             elif form == 'woody':

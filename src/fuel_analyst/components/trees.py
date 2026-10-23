@@ -74,10 +74,6 @@ _PLOT_RADIUS_FIELDS = {
 logger = logging.getLogger(__name__)
 
 
-class UnlistedSpeciesError(ValueError):
-    """Raised when a recorded tree or sapling species is missing from tree_parameters.csv."""
-
-
 def _calc_plot_multipliers(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate per-hectare expansion factors from circular plot radii.
@@ -1468,69 +1464,6 @@ def _calc_tree_weighted_attributes(tree_df: pd.DataFrame) -> pd.DataFrame:
     return tree_df
 
 
-def _check_species_in_table(
-        df: pd.DataFrame,
-        tree_df: pd.DataFrame,
-        sapling_df: pd.DataFrame,
-        tree_params_df: pd.DataFrame
-) -> None:
-    """
-    Log and raise an error for every recorded tree or sapling species that is missing from tree_parameters.csv.
-
-    The tree and sapling calculations look each species up in the table for its height, biomass, and fuel parameters,
-    so an unlisted species would otherwise stop the run with a bare KeyError. Each affected plot is logged through
-    error_handling (a record whose plot cannot be resolved goes to the General Error row), and one UnlistedSpeciesError
-    then names every species, so fuel_analyst() can save the error report before the run stops. Empty species
-    entries are ignored. Sapling records count only when a live or dead count is above zero, and the form values
-    for no saplings ('NO_SAPLINGS', and 'NO_REGEN' in older exports) never count.
-
-    :param df: Plot-level DataFrame with GlobalID and unique_id columns.
-    :param tree_df: Raw tree table, with ParentGlobalID and tree_species columns.
-    :param sapling_df: Raw sapling table, with ParentGlobalID, sapling_species, sapling_live_count, and
-        sapling_dead_count columns.
-    :param tree_params_df: Species parameter table indexed by species code.
-    :return: None. Raises UnlistedSpeciesError when any recorded species is not in tree_params_df.
-    """
-    known = set(tree_params_df.index)
-
-    unlisted_trees = tree_df[tree_df['tree_species'].notna() & ~tree_df['tree_species'].isin(known)]
-    live = pd.to_numeric(sapling_df['sapling_live_count'], errors='coerce').fillna(0)
-    dead = pd.to_numeric(sapling_df['sapling_dead_count'], errors='coerce').fillna(0)
-    recorded = (
-        sapling_df['sapling_species'].notna() & ((live > 0) | (dead > 0)) &
-        ~sapling_df['sapling_species'].isin(['NO_SAPLINGS', 'NO_REGEN'])
-    )
-    unlisted_saplings = sapling_df[recorded & ~sapling_df['sapling_species'].isin(known)]
-
-    summary = []
-    for label, records, species_col in (('tree', unlisted_trees, 'tree_species'),
-                                        ('sapling', unlisted_saplings, 'sapling_species')):
-        if records.empty:
-            continue
-        plots = _resolve_parent_unique_ids(df, records['ParentGlobalID'])
-        for (species, unique_id), count in (
-                records.assign(_plot=plots.values).groupby([species_col, '_plot'], dropna=False).size().items()
-        ):
-            logger.error(
-                f"Species '{species}' ({count} {'record' if count == 1 else 'records'} in the {label} table) is not in "
-                f"tree_parameters.csv; the run was stopped.",
-                extra={'unique_id': unique_id, 'issue_code': 'tree_species_not_in_table'},
-            )
-        for species, count in records[species_col].value_counts().items():
-            summary.append((species, label, count))
-
-    if summary:
-        problems = [f"'{species}' ({count} {'record' if count == 1 else 'records'} in the {label} table)"
-                    for species, label, count in sorted(summary, key=lambda item: (item[1] != 'tree', str(item[0])))]
-        raise UnlistedSpeciesError(
-            'Species not found in tree_parameters.csv: ' + '; '.join(problems) + '. FuelAnalyst needs every recorded '
-            'species in that table to estimate its height and biomass. If a code is a typo, correct it in the input '
-            'data (codes are case-sensitive). To add a species, add a row to '
-            'src/fuel_analyst/supporting_data/tree_parameters.csv, as described under "Adding a tree species" in '
-            'docs/CONTRIBUTION_PROCEDURES.md.'
-        )
-
-
 def _classify_numeric_input(raw: pd.Series, numeric: pd.Series, prefix: str, allow_zero: bool) -> pd.Series:
     """
     Return a stable validation code for each numeric source value.
@@ -1553,6 +1486,77 @@ def _classify_numeric_input(raw: pd.Series, numeric: pd.Series, prefix: str, all
     else:
         issue.loc[finite & numeric.le(0)] = f'non_positive_{prefix}'
     return issue
+
+
+def _exclude_unlisted_species(
+        df: pd.DataFrame,
+        tree_df: pd.DataFrame,
+        sapling_df: pd.DataFrame,
+        tree_params_df: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame, list]:
+    """
+    Log each tree or sapling species that is missing from tree_parameters.csv and leave the affected plots out.
+
+    The tree and sapling calculations look each species up in the table for its height, biomass, and fuel parameters,
+    so an unlisted species cannot be calculated. Each affected plot is logged through error_handling (a record whose
+    plot cannot be resolved goes to the General Error row). Every tree and sapling record of an affected plot is then
+    removed, so that no plot is summarized from only some of its trees, and the run continues with the other plots.
+    The caller sets the tree results of the returned plots to missing. Empty species entries are ignored. Sapling
+    records count only when a live or dead count is above zero, and the form values for no saplings ('NO_SAPLINGS',
+    and 'NO_REGEN' in older exports) never count.
+
+    :param df: Plot-level DataFrame with GlobalID and unique_id columns.
+    :param tree_df: Raw tree table, with ParentGlobalID and tree_species columns.
+    :param sapling_df: Raw sapling table, with ParentGlobalID, sapling_species, sapling_live_count, and
+        sapling_dead_count columns.
+    :param tree_params_df: Species parameter table indexed by species code.
+    :return: Tuple of the tree table and the sapling table without the records of the affected plots (and without
+        unlisted-species records whose plot cannot be resolved), and the list of affected plot unique IDs.
+    """
+    known = set(tree_params_df.index)
+
+    unlisted_trees = tree_df[tree_df['tree_species'].notna() & ~tree_df['tree_species'].isin(known)]
+    live = pd.to_numeric(sapling_df['sapling_live_count'], errors='coerce').fillna(0)
+    dead = pd.to_numeric(sapling_df['sapling_dead_count'], errors='coerce').fillna(0)
+    recorded = (
+        sapling_df['sapling_species'].notna() & ((live > 0) | (dead > 0)) &
+        ~sapling_df['sapling_species'].isin(['NO_SAPLINGS', 'NO_REGEN'])
+    )
+    unlisted_saplings = sapling_df[recorded & ~sapling_df['sapling_species'].isin(known)]
+
+    affected = set()
+    for label, records, species_col in (('tree', unlisted_trees, 'tree_species'),
+                                        ('sapling', unlisted_saplings, 'sapling_species')):
+        if records.empty:
+            continue
+        plots = _resolve_parent_unique_ids(df, records['ParentGlobalID'])
+        affected.update(plots.dropna())
+        for (species, unique_id), count in (
+                records.assign(_plot=plots.values).groupby([species_col, '_plot'], dropna=False).size().items()
+        ):
+            outcome = ("the tree results for this plot were left empty" if pd.notna(unique_id)
+                       else "the records were left out of the tree calculations")
+            logger.error(
+                f"Species '{species}' ({count} {'record' if count == 1 else 'records'} in the {label} table) is not in "
+                f"tree_parameters.csv; {outcome}.",
+                extra={'unique_id': unique_id, 'issue_code': 'tree_species_not_in_table'},
+            )
+
+    if unlisted_trees.empty and unlisted_saplings.empty:
+        return tree_df, sapling_df, []
+
+    def _remaining(records: pd.DataFrame, unlisted: pd.DataFrame) -> pd.DataFrame:
+        """
+        Drop the records of the affected plots and the unlisted records.
+
+        :param records: Raw tree or sapling table.
+        :param unlisted: The unlisted-species records of that table.
+        :return: The table without those records, with a fresh index.
+        """
+        in_affected_plot = _resolve_parent_unique_ids(df, records['ParentGlobalID']).isin(affected)
+        return records.loc[~(in_affected_plot | records.index.isin(unlisted.index))].reset_index(drop=True)
+
+    return _remaining(tree_df, unlisted_trees), _remaining(sapling_df, unlisted_saplings), sorted(affected)
 
 
 def _gen_master_tree_df(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame:
@@ -2120,11 +2124,11 @@ def process_trees(
     df = _calc_plot_multipliers(df)
     df = _round_plot_data(df)
 
-    # Read the sapling and tree tables, and stop before any calculation if a recorded species is not in
-    # tree_parameters.csv, so that every missing species is reported together
+    # Read the sapling and tree tables, and leave out the plots that record a species that is not in
+    # tree_parameters.csv (each is logged), so that the other plots are still calculated
     sapling_df = table_reader.read_table(in_folder, 'sapling_1')
     tree_df = table_reader.read_table(in_folder, 'tree_plot_2')
-    _check_species_in_table(df, tree_df, sapling_df, tree_params_df)
+    tree_df, sapling_df, excluded_plot_ids = _exclude_unlisted_species(df, tree_df, sapling_df, tree_params_df)
 
     # ### PROCESS SAPLING ATTRIBUTES
     # Normalize the sapling dataframe read above
@@ -2172,6 +2176,10 @@ def process_trees(
     keep_columns.extend(add_columns)
     df, add_columns = _calc_stand_attributes(df, tree_df, stand_summary_params)
     keep_columns.extend(add_columns)
+    # A plot left out for an unlisted species has no trees to summarize, so its tree results are missing, not zero
+    if excluded_plot_ids:
+        tree_columns = [column for column in keep_columns if column in df.columns]
+        df[tree_columns] = df[tree_columns].mask(df['unique_id'].isin(excluded_plot_ids))
 
     # ### SAVE DATASETS TO OUTPUT FOLDER
     os.makedirs(out_folder, exist_ok=True)

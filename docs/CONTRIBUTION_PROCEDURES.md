@@ -42,9 +42,11 @@ the row to a local copy of the file.
 
 ### Adding a tree species
 
-A tree or sapling species code that is not in `tree_parameters.csv` stops `fuel_analyst()` before any tree
-calculation, with an error that names each missing code and the table it came from. Each affected plot is also
-listed in the Trees column of `fuelanalyst_errors.csv`, which is written before the run stops. To add a species:
+A tree or sapling species code that is not in `tree_parameters.csv` cannot be calculated, so `fuel_analyst()` leaves
+that plot out of the tree calculations, logs an error that names the code and the table it came from, and
+continues with the other plots. The error appears in the Trees column of `fuelanalyst_errors.csv`, and the plot's
+tree results are empty. A code in `SPECIES_CD_1` to `SPECIES_CD_6` of the plot table that is not in the file is
+reported in the ConPyro Attributes column, and that plot's stand type is empty. To add a species:
 
 1. Add one row to `tree_parameters.csv`. `Species` is the code exactly as it is entered in the forms
    (case-sensitive) and must be unique, and `sppNumCD` is a unique numeric code. The code reads these

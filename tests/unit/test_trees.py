@@ -22,7 +22,7 @@ from fuel_analyst.components.trees import (
     _calc_tree_fire_attributes,
     _calc_tree_fsg,
     _calc_tree_type,
-    _check_species_in_table,
+    _exclude_unlisted_species,
     _gen_master_tree_df,
     _get_temesgen_tree_height,
     _log_tree_density_issues,
@@ -32,7 +32,6 @@ from fuel_analyst.components.trees import (
     _print_tree_density_summary,
     _round_plot_data,
     _round_tree_data,
-    UnlistedSpeciesError,
 )
 from fuel_analyst.fuel_analyst import fuel_analyst
 
@@ -538,80 +537,83 @@ def _species_tables(tree_species, sapling_species=None, live=None, dead=None, tr
     return plot_df, tree_df, sapling_df, pd.DataFrame(index=['FDI', 'PLI'])
 
 
-def test_check_species_in_table_accepts_listed_species():
-    _check_species_in_table(*_species_tables(['FDI', 'PLI', 'FDI'], ['PLI']))
+def test_exclude_unlisted_species_keeps_everything_when_all_species_are_listed(caplog):
+    plot_df, tree_df, sapling_df, params = _species_tables(['FDI', 'PLI', 'FDI'], ['PLI'])
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.trees'):
+        trees, saplings, excluded = _exclude_unlisted_species(plot_df, tree_df, sapling_df, params)
+    assert excluded == []
+    assert len(trees) == 3 and len(saplings) == 1
+    assert not caplog.records
 
 
-def test_check_species_in_table_names_unlisted_tree_species_with_counts():
-    with pytest.raises(UnlistedSpeciesError) as error:
-        _check_species_in_table(*_species_tables(['FDI', 'ZZ', 'ZZ', 'QQ']))
-    message = str(error.value)
-    assert "'QQ' (1 record in the tree table)" in message
-    assert "'ZZ' (2 records in the tree table)" in message
-    assert 'tree_parameters.csv' in message and 'Adding a tree species' in message
+def test_exclude_unlisted_species_logs_each_plot_and_continues(caplog):
+    tables = _species_tables(['ZZ', 'ZZ', 'FDI'], ['QQ'], tree_parents=['g1', 'g2', 'g2'])
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.trees'):
+        trees, saplings, excluded = _exclude_unlisted_species(*tables)
+    assert excluded == ['P1', 'P2']
+    logged = {r.unique_id: r.getMessage() for r in caplog.records if 'tree table' in r.getMessage()}
+    assert set(logged) == {'P1', 'P2'}
+    assert "Species 'ZZ' (1 record in the tree table) is not in tree_parameters.csv" in logged['P1']
+    assert all(r.issue_code == 'tree_species_not_in_table' for r in caplog.records)
+    assert any("'QQ'" in r.getMessage() and 'sapling table' in r.getMessage() for r in caplog.records)
+    assert trees.empty and saplings.empty
 
 
-def test_unlisted_species_error_is_a_value_error():
-    assert issubclass(UnlistedSpeciesError, ValueError)
+def test_exclude_unlisted_species_removes_every_record_of_an_affected_plot_only():
+    tables = _species_tables(['FDI', 'ZZ', 'PLI'], ['PLI', 'FDI'], tree_parents=['g1', 'g1', 'g2'],
+                             sapling_parents=['g1', 'g2'])
+    trees, saplings, excluded = _exclude_unlisted_species(*tables)
+    assert excluded == ['P1']
+    assert trees['tree_species'].tolist() == ['PLI']
+    assert saplings['sapling_species'].tolist() == ['FDI']
+    assert trees.index.tolist() == [0] and saplings.index.tolist() == [0]
 
 
-def test_check_species_in_table_reports_tree_and_sapling_species_together():
-    with pytest.raises(UnlistedSpeciesError) as error:
-        _check_species_in_table(*_species_tables(['ZZ'], ['QQ', 'FDI']))
-    message = str(error.value)
-    assert "'ZZ' (1 record in the tree table)" in message
-    assert "'QQ' (1 record in the sapling table)" in message
+def test_exclude_unlisted_species_sends_an_unresolved_parent_to_the_general_error_row(caplog):
+    tables = _species_tables(['ZZ', 'FDI'], tree_parents=['missing-parent', 'g1'])
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.trees'):
+        trees, _, excluded = _exclude_unlisted_species(*tables)
+    assert excluded == []
+    assert len(caplog.records) == 1 and pd.isna(caplog.records[0].unique_id)
+    assert 'left out of the tree calculations' in caplog.records[0].getMessage()
+    assert trees['tree_species'].tolist() == ['FDI']
 
 
-def test_check_species_in_table_ignores_empty_entries_and_no_sapling_values():
+def test_exclude_unlisted_species_ignores_empty_entries_and_no_sapling_values():
     tables = _species_tables(['FDI', None, np.nan], ['NO_SAPLINGS', 'NO_REGEN', None], live=[1, 1, 1])
-    _check_species_in_table(*tables)
+    _, _, excluded = _exclude_unlisted_species(*tables)
+    assert excluded == []
 
 
-def test_check_species_in_table_ignores_unlisted_sapling_rows_without_a_count():
+def test_exclude_unlisted_species_ignores_unlisted_sapling_rows_without_a_count():
     # A zero or missing count never reaches the height or biomass calculations, so it never stopped a run.
-    _check_species_in_table(*_species_tables(['FDI'], ['ZZ', 'QQ'], live=[0, np.nan], dead=[0, np.nan]))
+    tables = _species_tables(['FDI'], ['ZZ', 'QQ'], live=[0, np.nan], dead=[0, np.nan])
+    _, _, excluded = _exclude_unlisted_species(*tables)
+    assert excluded == []
 
 
-def test_check_species_in_table_counts_a_dead_only_sapling_and_text_counts():
-    with pytest.raises(UnlistedSpeciesError, match="'ZZ' \\(1 record in the sapling table\\)"):
-        _check_species_in_table(*_species_tables([], ['ZZ'], live=[0], dead=['2']))
+def test_exclude_unlisted_species_counts_a_dead_only_sapling_and_text_counts():
+    _, _, excluded = _exclude_unlisted_species(*_species_tables([], ['ZZ'], live=[0], dead=['2']))
+    assert excluded == ['P2']
 
 
-def test_check_species_in_table_logs_each_affected_plot(caplog):
-    tables = _species_tables(['ZZ', 'ZZ'], ['QQ'], tree_parents=['g1', 'g2'])
-    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.trees'):
-        with pytest.raises(UnlistedSpeciesError):
-            _check_species_in_table(*tables)
-    logged = {(r.unique_id, r.issue_code): r.getMessage() for r in caplog.records}
-    assert {('P1', 'tree_species_not_in_table'), ('P2', 'tree_species_not_in_table')} <= set(logged)
-    assert "Species 'ZZ' (1 record in the tree table) is not in tree_parameters.csv" in logged[
-        ('P1', 'tree_species_not_in_table')]
-    sapling_messages = [m for m in logged.values() if 'sapling table' in m]
-    assert len(sapling_messages) == 1 and "'QQ'" in sapling_messages[0]
-
-
-def test_check_species_in_table_sends_an_unresolved_parent_to_the_general_error_row(caplog):
-    tables = _species_tables(['ZZ'], tree_parents=['missing-parent'])
-    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.trees'):
-        with pytest.raises(UnlistedSpeciesError):
-            _check_species_in_table(*tables)
-    assert len(caplog.records) == 1
-    assert pd.isna(caplog.records[0].unique_id)
-
-
-def test_fuel_analyst_saves_the_error_report_when_a_tree_species_is_unlisted(tmp_path):
+def test_fuel_analyst_continues_and_reports_a_plot_with_an_unlisted_tree_species(tmp_path):
     source = Path(__file__).resolve().parents[2] / 'examples' / 'data' / 'Survey123_Data'
     in_dir = tmp_path / 'Survey123_Data'
     shutil.copytree(source, in_dir)
     trees = pd.read_csv(in_dir / '3_Trees' / 'tree_plot_2.csv')
-    trees.loc[trees['tree_species'].first_valid_index(), 'tree_species'] = 'ZZ'
+    parent = trees['ParentGlobalID'].iloc[0]
+    trees.loc[trees['ParentGlobalID'] == parent, 'tree_species'] = 'ZZ'
     trees.to_csv(in_dir / '3_Trees' / 'tree_plot_2.csv', index=False)
     out_dir = tmp_path / 'out'
 
-    with pytest.raises(UnlistedSpeciesError, match="Species not found in tree_parameters.csv: 'ZZ' \\(1 record in the tree table\\)"):
-        fuel_analyst(in_dir=str(in_dir), out_dir=str(out_dir), surface_fire_intensity_model='Byram')
+    fuel_analyst(in_dir=str(in_dir), out_dir=str(out_dir), surface_fire_intensity_model='Byram')
 
+    master = pd.read_csv(out_dir / 'master_fuel_df.csv', low_memory=False)
     errors = pd.read_csv(out_dir / 'fuelanalyst_errors.csv', low_memory=False)
-    assert errors['Trees'].astype(str).str.contains("Species 'ZZ'").any()
-    assert not (out_dir / 'master_fuel_df.csv').exists()
+    affected = errors.loc[errors['Trees'].astype(str).str.contains("Species 'ZZ'"), 'unique_id']
+    assert len(affected) == 1 and len(master) == 20
+    stand_columns = [c for c in master.columns if c.startswith('stand_') and 'duff' not in c and 'litter' not in c]
+    in_master = master['unique_id'].eq(affected.iloc[0])
+    assert master.loc[in_master, stand_columns].isna().all(axis=None)
+    assert master.loc[~in_master, stand_columns].notna().any(axis=1).all()
