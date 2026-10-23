@@ -48,7 +48,8 @@ that names the code (raised in the biomass step). To add a species:
 1. Add one row to `tree_parameters.csv`. `Species` is the code exactly as it is entered in the forms
    (case-sensitive) and must be unique, and `sppNumCD` is a unique numeric code. The code reads these
    columns, so each needs a value for the new species:
-   - `TreeType`: `conifer` or `broadleaf`.
+   - `TreeType`: `conifer` or `broadleaf`. This is the only record of whether a species is a conifer, and it
+     sets both the tree type and the decay-class table used in the biomass calculation.
    - `Temesgen_M2a`, `Temesgen_M2b`, and `Temesgen_M2c`: the height-diameter model 2 coefficients.
    - The twelve `BIOMASS_CNBE_DBH-HT_B{wood,bark,branches,foliage}{1,2,3}` coefficients: the CNBE tree
      biomass equations.
@@ -61,15 +62,12 @@ that names the code (raised in the biomass step). To add a species:
    informational. Fill them in where the source gives them and name the source in the `*_Ref` columns. Take
    each coefficient from a published equation for the species or its closest relative, and say in the PR
    where every group came from.
-2. For a conifer, add the code to `conifer_list` in `src/fuel_analyst/components/trees.py`. That list, not
-   `TreeType`, selects the decay-class retention fractions in the biomass calculation, so keep the two
-   consistent.
-3. Add the species to the Survey123 forms: the `list_tree_species` choices of every form that uses it (Plot
+2. Add the species to the Survey123 forms: the `list_tree_species` choices of every form that uses it (Plot
    Attributes, Plants and Regeneration, Trees, and Woody Debris), and a row (`Species`, `Species_Label`,
    `Type`) in `docs/survey123/survey123_forms/CWC Fuels 3 - Trees/media/Tree_Types.csv`, which the Trees form
    uses to calculate the tree type. Update the manual-entry forms in `docs/survey123/manual_entry_forms/`,
    then republish the forms.
-4. Pass the full test suite, and add a test for the new species. The rows `JD`, `JH`, and `DECAYED`
+3. Pass the full test suite, and add a test for the new species. The rows `JD`, `JH`, and `DECAYED`
    intentionally have no allometric coefficients (they are shrubs and a decay placeholder), so a check of
    the table must skip them.
 

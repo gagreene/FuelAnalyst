@@ -174,6 +174,50 @@ def test_calc_tree_biomass_dead_tree_missing_dbh_gets_zero_biomass():
     assert result.loc[0, 'tree_wood_cnbe_ha'] == 0.0
 
 
+def _biomass_case(species, tree_type, cnfr=np.nan, brdlf=np.nan):
+    """One dead tree (30 cm DBH, 100 stems/ha, modeled height 15 m) and a parameter table with unit coefficients."""
+    tree_df = pd.DataFrame({
+        'tree_species': species,
+        'tree_type': tree_type,
+        'tree_dcy_class_cnfr': cnfr,
+        'tree_dcy_class_brdlf': brdlf,
+        'tree_dbh': 30.0,
+        'tree_ht': np.nan,
+        'tree_ht_modeled': 15.0,
+        'tree_dens_ha': 100.0,
+    }, index=[0]) if isinstance(species, str) else None
+    params = pd.DataFrame({
+        f'BIOMASS_CNBE_DBH-HT_B{component}{number}': [1.0 if number < 3 else 0.0]
+        for component in ('wood', 'bark', 'branches', 'foliage') for number in (1, 2, 3)
+    }, index=[species])
+    return tree_df, params
+
+
+def test_calc_tree_biomass_takes_the_conifer_decay_table_from_the_species_tree_type():
+    # PE (eastern white pine) is a conifer in tree_parameters.csv; at decay class 9 only the conifer table has an entry
+    # (wood retention 0.05). It used to be missing from a hard-coded conifer list and then failed on the broadleaf table.
+    tree_df, params = _biomass_case('PE', 'conifer', cnfr=9)
+    result = _calc_tree_biomass(tree_df, params)
+    assert result.loc[0, 'tree_wood_cnbe_ha'] == pytest.approx(100 * 0.05 * 30.0 / 10000)
+
+
+def test_calc_tree_biomass_takes_the_broadleaf_decay_table_from_the_species_tree_type():
+    # F is ash (a broadleaf) in tree_parameters.csv. At decay class 5 the broadleaf wood retention is 0.66 and the
+    # conifer one is 0.80. F used to be in a hard-coded conifer list and got the conifer value.
+    tree_df, params = _biomass_case('F', 'broadleaf', brdlf=5)
+    result = _calc_tree_biomass(tree_df, params)
+    assert result.loc[0, 'tree_wood_cnbe_ha'] == pytest.approx(100 * 0.66 * 30.0 / 10000)
+
+
+def test_calc_tree_biomass_selects_the_decay_table_for_each_species_separately():
+    first, params_first = _biomass_case('FDI', 'conifer', cnfr=7)
+    second, params_second = _biomass_case('AT', 'broadleaf', brdlf=5)
+    tree_df = pd.concat([first, second], ignore_index=True)
+    params = pd.concat([params_first, params_second])
+    result = _calc_tree_biomass(tree_df, params)
+    assert result['tree_wood_cnbe_ha'].tolist() == pytest.approx([100 * 0.50 * 30.0 / 10000, 100 * 0.66 * 30.0 / 10000])
+
+
 def test_calc_tree_fire_attributes_uses_crown_sentinel_and_surface_model():
     df = pd.DataFrame({
         'tree_bark_char_high': [444.0, 2.0],

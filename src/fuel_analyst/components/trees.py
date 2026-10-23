@@ -15,22 +15,6 @@ import itertools
 from . import error_handling, helper, table_reader
 
 
-# GENERAL LIST OF CONIFER SPECIES IN BC
-conifer_list = [
-    'B', 'BA', 'BB', 'BG', 'BL', 'BN',
-    'C', 'CE', 'CH', 'CW',
-    'F', 'FD', 'FDC', 'FDI',
-    'H', 'HM', 'HW', 'HX', 'HXM',
-    'J', 'JR',
-    'L', 'LA', 'LS', 'LT', 'LW',
-    'P', 'PA', 'PF', 'PJ', 'PL', 'PLC', 'PLI', 'PP', 'PR', 'PW', 'PX', 'PXJ', 'PY',
-    'S', 'SA', 'SB', 'SE', 'SR', 'SS', 'SW', 'SX', 'SXB', 'SXE', 'SXL', 'SXS', 'SXW', 'SXX',
-    'T', 'TW',
-    'Y', 'YC',
-    'UNK', 'XC', 'ZC'
-]
-
-
 # VARIABLES FOR BIOMASS MODELING
 tree_component_list = ['wood', 'bark', 'branches', 'foliage']
 tree_component_index_dict = {
@@ -825,9 +809,13 @@ def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> p
         np.where(tree_df.tree_type == 'broadleaf', tree_df.tree_dcy_class_brdlf, np.nan)
     )
 
+    # Conifer species come from each tree's tree_type, which _calc_tree_type() reads from the TreeType column of
+    # tree_parameters.csv, so that file is the only place that records whether a species is a conifer.
+    conifer_species = set(tree_df.loc[tree_df['tree_type'] == 'conifer', 'tree_species'].dropna().unique())
+
     for spp in spp_list:
         # Select decay class dictionary based on species type
-        decay_dict = tree_conifer_decay_class_dict if spp in conifer_list else tree_broadleaf_decay_class_dict
+        decay_dict = tree_conifer_decay_class_dict if spp in conifer_species else tree_broadleaf_decay_class_dict
         for component in tree_component_list:
             comp_idx = tree_component_index_dict[component]
             param1 = tree_params_df.loc[spp, f'BIOMASS_CNBE_DBH-HT_B{component}1']
