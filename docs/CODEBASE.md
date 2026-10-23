@@ -217,8 +217,10 @@ Processes the `survey_0` and `regeneration_1` tables. It converts the cover and 
 plant species per plot to biomass with the PhotoLoad equations, using `supporting_data/plant_photoload.csv` to
 map each species code (matched case-sensitively on `name`) to a series (`pl_code`) and, through its `label`, to
 a functional group. A species whose code is not in the table adds no biomass to any group; a table entry
-whose series has no equation (anything outside `_PHOTOLOAD_CODES`) is also reported. Both cases log a
-warning per plot (issue codes `plant_species_not_in_table` and `plant_species_no_equation`), which prints on
+whose series has no equation (anything outside `_PHOTOLOAD_CODES`) is also reported, and so is a species
+recorded as `OTHER` with no alternate code in `pc_species_N_other`, which cannot be identified (checked before
+`OTHER` is replaced by the alternate code). These cases log a warning per plot (issue codes
+`plant_species_not_in_table`, `plant_species_no_equation`, and `plant_species_other_no_name`), which prints on
 the console and appears in the Plants and Regeneration column of `fuelanalyst_errors.csv`. The form value
 `NO_SPP` and empty entries are not reported. See `docs/CONTRIBUTION_PROCEDURES.md` > Updating plant_photoload.csv and tree_parameters.csv.
 

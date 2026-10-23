@@ -16,7 +16,8 @@ and the effect of the change in the PR.
 
 A plant species code that is not in `plant_photoload.csv` adds no biomass to any functional group.
 `fuel_analyst()` prints a warning for each affected plot and records it in `fuelanalyst_errors.csv`, in the
-Plants and Regeneration column. To add a species:
+Plants and Regeneration column. A species recorded as `OTHER` with no alternate code in `pc_species_N_other` is
+reported in the same way, since it cannot be identified. To add a species:
 
 1. Add one row to `plant_photoload.csv`:
    - `name`: a unique code, exactly as it is entered in `pc_species_N` or `pc_species_N_other` (codes are

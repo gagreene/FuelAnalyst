@@ -230,6 +230,37 @@ def _get_photoload_biomass(photoload_code: str, pct_cover: float, height: float)
     return photoload_dict.get(photoload_code, np.nan)
 
 
+def _log_other_species_without_name(df: pd.DataFrame, species_number: int) -> None:
+    """
+    Log a warning for each plot whose species is recorded as OTHER with no alternate code.
+
+    A species recorded as OTHER is identified by the code entered in pc_species_N_other. When that entry is empty the
+    species cannot be identified, so it adds no biomass to any functional group. This must run before OTHER is
+    replaced by the alternate code, which would erase the record. The warnings are collected by error_handling for
+    the error report.
+
+    :param df: DataFrame with the species code (pc_species_N) and its alternate code (pc_species_N_other).
+    :param species_number: Position of the species within the plot (1 to 5).
+    :return: None. Writes warnings to the module logger, keyed by unique_id when that column exists.
+    """
+    other_col = f'pc_species_{species_number}_other'
+    if other_col not in df.columns:
+        return
+    alternate = df[other_col]
+    no_alternate = alternate.isna() | (alternate.astype(str).str.strip() == '')
+    unnamed = (df[f'pc_species_{species_number}'] == 'OTHER') & no_alternate
+
+    for idx in df.index[unnamed]:
+        logger.warning(
+            f"Plant species {species_number} is recorded as OTHER with no alternate code in {other_col}, so it adds "
+            "no biomass to any functional group.",
+            extra={
+                'unique_id': df.loc[idx, 'unique_id'] if 'unique_id' in df.columns else idx,
+                'issue_code': 'plant_species_other_no_name',
+            },
+        )
+
+
 def _log_species_table_issues(df: pd.DataFrame, species_number: int) -> None:
     """
     Log a warning for each plot whose recorded species cannot be converted to biomass.
@@ -356,7 +387,8 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     # Cycle through the top 5 plant species
     for x in range(1, 6):
         print(f'\t\tProcessing species {x}')
-        # Assign alternate code if species classified as OTHER
+        # Assign alternate code if species classified as OTHER (an OTHER with no alternate code is logged first)
+        _log_other_species_without_name(df, x)
         df[f'pc_species_{x}'] = np.where(
             df[f'pc_species_{x}'] == 'OTHER',
             df[f'pc_species_{x}_other'],

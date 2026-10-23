@@ -252,6 +252,30 @@ def test_other_species_uses_the_alternate_code_and_warns_only_when_it_is_unliste
     assert len(records) == 1 and "'Fireweed'" in records[0].message
 
 
+@pytest.mark.parametrize('alternate', [None, '', '   '])
+def test_other_species_without_an_alternate_code_is_warned(alternate, caplog):
+    frame = _species_frame(['OTHER'])
+    frame['pc_species_1_other'] = alternate
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        result, _ = _process_top_five_spp(frame)
+    records = _species_warnings(caplog, 'plant_species_other_no_name')
+    assert len(records) == 1
+    assert records[0].unique_id == 'plot_1'
+    assert 'pc_species_1_other' in records[0].message
+    assert not _species_warnings(caplog, 'plant_species_not_in_table')
+    assert result.loc[0, 'pc_species_kgpm2'] == 0.0
+
+
+def test_other_species_warning_names_the_slot_and_skips_named_and_non_other_species(caplog):
+    frame = _species_frame(['ACCA', 'OTHER', 'OTHER'])
+    frame['pc_species_2_other'] = 'VAGL'
+    frame['pc_species_3_other'] = None
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        _process_top_five_spp(frame)
+    records = _species_warnings(caplog, 'plant_species_other_no_name')
+    assert len(records) == 1 and 'pc_species_3_other' in records[0].message
+
+
 def test_species_codes_are_case_sensitive(caplog):
     with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
         _process_top_five_spp(_species_frame(['acca']))
@@ -294,6 +318,19 @@ def test_unlisted_species_reaches_the_error_report(tmp_path):
     row = rows[rows['unique_id'] == 'Demo_P01']
     assert len(row) == 1
     assert "'ZZZZ'" in row.iloc[0]['Plants and Regeneration']
+    assert '[WARNING]' in row.iloc[0]['Plants and Regeneration']
+
+
+def test_other_species_without_an_alternate_code_reaches_the_error_report(tmp_path):
+    error_handling.start_run()
+    frame = _species_frame(['OTHER', 'ACCA'], unique_id='Demo_P02')
+    _process_top_five_spp(frame)
+    report = tmp_path / 'errors.csv'
+    error_handling.write_report(str(report))
+    rows = pd.read_csv(report)
+    row = rows[rows['unique_id'] == 'Demo_P02']
+    assert len(row) == 1
+    assert 'pc_species_1_other' in row.iloc[0]['Plants and Regeneration']
     assert '[WARNING]' in row.iloc[0]['Plants and Regeneration']
 
 
