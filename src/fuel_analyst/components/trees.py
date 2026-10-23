@@ -389,10 +389,10 @@ def _calc_stand_attributes(
 
         # 'total' is only valid by itself
         if parts == ['total']:
-            return pd.Series([True] * len(_tree_df), index=_tree_df.index)
+            return pd.Series(True, index=_tree_df.index, dtype=bool)
 
         # Start with all True mask and apply each condition
-        _mask = pd.Series([True] * len(_tree_df), index=_tree_df.index)
+        _mask = pd.Series(True, index=_tree_df.index, dtype=bool)
 
         for part in parts:
             if part == 'live':
@@ -2033,11 +2033,13 @@ def _resolve_parent_unique_ids(df: pd.DataFrame, parent_ids: pd.Series) -> pd.Se
     :param df: Plot-level DataFrame with GlobalID and unique_id columns, and optionally _parent_id_ambiguous.
     :param parent_ids: Parent record IDs of the tree or sapling records.
     :return: Series of plot unique IDs aligned with parent_ids, missing where the parent cannot be resolved safely.
+        A plot with a missing GlobalID never resolves a parent, so a record with no parent is not attributed to it.
     """
     ambiguous = df.get('_parent_id_ambiguous', pd.Series(False, index=df.index)).fillna(False).astype(bool)
     duplicate_ids = set(df.loc[df['GlobalID'].duplicated(keep=False), 'GlobalID'].dropna())
     duplicate_ids.update(df.loc[ambiguous, 'GlobalID'].dropna())
-    valid = df.loc[~df['GlobalID'].isin(duplicate_ids)].drop_duplicates('GlobalID').set_index('GlobalID')['unique_id']
+    valid_plots = df.loc[~df['GlobalID'].isin(duplicate_ids) & df['GlobalID'].notna()]
+    valid = valid_plots.drop_duplicates('GlobalID').set_index('GlobalID')['unique_id']
     return parent_ids.map(valid)
 
 

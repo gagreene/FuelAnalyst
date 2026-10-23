@@ -617,3 +617,40 @@ def test_fuel_analyst_continues_and_reports_a_plot_with_an_unlisted_tree_species
     in_master = master['unique_id'].eq(affected.iloc[0])
     assert master.loc[in_master, stand_columns].isna().all(axis=None)
     assert master.loc[~in_master, stand_columns].notna().any(axis=1).all()
+
+
+def test_exclude_unlisted_species_does_not_attribute_a_parentless_record_to_a_plot_without_a_global_id(caplog):
+    # A null parent must not resolve to a plot whose own GlobalID is also null (pandas maps null keys to each other).
+    plot_df, tree_df, sapling_df, params = _species_tables(['ZZ', 'FDI'], tree_parents=[np.nan, 'g1'])
+    plot_df.loc[1, 'GlobalID'] = np.nan
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.trees'):
+        trees, _, excluded = _exclude_unlisted_species(plot_df, tree_df, sapling_df, params)
+    assert excluded == []
+    assert len(caplog.records) == 1 and pd.isna(caplog.records[0].unique_id)
+    assert trees['tree_species'].tolist() == ['FDI']
+
+
+def test_fuel_analyst_completes_when_every_plot_has_an_unlisted_species(tmp_path):
+    # Every tree and sapling record is removed, which leaves empty tables for the tree calculations.
+    source = Path(__file__).resolve().parents[2] / 'examples' / 'data' / 'Survey123_Data'
+    in_dir = tmp_path / 'Survey123_Data'
+    shutil.copytree(source, in_dir)
+    tree_path = in_dir / '3_Trees' / 'tree_plot_2.csv'
+    trees = pd.read_csv(tree_path)
+    trees['tree_species'] = trees['tree_species'].where(trees['tree_species'].isna(), 'ZZ')
+    trees.to_csv(tree_path, index=False)
+    sapling_path = in_dir / '3_Trees' / 'sapling_1.csv'
+    saplings = pd.read_csv(sapling_path)
+    keep = saplings['sapling_species'].isna() | saplings['sapling_species'].isin(['NO_SAPLINGS', 'NO_REGEN'])
+    saplings['sapling_species'] = saplings['sapling_species'].where(keep, 'ZZ')
+    saplings.to_csv(sapling_path, index=False)
+    out_dir = tmp_path / 'out'
+
+    fuel_analyst(in_dir=str(in_dir), out_dir=str(out_dir), surface_fire_intensity_model='Byram')
+
+    master = pd.read_csv(out_dir / 'master_fuel_df.csv', low_memory=False)
+    errors = pd.read_csv(out_dir / 'fuelanalyst_errors.csv', low_memory=False)
+    stand_columns = [c for c in master.columns if c.startswith('stand_') and 'duff' not in c and 'litter' not in c]
+    assert len(master) == 20
+    assert master[stand_columns].isna().all(axis=None)
+    assert errors['Trees'].astype(str).str.contains("Species 'ZZ'").sum() == 20

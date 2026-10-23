@@ -238,3 +238,12 @@ def test_run_conpyro_reports_a_missing_cfis_fuel_type_in_the_error_csv(tmp_path,
     report = pd.read_csv(tmp_path / 'run_conpyro_errors.csv', keep_default_na=False).set_index('unique_id')
     assert 'No FBP fuel type for this plot' in report.loc['B', 'ConPyro Fire Behavior']
     assert 'every plot with the same weather date' in report.loc['A', 'ConPyro Fire Behavior']
+
+
+def test_cfis_fuel_type_warning_uses_the_configured_plot_id_column(caplog):
+    df = _cfis_frame(['C2', None]).rename(columns={'unique_id': 'plot_key'})
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.run_conpyro'):
+        module._log_cfis_fuel_type_issues(df, {'cfo_model': 10, 'wx_date': 1, 'time': 1}, 'plot_key')
+    assert {r.unique_id: r.issue_code for r in caplog.records} == {
+        'P0': 'cfis_fuel_type_not_used', 'P1': 'cfis_missing_fuel_type',
+    }

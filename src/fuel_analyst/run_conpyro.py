@@ -362,7 +362,7 @@ def _calc_flame_depth(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _log_cfis_fuel_type_issues(df: pd.DataFrame, input_params: dict) -> None:
+def _log_cfis_fuel_type_issues(df: pd.DataFrame, input_params: dict, plot_id_col: str = 'unique_id') -> None:
     """
     Log a warning for each plot whose CFIS surface fuel consumption is calculated without an FBP fuel type.
 
@@ -373,8 +373,10 @@ def _log_cfis_fuel_type_issues(df: pd.DataFrame, input_params: dict) -> None:
     logged with its own message. A plot that has one but shares its date and time with such a plot is logged
     separately, since it loses its fuel type too.
 
-    :param df: ConPyro input DataFrame, with unique_id and fbp_fuel_type columns.
+    :param df: ConPyro input DataFrame, with the plot ID column and an fbp_fuel_type column.
     :param input_params: ConPyro input parameter dictionary (cfo_model, wx_date, and time).
+    :param plot_id_col: Name of the plot ID column (conpyro_params['plot_id_col_name']); the warnings are tagged with
+        its values as the plot unique ID.
     :return: None. Logs warnings through error_handling.
     """
     if 'fbp_fuel_type' not in df.columns:
@@ -396,7 +398,7 @@ def _log_cfis_fuel_type_issues(df: pd.DataFrame, input_params: dict) -> None:
         group_cfis = cfis_rows.loc[group.index]
         if not no_type.any() or not group_cfis.any():
             continue
-        ids = group['unique_id'] if 'unique_id' in group.columns else pd.Series(pd.NA, index=group.index)
+        ids = group[plot_id_col] if plot_id_col in group.columns else pd.Series(pd.NA, index=group.index)
         missing_plots.extend(ids[group_cfis & no_type])
         lost_plots.extend(ids[group_cfis & ~no_type])
 
@@ -817,7 +819,7 @@ def run_conpyro(
                 f'Columns corresponding to input_params set to "use_csv" must also be present.'
             )
 
-        _log_cfis_fuel_type_issues(df, input_params)
+        _log_cfis_fuel_type_issues(df, input_params, conpyro_params['plot_id_col_name'])
 
         # ### MODEL FIRE BEHAVIOR WITH CONPYRO ###
         print('\n>>>> Running ConPyro...')
