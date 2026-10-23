@@ -741,6 +741,13 @@ requires `temp` and `rh` for CFIS (`cfo_model == 10`), and validates fields whos
 configuration value is `"use_csv"`. Missing requirements raise a descriptive
 `ValueError` before model execution.
 
+Under CFIS the FBP fuel type feeds surface fuel consumption, but ConPyro receives the `fbp_fuel_type` values of a
+run only when every plot of the same weather date and time has one. Otherwise CFIS calculates surface fuel
+consumption without a fuel type, which gives the value of the other crown fire initiation models.
+`_log_cfis_fuel_type_issues()` logs a warning for each CFIS plot without a fuel type (`cfis_missing_fuel_type`) and for
+each plot that has one but loses it because of such a plot (`cfis_fuel_type_not_used`); both appear in the
+ConPyro Fire Behavior column of `run_conpyro_errors.csv`, and the run continues.
+
 The default fire-model configuration enables ConPyro, FOFEM mortality, and
 pyFOFEM emissions. Consequently, the default call also requires tree and FOFEM
 consumption input paths plus the `fofem` optional dependency.

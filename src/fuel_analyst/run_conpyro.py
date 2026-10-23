@@ -6,6 +6,7 @@ Created on Sun Feb 2, 11:15:00 2026
 """
 __author__ = ['Gregory A. Greene']
 
+import logging
 import os
 from numpy import array, column_stack, full, nan
 import pandas as pd
@@ -18,6 +19,8 @@ from ._vendor.conpyro import conpyro
 import flame_components as fc
 import tqdm
 import concurrent.futures
+
+logger = logging.getLogger(__name__)
 try:
     from tqdm.contrib.concurrent import process_map
     _TQDM_PROCESS_MAP_AVAILABLE = True
@@ -357,6 +360,62 @@ def _calc_flame_depth(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     return df
+
+
+def _log_cfis_fuel_type_issues(df: pd.DataFrame, input_params: dict) -> None:
+    """
+    Log a warning for each plot whose CFIS surface fuel consumption is calculated without an FBP fuel type.
+
+    Only the CFIS crown fire initiation model (cfo_model 10) uses the FBP fuel type, in its surface fuel consumption.
+    ConPyro receives the fuel types of a run only when every plot of the same weather date and time has one (this
+    mirrors _single_run_fire_behavior()). Otherwise CFIS calculates surface fuel consumption without a fuel type, which
+    gives the value of the other crown fire initiation models, and nothing else reports it. A plot with no fuel type is
+    logged with its own message. A plot that has one but shares its date and time with such a plot is logged
+    separately, since it loses its fuel type too.
+
+    :param df: ConPyro input DataFrame, with unique_id and fbp_fuel_type columns.
+    :param input_params: ConPyro input parameter dictionary (cfo_model, wx_date, and time).
+    :return: None. Logs warnings through error_handling.
+    """
+    if 'fbp_fuel_type' not in df.columns:
+        return
+    if input_params.get('cfo_model') == 'use_csv':
+        cfis_rows = pd.to_numeric(df['cfo_model'], errors='coerce').eq(10)
+    else:
+        cfis_rows = pd.Series(input_params.get('cfo_model') == 10, index=df.index)
+    if not cfis_rows.any():
+        return
+
+    # ConPyro runs one task per weather date and time when those come from the CSV, otherwise one task for all rows
+    keys = [column for column in ('wx_date', 'time') if input_params.get(column) == 'use_csv']
+    groups = [group for _, group in df.groupby(keys, dropna=False)] if keys else [df]
+
+    missing_plots, lost_plots = [], []
+    for group in groups:
+        no_type = group['fbp_fuel_type'].isna()
+        group_cfis = cfis_rows.loc[group.index]
+        if not no_type.any() or not group_cfis.any():
+            continue
+        ids = group['unique_id'] if 'unique_id' in group.columns else pd.Series(pd.NA, index=group.index)
+        missing_plots.extend(ids[group_cfis & no_type])
+        lost_plots.extend(ids[group_cfis & ~no_type])
+
+    missing_plots = list(dict.fromkeys(missing_plots))
+    lost_plots = [unique_id for unique_id in dict.fromkeys(lost_plots) if unique_id not in missing_plots]
+    for unique_id in missing_plots:
+        logger.warning(
+            'No FBP fuel type for this plot, so the CFIS model (cfo_model 10) calculated its surface fuel consumption '
+            'without one, which gives the value of the other crown fire initiation models. Run '
+            'tools.process_fbp_fuel_type() on the ConPyro input first to assign fuel types.',
+            extra={'unique_id': unique_id, 'issue_code': 'cfis_missing_fuel_type'},
+        )
+    for unique_id in lost_plots:
+        logger.warning(
+            'This plot has an FBP fuel type, but ConPyro uses fuel types only when every plot with the same weather '
+            'date and time has one, so the CFIS model (cfo_model 10) calculated its surface fuel consumption without '
+            'it. Another plot has no fuel type (see its entry).',
+            extra={'unique_id': unique_id, 'issue_code': 'cfis_fuel_type_not_used'},
+        )
 
 
 def _single_run_fire_behavior(args):
@@ -757,6 +816,8 @@ def run_conpyro(
                 f'temp and rh are additionally required when cfo_model == 10 (CFIS). '
                 f'Columns corresponding to input_params set to "use_csv" must also be present.'
             )
+
+        _log_cfis_fuel_type_issues(df, input_params)
 
         # ### MODEL FIRE BEHAVIOR WITH CONPYRO ###
         print('\n>>>> Running ConPyro...')
