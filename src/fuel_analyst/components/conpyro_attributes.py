@@ -206,6 +206,11 @@ def gen_conpyro_df(df: pd.DataFrame, conpyro_params: dict) -> tuple[pd.DataFrame
     df = _calc_veg_fuel_loads(df, conpyro_params['vegetative_fuel_loads'])
     fbp_prep_df = _prep_fbp_df(df)
 
+    # A plot left out of the tree calculations has no canopy fuel values, and the fill with 0 below would model it with
+    # canopy fuels that were never calculated. Its stand type and density stay empty instead, so run_conpyro() leaves
+    # it out, as for any plot with no live overstory.
+    tree_excluded = helper.get_tree_excluded_plots(df)
+
     # Build DataFrame
     conpyro_df = pd.DataFrame({
         'unique_id': df['unique_id'],
@@ -215,8 +220,8 @@ def gen_conpyro_df(df: pd.DataFrame, conpyro_params: dict) -> tuple[pd.DataFrame
         'elevation': df['plot_elevation'],
         'slope': df['plot_slope_pct'],
         'aspect': df['plot_aspect'],  # slope==0 -> 270 already forced upstream in plot_attributes.py
-        'stand_density': df['conpyro_density_class'],
-        'stand_type': df['conpyro_stand_type'],
+        'stand_density': df['conpyro_density_class'].mask(tree_excluded),
+        'stand_type': df['conpyro_stand_type'].mask(tree_excluded, ''),
         'fbp_fuel_type': '',
         'pct_cnfr': df['stand_pct_cnfr_live'].fillna(0),
         'canopy_cover': df[conpyro_params['canopy_cover_attribute']].fillna(0),

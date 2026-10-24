@@ -579,10 +579,21 @@ def test_exclude_unlisted_species_sends_an_unresolved_parent_to_the_general_erro
     assert trees['tree_species'].tolist() == ['FDI']
 
 
-def test_exclude_unlisted_species_ignores_empty_entries_and_no_sapling_values():
-    tables = _species_tables(['FDI', None, np.nan], ['NO_SAPLINGS', 'NO_REGEN', None], live=[1, 1, 1])
+def test_exclude_unlisted_species_ignores_empty_entries_and_the_no_sapling_value():
+    tables = _species_tables(['FDI', None, np.nan], ['NO_SAPLINGS', None], live=[1, 1])
     _, _, excluded = _exclude_unlisted_species(*tables)
     assert excluded == []
+
+
+def test_exclude_unlisted_species_reports_no_regen_with_a_count_as_an_unlisted_species(caplog):
+    # Only NO_SAPLINGS is a form value for no saplings. A NO_REGEN row with a count would reach the species lookup
+    # downstream, so it is reported like any other unlisted code (and ignored when it has no count).
+    tables = _species_tables(['FDI'], ['NO_REGEN', 'NO_REGEN'], live=[3, 0])
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.trees'):
+        _, saplings, excluded = _exclude_unlisted_species(*tables)
+    assert excluded == ['P2']
+    assert "'NO_REGEN' (1 record in the sapling table)" in caplog.records[0].getMessage()
+    assert saplings.empty
 
 
 def test_exclude_unlisted_species_ignores_unlisted_sapling_rows_without_a_count():
@@ -641,7 +652,7 @@ def test_fuel_analyst_completes_when_every_plot_has_an_unlisted_species(tmp_path
     trees.to_csv(tree_path, index=False)
     sapling_path = in_dir / '3_Trees' / 'sapling_1.csv'
     saplings = pd.read_csv(sapling_path)
-    keep = saplings['sapling_species'].isna() | saplings['sapling_species'].isin(['NO_SAPLINGS', 'NO_REGEN'])
+    keep = saplings['sapling_species'].isna() | saplings['sapling_species'].eq('NO_SAPLINGS')
     saplings['sapling_species'] = saplings['sapling_species'].where(keep, 'ZZ')
     saplings.to_csv(sapling_path, index=False)
     out_dir = tmp_path / 'out'
@@ -654,3 +665,33 @@ def test_fuel_analyst_completes_when_every_plot_has_an_unlisted_species(tmp_path
     assert len(master) == 20
     assert master[stand_columns].isna().all(axis=None)
     assert errors['Trees'].astype(str).str.contains("Species 'ZZ'").sum() == 20
+
+
+def test_plot_with_an_unlisted_tree_species_is_left_out_of_the_model_inputs(tmp_path):
+    # The plot keeps valid plot-level species and canopy cover, so without the exclusion marker its missing canopy fuels
+    # would be written as 0 and ConPyro would model it with fuels that were never calculated.
+    source = Path(__file__).resolve().parents[2] / 'examples' / 'data' / 'Survey123_Data'
+    in_dir = tmp_path / 'Survey123_Data'
+    shutil.copytree(source, in_dir)
+    tree_path = in_dir / '3_Trees' / 'tree_plot_2.csv'
+    trees = pd.read_csv(tree_path)
+    plot_ids = pd.read_csv(in_dir / '3_Trees' / 'survey_0.csv')[['GlobalID']]
+    parent = trees['ParentGlobalID'].iloc[0]
+    trees.loc[trees['ParentGlobalID'] == parent, 'tree_species'] = 'ZZ'
+    trees.to_csv(tree_path, index=False)
+    out_dir = tmp_path / 'out'
+
+    fuel_analyst(in_dir=str(in_dir), out_dir=str(out_dir), surface_fire_intensity_model='Byram',
+                 gen_conpyro_df=True, gen_fofem_consume_df=True)
+
+    errors = pd.read_csv(out_dir / 'fuelanalyst_errors.csv', low_memory=False)
+    excluded = errors.loc[errors['Trees'].astype(str).str.contains("Species 'ZZ'"), 'unique_id'].iloc[0]
+    conpyro = pd.read_csv(out_dir / 'conpyro_df.csv', low_memory=False).set_index('unique_id')
+    assert pd.isna(conpyro.loc[excluded, 'stand_density']) and pd.isna(conpyro.loc[excluded, 'stand_type'])
+    others = conpyro.drop(index=excluded)
+    assert others['stand_density'].notna().sum() > 0 and others['stand_type'].notna().sum() > 0
+    assert '_trees_excluded' not in conpyro.columns
+    master = pd.read_csv(out_dir / 'master_fuel_df.csv', low_memory=False)
+    assert '_trees_excluded' not in master.columns and len(master) == len(plot_ids)
+    consume = pd.read_csv(out_dir / 'fofem_consume_si_df.csv', low_memory=False)
+    assert len(consume) == len(master) - 1

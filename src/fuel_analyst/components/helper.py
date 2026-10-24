@@ -12,6 +12,9 @@ import re
 import shutil
 import pandas as pd
 
+# Plot-level marker set by trees.process_trees() for plots left out of the tree calculations (never exported)
+TREES_EXCLUDED_COLUMN = '_trees_excluded'
+
 
 def add_line_to_csv(file_path: str, add_list: list, position: int) -> None:
     """
@@ -157,6 +160,22 @@ def get_repo_root(start_dir: str) -> str:
         if parent_dir == current_dir:
             raise FileNotFoundError(f'Could not locate the repository root from: {start_dir}')
         current_dir = parent_dir
+
+
+def get_tree_excluded_plots(df: pd.DataFrame) -> pd.Series:
+    """
+    Flag the plots that were left out of the tree calculations because they record an unlisted tree species.
+
+    trees.process_trees() marks those plots in a column that never reaches an output file. Their tree results are
+    missing, so a model input that would turn a missing tree value into 0 must leave them out instead of inventing a
+    value.
+
+    :param df: Plot-level DataFrame, which may carry the marker column from process_trees().
+    :return: Boolean Series aligned with df, True for a plot that was left out of the tree calculations.
+    """
+    if TREES_EXCLUDED_COLUMN not in df.columns:
+        return pd.Series(False, index=df.index, dtype=bool)
+    return df[TREES_EXCLUDED_COLUMN].fillna(False).astype(bool)
 
 
 def get_unique_id(df: pd.DataFrame) -> pd.DataFrame:

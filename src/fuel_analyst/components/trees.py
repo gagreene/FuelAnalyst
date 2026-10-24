@@ -1502,8 +1502,8 @@ def _exclude_unlisted_species(
     plot cannot be resolved goes to the General Error row). Every tree and sapling record of an affected plot is then
     removed, so that no plot is summarized from only some of its trees, and the run continues with the other plots.
     The caller sets the tree results of the returned plots to missing. Empty species entries are ignored. Sapling
-    records count only when a live or dead count is above zero, and the form values for no saplings ('NO_SAPLINGS',
-    and 'NO_REGEN' in older exports) never count.
+    records count only when a live or dead count is above zero, and the form value for no saplings ('NO_SAPLINGS')
+    never counts.
 
     :param df: Plot-level DataFrame with GlobalID and unique_id columns.
     :param tree_df: Raw tree table, with ParentGlobalID and tree_species columns.
@@ -1520,7 +1520,7 @@ def _exclude_unlisted_species(
     dead = pd.to_numeric(sapling_df['sapling_dead_count'], errors='coerce').fillna(0)
     recorded = (
         sapling_df['sapling_species'].notna() & ((live > 0) | (dead > 0)) &
-        ~sapling_df['sapling_species'].isin(['NO_SAPLINGS', 'NO_REGEN'])
+        sapling_df['sapling_species'].ne('NO_SAPLINGS')
     )
     unlisted_saplings = sapling_df[recorded & ~sapling_df['sapling_species'].isin(known)]
 
@@ -2198,6 +2198,8 @@ def process_trees(
 
     _print_tree_density_summary(partial_log)
 
-    df = export_df
+    # Mark the plots left out for an unlisted species, so that the model inputs leave them out too; the marker
+    # is in the returned table only, never in an output file
+    df = helper.attach_columns(export_df, {helper.TREES_EXCLUDED_COLUMN: df['unique_id'].isin(excluded_plot_ids)})
 
     return df, helper.sort_list(keep_columns), master_tree_df
