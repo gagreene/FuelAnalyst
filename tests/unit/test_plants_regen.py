@@ -1,10 +1,13 @@
 import logging
+import os
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from fuel_analyst.components import error_handling, helper
 from fuel_analyst.components.plants_regen import (
+    _PHOTOLOAD_CODES,
     _calc_pc_flammable,
     _calc_plants_fccs_fofem_attributes,
     _get_dom_substrate,
@@ -188,3 +191,173 @@ def test_process_top_five_spp_depth_weights_all_species():
     result, keep = _process_top_five_spp(_depth_frame([50, 20, 15, 10, 5], [10, 20, 30, 40, 100]))
     assert result.loc[0, 'fuel_bed_depth_m'] == pytest.approx(0.225)
     assert keep == ['fuel_bed_depth_m', 'bryoid_kgpm2', 'grass_kgpm2', 'herb_forb_kgpm2', 'shrubs_kgpm2']
+
+
+# ── Species that are not in plant_photoload.csv ─────────────────────────────────────────────────────────────────────
+
+LOGGER_NAME = 'fuel_analyst.components.plants_regen'
+
+
+def _species_frame(species, unique_id='plot_1', other=None):
+    """Build a one-plot frame with 50% cover and 10 cm height for each listed species code (None leaves a slot empty)."""
+    row = {'unique_id': unique_id}
+    for index in range(1, 6):
+        offset = index - 1
+        code = species[offset] if offset < len(species) else None
+        row.update({
+            f'pc_species_{index}': code,
+            f'pc_species_{index}_other': other if (index == 1 and other is not None) else None,
+            f'pc_species_{index}_pct': 50.0 if code is not None else np.nan,
+            f'pc_species_{index}_ht': 10.0 if code is not None else np.nan,
+        })
+    return pd.DataFrame([row])
+
+
+def _species_warnings(caplog, issue_code=None):
+    """Return the logged records raised for plant species, optionally only those with one issue code."""
+    return [r for r in caplog.records
+            if getattr(r, 'issue_code', '').startswith('plant_species')
+            and (issue_code is None or r.issue_code == issue_code)]
+
+
+def test_unlisted_species_is_warned_with_plot_and_issue_code(caplog):
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        result, _ = _process_top_five_spp(_species_frame(['ZZZZ']))
+    records = _species_warnings(caplog, 'plant_species_not_in_table')
+    assert len(records) == 1
+    assert records[0].unique_id == 'plot_1'
+    assert "'ZZZZ'" in records[0].message and 'plant_photoload.csv' in records[0].message
+    assert result.loc[0, 'pc_species_kgpm2'] == 0.0
+
+
+def test_listed_species_is_not_warned(caplog):
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        _process_top_five_spp(_species_frame(['ACCA', 'VAGL']))
+    assert not _species_warnings(caplog)
+
+
+@pytest.mark.parametrize('code', ['NO_SPP', '', '   ', None])
+def test_no_species_values_are_not_warned(code, caplog):
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        _process_top_five_spp(_species_frame([code]))
+    assert not _species_warnings(caplog)
+
+
+def test_other_species_uses_the_alternate_code_and_warns_only_when_it_is_unlisted(caplog):
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        _process_top_five_spp(_species_frame(['OTHER'], other='ACCA'))
+        assert not _species_warnings(caplog)
+        _process_top_five_spp(_species_frame(['OTHER'], other='Fireweed'))
+    records = _species_warnings(caplog, 'plant_species_not_in_table')
+    assert len(records) == 1 and "'Fireweed'" in records[0].message
+
+
+@pytest.mark.parametrize('alternate', [None, '', '   '])
+def test_other_species_without_an_alternate_code_is_warned(alternate, caplog):
+    frame = _species_frame(['OTHER'])
+    frame['pc_species_1_other'] = alternate
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        result, _ = _process_top_five_spp(frame)
+    records = _species_warnings(caplog, 'plant_species_other_no_name')
+    assert len(records) == 1
+    assert records[0].unique_id == 'plot_1'
+    assert 'pc_species_1_other' in records[0].message
+    assert not _species_warnings(caplog, 'plant_species_not_in_table')
+    assert result.loc[0, 'pc_species_kgpm2'] == 0.0
+
+
+def test_other_species_warning_names_the_slot_and_skips_named_and_non_other_species(caplog):
+    frame = _species_frame(['ACCA', 'OTHER', 'OTHER'])
+    frame['pc_species_2_other'] = 'VAGL'
+    frame['pc_species_3_other'] = None
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        _process_top_five_spp(frame)
+    records = _species_warnings(caplog, 'plant_species_other_no_name')
+    assert len(records) == 1 and 'pc_species_3_other' in records[0].message
+
+
+def test_species_codes_are_case_sensitive(caplog):
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        _process_top_five_spp(_species_frame(['acca']))
+    assert _species_warnings(caplog, 'plant_species_not_in_table')
+
+
+def test_each_unlisted_species_slot_is_warned_separately(caplog):
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        _process_top_five_spp(_species_frame(['ZZZZ', 'ACCA', 'YYYY']))
+    messages = [r.message for r in _species_warnings(caplog, 'plant_species_not_in_table')]
+    assert len(messages) == 2
+    assert any("'ZZZZ' (species 1)" in m for m in messages) and any("'YYYY' (species 3)" in m for m in messages)
+
+
+def test_species_without_a_unique_id_column_is_warned_by_row_index(caplog):
+    frame = _species_frame(['ZZZZ']).drop(columns='unique_id')
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        _process_top_five_spp(frame)
+    records = _species_warnings(caplog, 'plant_species_not_in_table')
+    assert len(records) == 1 and records[0].unique_id == 0
+
+
+def test_series_without_an_equation_is_warned(monkeypatch, caplog):
+    table = pd.DataFrame({'name': ['ACCA', 'NEWW'],
+                          'label': ["[Herb/Forb] ACCA - deer's foot", '[Herb/Forb] NEWW - new species'],
+                          'pl_code': ['ARLA', 'ARLX']})
+    monkeypatch.setattr(helper, 'get_df', lambda path: table.copy())
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        _process_top_five_spp(_species_frame(['NEWW']))
+    records = _species_warnings(caplog, 'plant_species_no_equation')
+    assert len(records) == 1 and "'ARLX'" in records[0].message
+
+
+def test_unlisted_species_reaches_the_error_report(tmp_path):
+    error_handling.start_run()
+    _process_top_five_spp(_species_frame(['ZZZZ', 'ACCA'], unique_id='Demo_P01'))
+    report = tmp_path / 'errors.csv'
+    error_handling.write_report(str(report))
+    rows = pd.read_csv(report)
+    row = rows[rows['unique_id'] == 'Demo_P01']
+    assert len(row) == 1
+    assert "'ZZZZ'" in row.iloc[0]['Plants and Regeneration']
+    assert '[WARNING]' in row.iloc[0]['Plants and Regeneration']
+
+
+def test_other_species_without_an_alternate_code_reaches_the_error_report(tmp_path):
+    error_handling.start_run()
+    frame = _species_frame(['OTHER', 'ACCA'], unique_id='Demo_P02')
+    _process_top_five_spp(frame)
+    report = tmp_path / 'errors.csv'
+    error_handling.write_report(str(report))
+    rows = pd.read_csv(report)
+    row = rows[rows['unique_id'] == 'Demo_P02']
+    assert len(row) == 1
+    assert 'pc_species_1_other' in row.iloc[0]['Plants and Regeneration']
+    assert '[WARNING]' in row.iloc[0]['Plants and Regeneration']
+
+
+# ── The species table itself ─────────────────────────────────────────────────────────────────────────────────────────
+
+def _species_table():
+    return pd.read_csv(os.path.join(os.path.dirname(helper.__file__), '..', 'supporting_data', 'plant_photoload.csv'))
+
+
+def test_every_photoload_code_has_a_biomass_equation():
+    for code in _PHOTOLOAD_CODES:
+        assert np.isfinite(_get_photoload_biomass(code, 20.0, 20.0)), code
+
+
+def test_species_table_names_are_unique_and_complete():
+    table = _species_table()
+    assert table['name'].is_unique
+    assert not table[['name', 'label', 'pl_code']].isna().any().any()
+
+
+def test_species_table_series_are_valid():
+    table = _species_table()
+    assert set(table['pl_code']) <= set(_PHOTOLOAD_CODES)
+    assert set(table['pl_code_alt'].dropna()) <= set(_PHOTOLOAD_CODES)
+
+
+def test_species_table_labels_carry_a_functional_group():
+    # plants_regen assigns a species to a functional group by searching its label for Moss, Grass, Herb, or Shrub
+    labels = _species_table()['label']
+    assert labels.str.match(r'^\[(Herb/Forb|Herb|Grass|Shrub|Moss/Lichen|Tree)\] ').all()

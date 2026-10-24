@@ -211,6 +211,19 @@ error naming both. Only Survey123 form tables use this module; reference tables,
 files, and FOFEM tables are still read with `helper.get_df()`. `fuel_analyst()` resolves each form once, lazily, and passes the
 `FormSource` to the component processors, which still accept a plain folder path.
 
+### `components/plants_regen.py`
+
+Processes the `survey_0` and `regeneration_1` tables. It converts the cover and height of up to five surface
+plant species per plot to biomass with the PhotoLoad equations, using `supporting_data/plant_photoload.csv` to
+map each species code (matched case-sensitively on `name`) to a series (`pl_code`) and, through its `label`, to
+a functional group. A species whose code is not in the table adds no biomass to any group; a table entry
+whose series has no equation (anything outside `_PHOTOLOAD_CODES`) is also reported, and so is a species
+recorded as `OTHER` with no alternate code in `pc_species_N_other`, which cannot be identified (checked before
+`OTHER` is replaced by the alternate code). These cases log a warning per plot (issue codes
+`plant_species_not_in_table`, `plant_species_no_equation`, and `plant_species_other_no_name`), which prints on
+the console and appears in the Plants and Regeneration column of `fuelanalyst_errors.csv`. The form value
+`NO_SPP` and empty entries are not reported. See `docs/CONTRIBUTION_PROCEDURES.md` > Updating plant_photoload.csv and tree_parameters.csv.
+
 ### `components/trees.py`
 
 Processes the `survey_0`, `sapling_1`, and `tree_plot_2` tables (read through `table_reader`). It calculates
@@ -220,6 +233,22 @@ species composition. It returns the processed plot table, its output-column
 list, and `master_tree_df`. `master_tree_df` includes both live and dead
 trees, distinguished by a `status` column; `dens_live_ha`/`ba_live_ha` are 0
 for dead trees, while `dens_ha`/`ba_ha` hold real totals for every tree.
+
+Before any calculation, `_exclude_unlisted_species()` logs each plot that records a tree or sapling species missing
+from `supporting_data/tree_parameters.csv` through `error_handling` (issue code `tree_species_not_in_table`, with a
+record count per table; a record whose plot cannot be resolved goes to the General Error row). It then removes every
+tree and sapling record of those plots, so no plot is summarized from some of its trees, and the run continues:
+`process_trees()` sets the tree-derived columns of those plots to missing (not zero) and marks them in a plot-level
+column (`helper.TREES_EXCLUDED_COLUMN`) that is returned to `fuel_analyst()` but never exported. The model inputs use
+the marker so that no canopy fuel is invented: `gen_conpyro_df()` leaves the plot's stand density and stand type empty
+(the plot stays in `conpyro_df.csv`, and `run_conpyro()` leaves it out like any plot with no live overstory), and
+`gen_fofem_consumption_df()` omits the plot. Empty entries, sapling rows without a live or dead count, and the
+`NO_SAPLINGS` value are ignored; any other code, including `NO_REGEN`, is looked up like a species. In
+`components/conpyro_attributes.py`, `_calc_stand_type()` likewise logs a plot whose `SPECIES_CD_1` to `SPECIES_CD_6`
+holds a code that is not in the table (issue code `stand_type_species_not_in_table`, reported as ConPyro Attributes)
+and leaves that plot's stand type empty. Conifer status comes from the
+`TreeType` column of the same file. See `docs/CONTRIBUTION_PROCEDURES.md` > Updating plant_photoload.csv and
+tree_parameters.csv.
 
 ### `components/woody_debris.py`
 
@@ -717,6 +746,13 @@ validates the always-required `ws`, `wd`, `ffmc`, `dmc`, and `bui` columns,
 requires `temp` and `rh` for CFIS (`cfo_model == 10`), and validates fields whose
 configuration value is `"use_csv"`. Missing requirements raise a descriptive
 `ValueError` before model execution.
+
+Under CFIS the FBP fuel type feeds surface fuel consumption, but ConPyro receives the `fbp_fuel_type` values of a
+run only when every plot of the same weather date and time has one. Otherwise CFIS calculates surface fuel
+consumption without a fuel type, which gives the value of the other crown fire initiation models.
+`_log_cfis_fuel_type_issues()` logs a warning for each CFIS plot without a fuel type (`cfis_missing_fuel_type`) and for
+each plot that has one but loses it because of such a plot (`cfis_fuel_type_not_used`); both appear in the
+ConPyro Fire Behavior column of `run_conpyro_errors.csv`, and the run continues.
 
 The default fire-model configuration enables ConPyro, FOFEM mortality, and
 pyFOFEM emissions. Consequently, the default call also requires tree and FOFEM

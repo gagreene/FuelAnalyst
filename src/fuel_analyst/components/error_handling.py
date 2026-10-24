@@ -40,10 +40,12 @@ _LOGGER_DISPLAY_NAMES = {
     _FORM_LOGGER_NAMES['plot']: 'Plot Attributes',
     _FORM_LOGGER_NAMES['trees']: 'Trees',
     _FORM_LOGGER_NAMES['woody']: 'Woody Debris',
+    f'{_LOGGER_NAME_ROOT}.components.conpyro_attributes': 'ConPyro Attributes',
     f'{_LOGGER_NAME_ROOT}.components.fofem_attributes': 'FOFEM Attributes',
     f'{_LOGGER_NAME_ROOT}.components.fofem_emissions': 'FOFEM Emissions',
     f'{_LOGGER_NAME_ROOT}.components.fofem_gui_emissions': 'FOFEM 6.9.4 Emissions',
     f'{_LOGGER_NAME_ROOT}.components.fofem_mortality': 'FOFEM Mortality',
+    f'{_LOGGER_NAME_ROOT}.run_conpyro': 'ConPyro Fire Behavior',
     f'{_LOGGER_NAME_ROOT}.tools.extract_nrcan_wx': 'NRCAN Weather',
 }
 

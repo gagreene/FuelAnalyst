@@ -1,4 +1,5 @@
 import importlib
+import logging
 import sys
 import types
 
@@ -155,3 +156,94 @@ def test_model_fofem_emissions_rejects_units_filename_mismatch_before_any_backen
             conpyro_params={'plot_id_col_name': 'unique_id'},
             num_workers=1,
         )
+
+
+def _cfis_frame(fuel_types, wx_dates=None, cfo_models=None):
+    """ConPyro input rows for plots P0, P1, ... with the given fuel types (None for a missing one)."""
+    count = len(fuel_types)
+    return pd.DataFrame({
+        'unique_id': [f'P{i}' for i in range(count)],
+        'fbp_fuel_type': fuel_types,
+        'wx_date': wx_dates if wx_dates is not None else [20250101] * count,
+        'time': [1200] * count,
+        'cfo_model': cfo_models if cfo_models is not None else [10] * count,
+    })
+
+
+def test_cfis_fuel_type_warning_names_each_plot_without_a_fuel_type(caplog):
+    df = _cfis_frame(['C2', None, 'M1'])
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.run_conpyro'):
+        module._log_cfis_fuel_type_issues(df, {'cfo_model': 10, 'wx_date': 20250101, 'time': 1200})
+    logged = {r.unique_id: r for r in caplog.records}
+    assert logged['P1'].issue_code == 'cfis_missing_fuel_type'
+    assert 'No FBP fuel type for this plot' in logged['P1'].getMessage()
+    # The plots that have one still run without it, because ConPyro takes fuel types only when every plot has one
+    assert logged['P0'].issue_code == logged['P2'].issue_code == 'cfis_fuel_type_not_used'
+    assert len(caplog.records) == 3
+
+
+def test_cfis_fuel_type_warning_is_silent_when_every_plot_has_a_fuel_type(caplog):
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.run_conpyro'):
+        module._log_cfis_fuel_type_issues(_cfis_frame(['C2', 'M1']), {'cfo_model': 10, 'wx_date': 1, 'time': 1})
+    assert not caplog.records
+
+
+def test_cfis_fuel_type_warning_is_silent_for_other_crown_fire_models(caplog):
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.run_conpyro'):
+        module._log_cfis_fuel_type_issues(_cfis_frame([None, None]), {'cfo_model': 5, 'wx_date': 1, 'time': 1})
+    assert not caplog.records
+
+
+def test_cfis_fuel_type_warning_follows_the_cfo_model_column_and_weather_dates(caplog):
+    # Two dates: the plot without a fuel type is only on the first one, so the second date still uses fuel types.
+    # P3 on the first date does not use CFIS, so it is not reported.
+    df = _cfis_frame(['C2', None, 'M1', 'C2'], wx_dates=[1, 1, 2, 1], cfo_models=[10, 10, 10, 5])
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.run_conpyro'):
+        module._log_cfis_fuel_type_issues(df, {'cfo_model': 'use_csv', 'wx_date': 'use_csv', 'time': 1200})
+    assert {r.unique_id: r.issue_code for r in caplog.records} == {
+        'P0': 'cfis_fuel_type_not_used', 'P1': 'cfis_missing_fuel_type',
+    }
+
+
+def test_cfis_fuel_type_warning_logs_a_plot_once_across_dates(caplog):
+    df = _cfis_frame([None, None], wx_dates=[1, 2])
+    df['unique_id'] = 'P0'
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.run_conpyro'):
+        module._log_cfis_fuel_type_issues(df, {'cfo_model': 10, 'wx_date': 'use_csv', 'time': 1200})
+    assert len(caplog.records) == 1
+
+
+def test_run_conpyro_reports_a_missing_cfis_fuel_type_in_the_error_csv(tmp_path, monkeypatch):
+    conpyro_csv_path = tmp_path / 'conpyro_df.csv'
+    pd.DataFrame({
+        'unique_id': ['A', 'B'], 'stand_density': ['L', 'L'], 'stand_type': ['P', 'P'],
+        'ws': [10.0, 10.0], 'wd': [180.0, 180.0], 'ffmc': [90.0, 90.0], 'dmc': [40.0, 40.0], 'bui': [60.0, 60.0],
+        'temp': [20.0, 20.0], 'rh': [30.0, 30.0], 'fbp_fuel_type': ['C2', None],
+    }).to_csv(conpyro_csv_path, index=False)
+    monkeypatch.setattr(module, '_model_fire_behavior', lambda df, **kwargs: df)
+    monkeypatch.setattr(module, '_model_flame_components', lambda df, *args, **kwargs: df)
+    params = {
+        'num_workers': 1,
+        'conpyro': {
+            'run_model': True, 'plot_id_col_name': 'unique_id',
+            'input_params': {'cfo_model': 10},
+            'output_params': {'out_request': [], 'flame_comp_out_list': []},
+        },
+        'fofem_mortality': {'run_model': False},
+        'fofem_emissions': {'run_model': False},
+    }
+
+    module.run_conpyro(out_dir=str(tmp_path), in_conpyro_csv_path=str(conpyro_csv_path), fire_modelling_params=params)
+
+    report = pd.read_csv(tmp_path / 'run_conpyro_errors.csv', keep_default_na=False).set_index('unique_id')
+    assert 'No FBP fuel type for this plot' in report.loc['B', 'ConPyro Fire Behavior']
+    assert 'every plot with the same weather date' in report.loc['A', 'ConPyro Fire Behavior']
+
+
+def test_cfis_fuel_type_warning_uses_the_configured_plot_id_column(caplog):
+    df = _cfis_frame(['C2', None]).rename(columns={'unique_id': 'plot_key'})
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.run_conpyro'):
+        module._log_cfis_fuel_type_issues(df, {'cfo_model': 10, 'wx_date': 1, 'time': 1}, 'plot_key')
+    assert {r.unique_id: r.issue_code for r in caplog.records} == {
+        'P0': 'cfis_fuel_type_not_used', 'P1': 'cfis_missing_fuel_type',
+    }

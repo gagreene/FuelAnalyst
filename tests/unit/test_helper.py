@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -133,3 +134,11 @@ def test_get_repo_root_and_derived_directories(tmp_path):
     assert Path(helper.get_repo_root(str(package_dir))) == tmp_path
     assert Path(helper.get_examples_dir(str(package_dir))) == tmp_path / 'examples'
     assert Path(helper.get_development_dir(str(package_dir))) == tmp_path / 'development'
+
+
+def test_get_tree_excluded_plots_reads_the_marker_and_defaults_to_false():
+    df = pd.DataFrame({'unique_id': ['A', 'B', 'C']})
+    assert helper.get_tree_excluded_plots(df).tolist() == [False, False, False]
+    df[helper.TREES_EXCLUDED_COLUMN] = [True, False, np.nan]
+    result = helper.get_tree_excluded_plots(df)
+    assert result.tolist() == [True, False, False] and result.dtype == bool

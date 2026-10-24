@@ -1,3 +1,4 @@
+import logging
 import warnings
 
 import pandas as pd
@@ -133,14 +134,23 @@ def test_calc_stand_type_three_distinct_types_preserves_order_and_triggers_mixed
     assert row['conpyro_stand_type'] == 'MW'
 
 
-def test_calc_stand_type_unknown_species_code_raises_keyerror():
+def test_calc_stand_type_unknown_species_code_is_logged_and_leaves_the_stand_type_empty(caplog):
     params = pd.DataFrame({
         'TreeType': ['conifer'],
         'ConPyro_StandType': ['C'],
     }, index=['FDI'])
-    df = pd.DataFrame([_stand_type_row('unknown', ['ZZZ'])])
-    with pytest.raises(KeyError):
-        _calc_stand_type(df, params)
+    rows = [_stand_type_row('unknown', ['FDI', 'ZZZ']), _stand_type_row('listed', ['FDI'])]
+    df = pd.DataFrame(rows)
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.conpyro_attributes'):
+        result = _calc_stand_type(df, params).set_index('unique_id')
+    # The plot with an unlisted code gets no stand type, whatever its other codes give; other plots are unaffected.
+    assert result.loc['unknown', 'conpyro_stand_type'] == ''
+    assert result.loc['unknown', 'tree_type'] == ''
+    assert result.loc['listed', 'conpyro_stand_type'] == 'C'
+    assert len(caplog.records) == 1
+    record = caplog.records[0]
+    assert record.unique_id == 'unknown' and record.issue_code == 'stand_type_species_not_in_table'
+    assert "'ZZZ'" in record.getMessage() and 'tree_parameters.csv' in record.getMessage()
 
 
 def test_calc_veg_fuel_loads_does_not_fragment_or_duplicate_existing_columns():

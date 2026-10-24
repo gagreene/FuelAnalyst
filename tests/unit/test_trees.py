@@ -1,4 +1,6 @@
 import logging
+import shutil
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -20,6 +22,7 @@ from fuel_analyst.components.trees import (
     _calc_tree_fire_attributes,
     _calc_tree_fsg,
     _calc_tree_type,
+    _exclude_unlisted_species,
     _gen_master_tree_df,
     _get_temesgen_tree_height,
     _log_tree_density_issues,
@@ -30,6 +33,7 @@ from fuel_analyst.components.trees import (
     _round_plot_data,
     _round_tree_data,
 )
+from fuel_analyst.fuel_analyst import fuel_analyst
 
 
 def test_calc_plot_multipliers_classifies_invalid_source_values():
@@ -172,6 +176,50 @@ def test_calc_tree_biomass_dead_tree_missing_dbh_gets_zero_biomass():
     result = _calc_tree_biomass(tree_df, tree_params_df)
 
     assert result.loc[0, 'tree_wood_cnbe_ha'] == 0.0
+
+
+def _biomass_case(species, tree_type, cnfr=np.nan, brdlf=np.nan):
+    """One dead tree (30 cm DBH, 100 stems/ha, modeled height 15 m) and a parameter table with unit coefficients."""
+    tree_df = pd.DataFrame({
+        'tree_species': species,
+        'tree_type': tree_type,
+        'tree_dcy_class_cnfr': cnfr,
+        'tree_dcy_class_brdlf': brdlf,
+        'tree_dbh': 30.0,
+        'tree_ht': np.nan,
+        'tree_ht_modeled': 15.0,
+        'tree_dens_ha': 100.0,
+    }, index=[0])
+    params = pd.DataFrame({
+        f'BIOMASS_CNBE_DBH-HT_B{component}{number}': [1.0 if number < 3 else 0.0]
+        for component in ('wood', 'bark', 'branches', 'foliage') for number in (1, 2, 3)
+    }, index=[species])
+    return tree_df, params
+
+
+def test_calc_tree_biomass_takes_the_conifer_decay_table_from_the_species_tree_type():
+    # PE (eastern white pine) is a conifer in tree_parameters.csv; at decay class 9 only the conifer table has an entry
+    # (wood retention 0.05). It used to be missing from a hard-coded conifer list and then failed on the broadleaf table.
+    tree_df, params = _biomass_case('PE', 'conifer', cnfr=9)
+    result = _calc_tree_biomass(tree_df, params)
+    assert result.loc[0, 'tree_wood_cnbe_ha'] == pytest.approx(100 * 0.05 * 30.0 / 10000)
+
+
+def test_calc_tree_biomass_takes_the_broadleaf_decay_table_from_the_species_tree_type():
+    # F is ash (a broadleaf) in tree_parameters.csv. At decay class 5 the broadleaf wood retention is 0.66 and the
+    # conifer one is 0.80. F used to be in a hard-coded conifer list and got the conifer value.
+    tree_df, params = _biomass_case('F', 'broadleaf', brdlf=5)
+    result = _calc_tree_biomass(tree_df, params)
+    assert result.loc[0, 'tree_wood_cnbe_ha'] == pytest.approx(100 * 0.66 * 30.0 / 10000)
+
+
+def test_calc_tree_biomass_selects_the_decay_table_for_each_species_separately():
+    first, params_first = _biomass_case('FDI', 'conifer', cnfr=7)
+    second, params_second = _biomass_case('AT', 'broadleaf', brdlf=5)
+    tree_df = pd.concat([first, second], ignore_index=True)
+    params = pd.concat([params_first, params_second])
+    result = _calc_tree_biomass(tree_df, params)
+    assert result['tree_wood_cnbe_ha'].tolist() == pytest.approx([100 * 0.50 * 30.0 / 10000, 100 * 0.66 * 30.0 / 10000])
 
 
 def test_calc_tree_fire_attributes_uses_crown_sentinel_and_surface_model():
@@ -468,3 +516,182 @@ def test_unused_invalid_radius_is_logged_as_warning_not_error(caplog):
     assert len(caplog.records) == 1
     assert caplog.records[0].levelname == 'WARNING'
     assert caplog.records[0].issue_code == 'missing_plot_radius'
+
+
+# ── Species that are not in tree_parameters.csv ──────────────────────────────────────────────────────────────────────
+
+def _species_tables(tree_species, sapling_species=None, live=None, dead=None, tree_parents=None, sapling_parents=None):
+    """Build a plot table (two plots, P1 and P2), raw tree and sapling tables, and a parameter table of FDI and PLI."""
+    sapling_species = sapling_species if sapling_species is not None else []
+    plot_df = pd.DataFrame({'GlobalID': ['g1', 'g2'], 'unique_id': ['P1', 'P2']})
+    tree_df = pd.DataFrame({
+        'ParentGlobalID': tree_parents if tree_parents is not None else ['g1'] * len(tree_species),
+        'tree_species': tree_species,
+    })
+    sapling_df = pd.DataFrame({
+        'ParentGlobalID': sapling_parents if sapling_parents is not None else ['g2'] * len(sapling_species),
+        'sapling_species': sapling_species,
+        'sapling_live_count': live if live is not None else [1] * len(sapling_species),
+        'sapling_dead_count': dead if dead is not None else [0] * len(sapling_species),
+    })
+    return plot_df, tree_df, sapling_df, pd.DataFrame(index=['FDI', 'PLI'])
+
+
+def test_exclude_unlisted_species_keeps_everything_when_all_species_are_listed(caplog):
+    plot_df, tree_df, sapling_df, params = _species_tables(['FDI', 'PLI', 'FDI'], ['PLI'])
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.trees'):
+        trees, saplings, excluded = _exclude_unlisted_species(plot_df, tree_df, sapling_df, params)
+    assert excluded == []
+    assert len(trees) == 3 and len(saplings) == 1
+    assert not caplog.records
+
+
+def test_exclude_unlisted_species_logs_each_plot_and_continues(caplog):
+    tables = _species_tables(['ZZ', 'ZZ', 'FDI'], ['QQ'], tree_parents=['g1', 'g2', 'g2'])
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.trees'):
+        trees, saplings, excluded = _exclude_unlisted_species(*tables)
+    assert excluded == ['P1', 'P2']
+    logged = {r.unique_id: r.getMessage() for r in caplog.records if 'tree table' in r.getMessage()}
+    assert set(logged) == {'P1', 'P2'}
+    assert "Species 'ZZ' (1 record in the tree table) is not in tree_parameters.csv" in logged['P1']
+    assert all(r.issue_code == 'tree_species_not_in_table' for r in caplog.records)
+    assert any("'QQ'" in r.getMessage() and 'sapling table' in r.getMessage() for r in caplog.records)
+    assert trees.empty and saplings.empty
+
+
+def test_exclude_unlisted_species_removes_every_record_of_an_affected_plot_only():
+    tables = _species_tables(['FDI', 'ZZ', 'PLI'], ['PLI', 'FDI'], tree_parents=['g1', 'g1', 'g2'],
+                             sapling_parents=['g1', 'g2'])
+    trees, saplings, excluded = _exclude_unlisted_species(*tables)
+    assert excluded == ['P1']
+    assert trees['tree_species'].tolist() == ['PLI']
+    assert saplings['sapling_species'].tolist() == ['FDI']
+    assert trees.index.tolist() == [0] and saplings.index.tolist() == [0]
+
+
+def test_exclude_unlisted_species_sends_an_unresolved_parent_to_the_general_error_row(caplog):
+    tables = _species_tables(['ZZ', 'FDI'], tree_parents=['missing-parent', 'g1'])
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.trees'):
+        trees, _, excluded = _exclude_unlisted_species(*tables)
+    assert excluded == []
+    assert len(caplog.records) == 1 and pd.isna(caplog.records[0].unique_id)
+    assert 'left out of the tree calculations' in caplog.records[0].getMessage()
+    assert trees['tree_species'].tolist() == ['FDI']
+
+
+def test_exclude_unlisted_species_ignores_empty_entries_and_the_no_sapling_value():
+    tables = _species_tables(['FDI', None, np.nan], ['NO_SAPLINGS', None], live=[1, 1])
+    _, _, excluded = _exclude_unlisted_species(*tables)
+    assert excluded == []
+
+
+def test_exclude_unlisted_species_reports_no_regen_with_a_count_as_an_unlisted_species(caplog):
+    # Only NO_SAPLINGS is a form value for no saplings. A NO_REGEN row with a count would reach the species lookup
+    # downstream, so it is reported like any other unlisted code (and ignored when it has no count).
+    tables = _species_tables(['FDI'], ['NO_REGEN', 'NO_REGEN'], live=[3, 0])
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.trees'):
+        _, saplings, excluded = _exclude_unlisted_species(*tables)
+    assert excluded == ['P2']
+    assert "'NO_REGEN' (1 record in the sapling table)" in caplog.records[0].getMessage()
+    assert saplings.empty
+
+
+def test_exclude_unlisted_species_ignores_unlisted_sapling_rows_without_a_count():
+    # A zero or missing count never reaches the height or biomass calculations, so it never stopped a run.
+    tables = _species_tables(['FDI'], ['ZZ', 'QQ'], live=[0, np.nan], dead=[0, np.nan])
+    _, _, excluded = _exclude_unlisted_species(*tables)
+    assert excluded == []
+
+
+def test_exclude_unlisted_species_counts_a_dead_only_sapling_and_text_counts():
+    _, _, excluded = _exclude_unlisted_species(*_species_tables([], ['ZZ'], live=[0], dead=['2']))
+    assert excluded == ['P2']
+
+
+def test_fuel_analyst_continues_and_reports_a_plot_with_an_unlisted_tree_species(tmp_path):
+    source = Path(__file__).resolve().parents[2] / 'examples' / 'data' / 'Survey123_Data'
+    in_dir = tmp_path / 'Survey123_Data'
+    shutil.copytree(source, in_dir)
+    trees = pd.read_csv(in_dir / '3_Trees' / 'tree_plot_2.csv')
+    parent = trees['ParentGlobalID'].iloc[0]
+    trees.loc[trees['ParentGlobalID'] == parent, 'tree_species'] = 'ZZ'
+    trees.to_csv(in_dir / '3_Trees' / 'tree_plot_2.csv', index=False)
+    out_dir = tmp_path / 'out'
+
+    fuel_analyst(in_dir=str(in_dir), out_dir=str(out_dir), surface_fire_intensity_model='Byram')
+
+    master = pd.read_csv(out_dir / 'master_fuel_df.csv', low_memory=False)
+    errors = pd.read_csv(out_dir / 'fuelanalyst_errors.csv', low_memory=False)
+    affected = errors.loc[errors['Trees'].astype(str).str.contains("Species 'ZZ'"), 'unique_id']
+    assert len(affected) == 1 and len(master) == 20
+    stand_columns = [c for c in master.columns if c.startswith('stand_') and 'duff' not in c and 'litter' not in c]
+    in_master = master['unique_id'].eq(affected.iloc[0])
+    assert master.loc[in_master, stand_columns].isna().all(axis=None)
+    assert master.loc[~in_master, stand_columns].notna().any(axis=1).all()
+
+
+def test_exclude_unlisted_species_does_not_attribute_a_parentless_record_to_a_plot_without_a_global_id(caplog):
+    # A null parent must not resolve to a plot whose own GlobalID is also null (pandas maps null keys to each other).
+    plot_df, tree_df, sapling_df, params = _species_tables(['ZZ', 'FDI'], tree_parents=[np.nan, 'g1'])
+    plot_df.loc[1, 'GlobalID'] = np.nan
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.trees'):
+        trees, _, excluded = _exclude_unlisted_species(plot_df, tree_df, sapling_df, params)
+    assert excluded == []
+    assert len(caplog.records) == 1 and pd.isna(caplog.records[0].unique_id)
+    assert trees['tree_species'].tolist() == ['FDI']
+
+
+def test_fuel_analyst_completes_when_every_plot_has_an_unlisted_species(tmp_path):
+    # Every tree and sapling record is removed, which leaves empty tables for the tree calculations.
+    source = Path(__file__).resolve().parents[2] / 'examples' / 'data' / 'Survey123_Data'
+    in_dir = tmp_path / 'Survey123_Data'
+    shutil.copytree(source, in_dir)
+    tree_path = in_dir / '3_Trees' / 'tree_plot_2.csv'
+    trees = pd.read_csv(tree_path)
+    trees['tree_species'] = trees['tree_species'].where(trees['tree_species'].isna(), 'ZZ')
+    trees.to_csv(tree_path, index=False)
+    sapling_path = in_dir / '3_Trees' / 'sapling_1.csv'
+    saplings = pd.read_csv(sapling_path)
+    keep = saplings['sapling_species'].isna() | saplings['sapling_species'].eq('NO_SAPLINGS')
+    saplings['sapling_species'] = saplings['sapling_species'].where(keep, 'ZZ')
+    saplings.to_csv(sapling_path, index=False)
+    out_dir = tmp_path / 'out'
+
+    fuel_analyst(in_dir=str(in_dir), out_dir=str(out_dir), surface_fire_intensity_model='Byram')
+
+    master = pd.read_csv(out_dir / 'master_fuel_df.csv', low_memory=False)
+    errors = pd.read_csv(out_dir / 'fuelanalyst_errors.csv', low_memory=False)
+    stand_columns = [c for c in master.columns if c.startswith('stand_') and 'duff' not in c and 'litter' not in c]
+    assert len(master) == 20
+    assert master[stand_columns].isna().all(axis=None)
+    assert errors['Trees'].astype(str).str.contains("Species 'ZZ'").sum() == 20
+
+
+def test_plot_with_an_unlisted_tree_species_is_left_out_of_the_model_inputs(tmp_path):
+    # The plot keeps valid plot-level species and canopy cover, so without the exclusion marker its missing canopy fuels
+    # would be written as 0 and ConPyro would model it with fuels that were never calculated.
+    source = Path(__file__).resolve().parents[2] / 'examples' / 'data' / 'Survey123_Data'
+    in_dir = tmp_path / 'Survey123_Data'
+    shutil.copytree(source, in_dir)
+    tree_path = in_dir / '3_Trees' / 'tree_plot_2.csv'
+    trees = pd.read_csv(tree_path)
+    plot_ids = pd.read_csv(in_dir / '3_Trees' / 'survey_0.csv')[['GlobalID']]
+    parent = trees['ParentGlobalID'].iloc[0]
+    trees.loc[trees['ParentGlobalID'] == parent, 'tree_species'] = 'ZZ'
+    trees.to_csv(tree_path, index=False)
+    out_dir = tmp_path / 'out'
+
+    fuel_analyst(in_dir=str(in_dir), out_dir=str(out_dir), surface_fire_intensity_model='Byram',
+                 gen_conpyro_df=True, gen_fofem_consume_df=True)
+
+    errors = pd.read_csv(out_dir / 'fuelanalyst_errors.csv', low_memory=False)
+    excluded = errors.loc[errors['Trees'].astype(str).str.contains("Species 'ZZ'"), 'unique_id'].iloc[0]
+    conpyro = pd.read_csv(out_dir / 'conpyro_df.csv', low_memory=False).set_index('unique_id')
+    assert pd.isna(conpyro.loc[excluded, 'stand_density']) and pd.isna(conpyro.loc[excluded, 'stand_type'])
+    others = conpyro.drop(index=excluded)
+    assert others['stand_density'].notna().sum() > 0 and others['stand_type'].notna().sum() > 0
+    assert '_trees_excluded' not in conpyro.columns
+    master = pd.read_csv(out_dir / 'master_fuel_df.csv', low_memory=False)
+    assert '_trees_excluded' not in master.columns and len(master) == len(plot_ids)
+    consume = pd.read_csv(out_dir / 'fofem_consume_si_df.csv', low_memory=False)
+    assert len(consume) == len(master) - 1

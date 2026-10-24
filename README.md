@@ -93,7 +93,8 @@ flowchart LR
 The normal sequence is:
 
 1. Run `fuel_analyst()` on the Survey123 export folders.
-2. Optionally calculate FBP fuel types if using CFIS to model fire behaviour.
+2. Optionally calculate FBP fuel types if using CFIS to model fire behaviour. CFIS uses them only when every plot
+   has one, and `run_conpyro()` warns about each plot without one.
 3. Extract or supply weather records.
 4. Merge weather with the prepared ConPyro table.
 5. Run ConPyro and/or FOFEM models.

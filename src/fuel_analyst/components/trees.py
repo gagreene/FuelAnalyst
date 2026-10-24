@@ -15,22 +15,6 @@ import itertools
 from . import error_handling, helper, table_reader
 
 
-# GENERAL LIST OF CONIFER SPECIES IN BC
-conifer_list = [
-    'B', 'BA', 'BB', 'BG', 'BL', 'BN',
-    'C', 'CE', 'CH', 'CW',
-    'F', 'FD', 'FDC', 'FDI',
-    'H', 'HM', 'HW', 'HX', 'HXM',
-    'J', 'JR',
-    'L', 'LA', 'LS', 'LT', 'LW',
-    'P', 'PA', 'PF', 'PJ', 'PL', 'PLC', 'PLI', 'PP', 'PR', 'PW', 'PX', 'PXJ', 'PY',
-    'S', 'SA', 'SB', 'SE', 'SR', 'SS', 'SW', 'SX', 'SXB', 'SXE', 'SXL', 'SXS', 'SXW', 'SXX',
-    'T', 'TW',
-    'Y', 'YC',
-    'UNK', 'XC', 'ZC'
-]
-
-
 # VARIABLES FOR BIOMASS MODELING
 tree_component_list = ['wood', 'bark', 'branches', 'foliage']
 tree_component_index_dict = {
@@ -405,10 +389,10 @@ def _calc_stand_attributes(
 
         # 'total' is only valid by itself
         if parts == ['total']:
-            return pd.Series([True] * len(_tree_df), index=_tree_df.index)
+            return pd.Series(True, index=_tree_df.index, dtype=bool)
 
         # Start with all True mask and apply each condition
-        _mask = pd.Series([True] * len(_tree_df), index=_tree_df.index)
+        _mask = pd.Series(True, index=_tree_df.index, dtype=bool)
 
         for part in parts:
             if part == 'live':
@@ -825,9 +809,13 @@ def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> p
         np.where(tree_df.tree_type == 'broadleaf', tree_df.tree_dcy_class_brdlf, np.nan)
     )
 
+    # Conifer species come from each tree's tree_type, which _calc_tree_type() reads from the TreeType column of
+    # tree_parameters.csv, so that file is the only place that records whether a species is a conifer.
+    conifer_species = set(tree_df.loc[tree_df['tree_type'] == 'conifer', 'tree_species'].dropna().unique())
+
     for spp in spp_list:
         # Select decay class dictionary based on species type
-        decay_dict = tree_conifer_decay_class_dict if spp in conifer_list else tree_broadleaf_decay_class_dict
+        decay_dict = tree_conifer_decay_class_dict if spp in conifer_species else tree_broadleaf_decay_class_dict
         for component in tree_component_list:
             comp_idx = tree_component_index_dict[component]
             param1 = tree_params_df.loc[spp, f'BIOMASS_CNBE_DBH-HT_B{component}1']
@@ -1500,6 +1488,77 @@ def _classify_numeric_input(raw: pd.Series, numeric: pd.Series, prefix: str, all
     return issue
 
 
+def _exclude_unlisted_species(
+        df: pd.DataFrame,
+        tree_df: pd.DataFrame,
+        sapling_df: pd.DataFrame,
+        tree_params_df: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame, list]:
+    """
+    Log each tree or sapling species that is missing from tree_parameters.csv and leave the affected plots out.
+
+    The tree and sapling calculations look each species up in the table for its height, biomass, and fuel parameters,
+    so an unlisted species cannot be calculated. Each affected plot is logged through error_handling (a record whose
+    plot cannot be resolved goes to the General Error row). Every tree and sapling record of an affected plot is then
+    removed, so that no plot is summarized from only some of its trees, and the run continues with the other plots.
+    The caller sets the tree results of the returned plots to missing. Empty species entries are ignored. Sapling
+    records count only when a live or dead count is above zero, and the form value for no saplings ('NO_SAPLINGS')
+    never counts.
+
+    :param df: Plot-level DataFrame with GlobalID and unique_id columns.
+    :param tree_df: Raw tree table, with ParentGlobalID and tree_species columns.
+    :param sapling_df: Raw sapling table, with ParentGlobalID, sapling_species, sapling_live_count, and
+        sapling_dead_count columns.
+    :param tree_params_df: Species parameter table indexed by species code.
+    :return: Tuple of the tree table and the sapling table without the records of the affected plots (and without
+        unlisted-species records whose plot cannot be resolved), and the list of affected plot unique IDs.
+    """
+    known = set(tree_params_df.index)
+
+    unlisted_trees = tree_df[tree_df['tree_species'].notna() & ~tree_df['tree_species'].isin(known)]
+    live = pd.to_numeric(sapling_df['sapling_live_count'], errors='coerce').fillna(0)
+    dead = pd.to_numeric(sapling_df['sapling_dead_count'], errors='coerce').fillna(0)
+    recorded = (
+        sapling_df['sapling_species'].notna() & ((live > 0) | (dead > 0)) &
+        sapling_df['sapling_species'].ne('NO_SAPLINGS')
+    )
+    unlisted_saplings = sapling_df[recorded & ~sapling_df['sapling_species'].isin(known)]
+
+    affected = set()
+    for label, records, species_col in (('tree', unlisted_trees, 'tree_species'),
+                                        ('sapling', unlisted_saplings, 'sapling_species')):
+        if records.empty:
+            continue
+        plots = _resolve_parent_unique_ids(df, records['ParentGlobalID'])
+        affected.update(plots.dropna())
+        for (species, unique_id), count in (
+                records.assign(_plot=plots.values).groupby([species_col, '_plot'], dropna=False).size().items()
+        ):
+            outcome = ("the tree results for this plot were left empty" if pd.notna(unique_id)
+                       else "the records were left out of the tree calculations")
+            logger.error(
+                f"Species '{species}' ({count} {'record' if count == 1 else 'records'} in the {label} table) is not in "
+                f"tree_parameters.csv; {outcome}.",
+                extra={'unique_id': unique_id, 'issue_code': 'tree_species_not_in_table'},
+            )
+
+    if unlisted_trees.empty and unlisted_saplings.empty:
+        return tree_df, sapling_df, []
+
+    def _remaining(records: pd.DataFrame, unlisted: pd.DataFrame) -> pd.DataFrame:
+        """
+        Drop the records of the affected plots and the unlisted records.
+
+        :param records: Raw tree or sapling table.
+        :param unlisted: The unlisted-species records of that table.
+        :return: The table without those records, with a fresh index.
+        """
+        in_affected_plot = _resolve_parent_unique_ids(df, records['ParentGlobalID']).isin(affected)
+        return records.loc[~(in_affected_plot | records.index.isin(unlisted.index))].reset_index(drop=True)
+
+    return _remaining(tree_df, unlisted_trees), _remaining(sapling_df, unlisted_saplings), sorted(affected)
+
+
 def _gen_master_tree_df(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame:
     """
     Generate a master tree DataFrame with selected and renamed columns for export.
@@ -1964,6 +2023,26 @@ def _print_tree_density_summary(partial_log: list[tuple]) -> None:
     print('\tSee the run-level error report (fuelanalyst_errors.csv) for full details.')
 
 
+def _resolve_parent_unique_ids(df: pd.DataFrame, parent_ids: pd.Series) -> pd.Series:
+    """
+    Map Survey123 parent record IDs to plot unique IDs, leaving ambiguous or unknown parents missing.
+
+    A parent is ambiguous when its GlobalID repeats in the plot table or the plot table marks it ambiguous. This is the
+    same rule _log_tree_density_issues() applies to its records.
+
+    :param df: Plot-level DataFrame with GlobalID and unique_id columns, and optionally _parent_id_ambiguous.
+    :param parent_ids: Parent record IDs of the tree or sapling records.
+    :return: Series of plot unique IDs aligned with parent_ids, missing where the parent cannot be resolved safely.
+        A plot with a missing GlobalID never resolves a parent, so a record with no parent is not attributed to it.
+    """
+    ambiguous = df.get('_parent_id_ambiguous', pd.Series(False, index=df.index)).fillna(False).astype(bool)
+    duplicate_ids = set(df.loc[df['GlobalID'].duplicated(keep=False), 'GlobalID'].dropna())
+    duplicate_ids.update(df.loc[ambiguous, 'GlobalID'].dropna())
+    valid_plots = df.loc[~df['GlobalID'].isin(duplicate_ids) & df['GlobalID'].notna()]
+    valid = valid_plots.drop_duplicates('GlobalID').set_index('GlobalID')['unique_id']
+    return parent_ids.map(valid)
+
+
 def _round_plot_data(df: pd.DataFrame) -> pd.DataFrame:
     """
     Rounds plot data columns to appropriate decimal places.
@@ -2047,9 +2126,14 @@ def process_trees(
     df = _calc_plot_multipliers(df)
     df = _round_plot_data(df)
 
-    # ### PROCESS SAPLING ATTRIBUTES
-    # Get sapling dataframe
+    # Read the sapling and tree tables, and leave out the plots that record a species that is not in
+    # tree_parameters.csv (each is logged), so that the other plots are still calculated
     sapling_df = table_reader.read_table(in_folder, 'sapling_1')
+    tree_df = table_reader.read_table(in_folder, 'tree_plot_2')
+    tree_df, sapling_df, excluded_plot_ids = _exclude_unlisted_species(df, tree_df, sapling_df, tree_params_df)
+
+    # ### PROCESS SAPLING ATTRIBUTES
+    # Normalize the sapling dataframe read above
     sapling_df = _normalize_sapling_inputs(sapling_df)
     # Calculate sapling attributes
     sapling_df = _calc_sapling_tree_type(sapling_df, tree_params_df)
@@ -2058,8 +2142,7 @@ def process_trees(
     sapling_df = _calc_sapling_ht(sapling_df, tree_params_df)
 
     # ### PROCESS INDIVIDUAL TREE ATTRIBUTES
-    # Get tree dataframe
-    tree_df = table_reader.read_table(in_folder, 'tree_plot_2')
+    # Normalize the tree dataframe read above
     tree_df = _normalize_tree_inputs(tree_df)
     # Merge sapling attributes
     tree_df, sapling_df = _merge_saplings_to_trees(tree_df, sapling_df)
@@ -2095,6 +2178,10 @@ def process_trees(
     keep_columns.extend(add_columns)
     df, add_columns = _calc_stand_attributes(df, tree_df, stand_summary_params)
     keep_columns.extend(add_columns)
+    # A plot left out for an unlisted species has no trees to summarize, so its tree results are missing, not zero
+    if excluded_plot_ids:
+        tree_columns = [column for column in keep_columns if column in df.columns]
+        df[tree_columns] = df[tree_columns].mask(df['unique_id'].isin(excluded_plot_ids))
 
     # ### SAVE DATASETS TO OUTPUT FOLDER
     os.makedirs(out_folder, exist_ok=True)
@@ -2111,6 +2198,8 @@ def process_trees(
 
     _print_tree_density_summary(partial_log)
 
-    df = export_df
+    # Mark the plots left out for an unlisted species, so that the model inputs leave them out too; the marker
+    # is in the returned table only, never in an output file
+    df = helper.attach_columns(export_df, {helper.TREES_EXCLUDED_COLUMN: df['unique_id'].isin(excluded_plot_ids)})
 
     return df, helper.sort_list(keep_columns), master_tree_df
