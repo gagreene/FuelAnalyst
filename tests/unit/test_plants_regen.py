@@ -198,8 +198,11 @@ def test_process_top_five_spp_depth_weights_all_species():
 LOGGER_NAME = 'fuel_analyst.components.plants_regen'
 
 
-def _species_frame(species, unique_id='plot_1', other=None):
-    """Build a one-plot frame with 50% cover and 10 cm height for each listed species code (None leaves a slot empty)."""
+def _species_frame(species, unique_id='plot_1', other=None, other_group=None):
+    """Build a one-plot frame with 50% cover and 10 cm height for each listed species code (None leaves a slot empty).
+
+    other is the alternate name entered for species 1 when it is OTHER, and other_group the functional group chosen with
+    it; the group column is only present when a group is given, as in an export from an older version of the form."""
     row = {'unique_id': unique_id}
     for index in range(1, 6):
         offset = index - 1
@@ -210,6 +213,9 @@ def _species_frame(species, unique_id='plot_1', other=None):
             f'pc_species_{index}_pct': 50.0 if code is not None else np.nan,
             f'pc_species_{index}_ht': 10.0 if code is not None else np.nan,
         })
+    if other_group is not None:
+        for index in range(1, 6):
+            row[f'pc_species_{index}_other_group'] = other_group if index == 1 else None
     return pd.DataFrame([row])
 
 
@@ -274,6 +280,133 @@ def test_other_species_warning_names_the_slot_and_skips_named_and_non_other_spec
         _process_top_five_spp(frame)
     records = _species_warnings(caplog, 'plant_species_other_no_name')
     assert len(records) == 1 and 'pc_species_3_other' in records[0].message
+
+
+def test_no_species_adds_nothing_and_its_cover_and_height_are_ignored(caplog):
+    # NO_SPP is a form value for no further species. Even if cover and height are entered with it (the form hides them),
+    # it adds no biomass and does not count toward fuel bed depth or any group, and it is not warned about.
+    frame = _species_frame(['ACCA', 'NO_SPP'])
+    frame['pc_species_2_pct'] = 40.0
+    frame['pc_species_2_ht'] = 50.0
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        result, _ = _process_top_five_spp(frame)
+    only_listed, _ = _process_top_five_spp(_species_frame(['ACCA']))
+    assert result.loc[0, 'pc_species_2_kgpm2'] == 0
+    assert result.loc[0, 'pc_species_kgpm2'] == only_listed.loc[0, 'pc_species_kgpm2'] > 0
+    assert result.loc[0, 'fuel_bed_depth_m'] == only_listed.loc[0, 'fuel_bed_depth_m']
+    for column in ('herb_forb_pct_total', 'herbs_pct_total', 'grass_pct_total', 'shrubs_pct_total', 'bryoid_pct_total'):
+        assert result.loc[0, column] == only_listed.loc[0, column]
+    assert not _species_warnings(caplog)
+
+
+def test_no_species_alone_gives_zero_biomass_and_no_fuel_bed_depth():
+    result, _ = _process_top_five_spp(_species_frame(['NO_SPP']))
+    assert result.loc[0, 'pc_species_kgpm2'] == 0
+    assert result.loc[0, 'grass_kgpm2'] == result.loc[0, 'herb_forb_kgpm2'] == result.loc[0, 'shrubs_kgpm2'] == 0
+    assert np.isnan(result.loc[0, 'fuel_bed_depth_m'])
+
+
+# ── OTHER species that are not in the table: estimated from the functional group chosen with them ──────────────────
+
+def _expected_group_mean(group, pct, height):
+    """Average, over the species of one group in plant_photoload.csv, of each species' equation, computed from the CSV."""
+    table = _species_table()
+    codes = table.loc[(table['func_group'] == group) & table['pl_code'].notna(), 'pl_code']
+    return float(np.mean([_get_photoload_biomass(code, pct, height) for code in codes]))
+
+
+@pytest.mark.parametrize('group, total_column', [
+    ('Herb/Forb', 'herb_forb_kgpm2'), ('Grass', 'grass_kgpm2'), ('Shrub', 'shrubs_kgpm2'),
+])
+def test_other_species_not_in_the_table_gets_the_average_of_its_functional_group(group, total_column, caplog):
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        result, _ = _process_top_five_spp(_species_frame(['OTHER'], other='Fireweed', other_group=group))
+    expected = _expected_group_mean(group, 50.0, 10.0)
+    assert expected > 0
+    assert result.loc[0, 'pc_species_1_kgpm2'] == pytest.approx(expected)
+    assert result.loc[0, 'pc_species_kgpm2'] == pytest.approx(expected)
+    # it joins the totals of the group the crew chose, and no other group
+    assert result.loc[0, total_column] == pytest.approx(expected)
+    others = {'herb_forb_kgpm2', 'grass_kgpm2', 'shrubs_kgpm2'} - {total_column}
+    assert all(result.loc[0, column] == 0 for column in others)
+    assert result.loc[0, 'pc_species_1_label'] == f'[{group}] OTHER - Fireweed'
+    estimated = _species_warnings(caplog, 'plant_species_other_estimated')
+    assert len(estimated) == 1 and "'Fireweed'" in estimated[0].message and group in estimated[0].message
+    assert not _species_warnings(caplog, 'plant_species_not_in_table')
+
+
+def test_other_species_group_averages_follow_the_species_of_each_group():
+    # Grass (FESC, CARU, XETE), herb/forb (almost all ARLA), and shrub (AMAL, SYAL, VAGL, MARE, VASC, ARLA) differ
+    means = {g: _expected_group_mean(g, 50.0, 10.0) for g in ('Herb/Forb', 'Grass', 'Shrub')}
+    assert len({round(v, 6) for v in means.values()}) == 3
+    assert means['Shrub'] > means['Grass'] > means['Herb/Forb'] > 0
+
+
+def test_other_species_estimates_each_plot_from_its_own_group_and_cover():
+    frame = pd.concat([_species_frame(['OTHER'], unique_id='A', other='x', other_group='Grass'),
+                       _species_frame(['OTHER'], unique_id='B', other='y', other_group='Shrub')], ignore_index=True)
+    frame.loc[1, 'pc_species_1_pct'] = 20.0
+    frame.loc[1, 'pc_species_1_ht'] = 40.0
+    result, _ = _process_top_five_spp(frame)
+    assert result.loc[0, 'pc_species_1_kgpm2'] == pytest.approx(_expected_group_mean('Grass', 50.0, 10.0))
+    assert result.loc[1, 'pc_species_1_kgpm2'] == pytest.approx(_expected_group_mean('Shrub', 20.0, 40.0))
+
+
+def test_other_moss_or_lichen_has_zero_biomass_but_its_cover_counts():
+    result, _ = _process_top_five_spp(_species_frame(['OTHER'], other='Fringe moss', other_group='Moss/Lichen'))
+    assert result.loc[0, 'pc_species_1_kgpm2'] == 0
+    assert result.loc[0, 'bryoid_pct_total'] == 50.0
+    assert result.loc[0, 'pc_species_kgpm2'] == 0
+
+
+def test_other_species_in_the_table_uses_the_table_not_the_group_estimate(caplog):
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        result, _ = _process_top_five_spp(_species_frame(['OTHER'], other='ACCA', other_group='Shrub'))
+    listed, _ = _process_top_five_spp(_species_frame(['ACCA']))
+    assert result.loc[0, 'pc_species_1_kgpm2'] == pytest.approx(listed.loc[0, 'pc_species_1_kgpm2'])
+    assert result.loc[0, 'herb_forb_kgpm2'] > 0 and result.loc[0, 'shrubs_kgpm2'] == 0
+    assert not _species_warnings(caplog)
+
+
+def test_other_species_with_a_group_but_no_name_is_estimated_and_counts_toward_fuel_bed_depth(caplog):
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        result, _ = _process_top_five_spp(_species_frame(['OTHER'], other='', other_group='Shrub'))
+    assert result.loc[0, 'pc_species_1'] == 'OTHER'
+    assert result.loc[0, 'pc_species_1_kgpm2'] == pytest.approx(_expected_group_mean('Shrub', 50.0, 10.0))
+    assert result.loc[0, 'pc_species_1_label'] == '[Shrub] OTHER - no name'
+    assert result.loc[0, 'fuel_bed_depth_m'] == pytest.approx(0.1)
+    estimated = _species_warnings(caplog, 'plant_species_other_estimated')
+    assert len(estimated) == 1 and 'with no name' in estimated[0].message
+    assert not _species_warnings(caplog, 'plant_species_other_no_name')
+
+
+def test_other_species_with_no_name_and_no_group_still_cannot_be_estimated(caplog):
+    frame = _species_frame(['OTHER'], other='', other_group='')
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        result, _ = _process_top_five_spp(frame)
+    assert result.loc[0, 'pc_species_kgpm2'] == 0
+    assert len(_species_warnings(caplog, 'plant_species_other_no_name')) == 1
+    assert not _species_warnings(caplog, 'plant_species_other_estimated')
+
+
+def test_other_species_with_an_unknown_group_is_not_estimated(caplog):
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        result, _ = _process_top_five_spp(_species_frame(['OTHER'], other='Fireweed', other_group='Orchid'))
+    assert result.loc[0, 'pc_species_kgpm2'] == 0
+    assert len(_species_warnings(caplog, 'plant_species_not_in_table')) == 1
+    assert not _species_warnings(caplog, 'plant_species_other_estimated')
+
+
+def test_estimated_other_species_reaches_the_error_report(tmp_path):
+    error_handling.start_run()
+    _process_top_five_spp(_species_frame(['OTHER', 'ACCA'], unique_id='Demo_P03', other='Fireweed', other_group='Herb/Forb'))
+    report = tmp_path / 'errors.csv'
+    error_handling.write_report(str(report))
+    rows = pd.read_csv(report)
+    row = rows[rows['unique_id'] == 'Demo_P03']
+    assert len(row) == 1
+    message = row.iloc[0]['Plants and Regeneration']
+    assert '[WARNING]' in message and "'Fireweed'" in message and 'average of the' in message
 
 
 def test_species_codes_are_case_sensitive(caplog):
@@ -345,19 +478,82 @@ def test_every_photoload_code_has_a_biomass_equation():
         assert np.isfinite(_get_photoload_biomass(code, 20.0, 20.0)), code
 
 
+_SENTINELS = ['NO_SPP', 'OTHER']      # Survey123 form values that are not species
+
+
+def _real_species():
+    table = _species_table()
+    return table[~table['name'].isin(_SENTINELS)]
+
+
 def test_species_table_names_are_unique_and_complete():
     table = _species_table()
     assert table['name'].is_unique
-    assert not table[['name', 'label', 'pl_code']].isna().any().any()
+    assert not table[['name', 'label']].isna().any().any()
+    assert not _real_species()['pl_code'].isna().any()
 
 
 def test_species_table_series_are_valid():
-    table = _species_table()
+    table = _real_species()
     assert set(table['pl_code']) <= set(_PHOTOLOAD_CODES)
     assert set(table['pl_code_alt'].dropna()) <= set(_PHOTOLOAD_CODES)
 
 
 def test_species_table_labels_carry_a_functional_group():
     # plants_regen assigns a species to a functional group by searching its label for Moss, Grass, Herb, or Shrub
-    labels = _species_table()['label']
+    labels = _real_species()['label']
     assert labels.str.match(r'^\[(Herb/Forb|Herb|Grass|Shrub|Moss/Lichen|Tree)\] ').all()
+
+
+# ── The two form values that are not species, and the Survey123 form that uses the table ────────────────────────────
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+PLANTS_FORM_DIR = os.path.join(REPO_ROOT, 'docs', 'survey123', 'survey123_forms', 'CWC Fuels 2 - Plants and Regen')
+
+
+def test_sentinel_rows_are_in_the_species_table_without_a_series_or_group():
+    # The Plants form builds its species list from this file, so without these rows a crew cannot choose them
+    table = _species_table().set_index('name')
+    for name in _SENTINELS:
+        assert name in table.index, name
+        assert pd.isna(table.loc[name, 'pl_code']) and pd.isna(table.loc[name, 'func_group']), name
+        assert not table.loc[name, 'label'].startswith('['), name   # a label with a group would assign one
+
+
+def test_the_form_media_copy_of_the_species_table_is_identical():
+    packaged = os.path.join(os.path.dirname(helper.__file__), '..', 'supporting_data', 'plant_photoload.csv')
+    media = os.path.join(PLANTS_FORM_DIR, 'media', 'plant_photoload.csv')
+    if not os.path.exists(media):
+        pytest.skip('the Survey123 form files are not in this checkout')
+    with open(packaged, 'rb') as a, open(media, 'rb') as b:
+        assert a.read() == b.read()
+
+
+def _form_sheet(name):
+    openpyxl = pytest.importorskip('openpyxl')
+    path = os.path.join(PLANTS_FORM_DIR, 'CWC Fuels 2 - Plants and Regen.xlsx')
+    if not os.path.exists(path):
+        pytest.skip('the Survey123 form files are not in this checkout')
+    rows = list(openpyxl.load_workbook(path, data_only=True)[name].iter_rows(values_only=True))
+    header = [str(h) if h else '' for h in rows[0]]
+    return [dict(zip(header, row)) for row in rows[1:] if any(row)]
+
+
+def test_form_asks_for_a_functional_group_after_each_other_species():
+    survey = _form_sheet('survey')
+    names = [r['name'] for r in survey]
+    for slot in range(1, 6):
+        i = names.index(f'pc_species_{slot}_other')
+        group = survey[i + 1]
+        assert group['name'] == f'pc_species_{slot}_other_group'
+        assert group['type'] == 'select_one list_plant_func_group'
+        assert group['relevant'] == f"${{pc_species_{slot}}} = 'OTHER'"
+        assert group['required'] == 'yes'
+
+
+def test_form_functional_group_choices_are_the_species_table_groups_except_tree():
+    # Survey123 cannot filter a file to unique values, so the choices are written into the form; this keeps them in step.
+    # Tree is deliberately not offered: a tree that is not in the list belongs in the tree forms, not the plant cover.
+    choices = [r for r in _form_sheet('choices') if r['list_name'] == 'list_plant_func_group']
+    assert {r['name'] for r in choices} == set(_species_table()['func_group'].dropna()) - {'Tree'}
+    assert all(r['name'] == r['label'] for r in choices)

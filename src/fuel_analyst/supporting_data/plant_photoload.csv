@@ -1,4 +1,6 @@
 name,label,scientific_name,func_group,pl_code,pl_code_alt,other_name,notes
+NO_SPP,NO_SPP - No further species,,,,,,Form value for no further species: zero biomass; not a species
+OTHER,OTHER - Species not in this list (enter it next),,,,,,Form value for a species not in the list: the species is entered in pc_species_N_other
 ACCA,[Herb/Forb] ACCA - deer's foot,Achlys californica,Herb/Forb,ARLA,,,
 ACGL,[Shrub] ACGL - Douglas maple,Acer glabrum,Shrub,AMAL,,Rocky Mountain maple,
 ACMI,[Herb/Forb] ACMI - yarrow,Achillea millefolium,Herb/Forb,ARLA,,,

@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 #: Value the Survey123 form records when a plot has no surface plant species.
 _NO_SPECIES_CODE = 'NO_SPP'
+_OTHER_SPECIES_CODE = 'OTHER'
+_NOT_SPECIES = (_NO_SPECIES_CODE, _OTHER_SPECIES_CODE)    # table rows that are Survey123 form values, not species
 #: PhotoLoad series that _get_photoload_biomass() can evaluate (MOSS and TREE give zero biomass).
 _PHOTOLOAD_CODES = ('AMAL', 'ARLA', 'CARU', 'FESC', 'MARE', 'MOSS', 'SYAL', 'TREE', 'VAGL', 'VASC', 'XETE')
 
@@ -230,17 +232,77 @@ def _get_photoload_biomass(photoload_code: str, pct_cover: float, height: float)
     return photoload_dict.get(photoload_code, np.nan)
 
 
-def _log_other_species_without_name(df: pd.DataFrame, species_number: int) -> None:
+def _group_mean_biomass(table_df: pd.DataFrame, group: str, pct_cover, height):
+    """
+    Average biomass of the species of one functional group of plant_photoload.csv at a given cover and height.
+
+    Each species of the group is evaluated with its own PhotoLoad series equation (so a series that many species use
+    counts once per species), and the biomass values are averaged. A group of mosses and lichens has no biomass
+    equations and averages to zero.
+
+    :param table_df: Species table with func_group and pl_code columns.
+    :param group: Functional group name, as in the func_group column (for example 'Herb/Forb').
+    :param pct_cover: Observed cover as a percentage, scalar or array.
+    :param height: Observed height in centimetres, scalar or array.
+    :return: Average biomass in kilograms per square metre, as an array aligned with the inputs.
+    """
+    series = table_df.loc[(table_df['func_group'] == group) & table_df['pl_code'].notna(), 'pl_code'].value_counts()
+    total = np.zeros(np.shape(pct_cover), dtype=float)
+    for code, count in series.items():
+        total = total + count * np.asarray(_get_photoload_biomass(code, pct_cover, height), dtype=float)
+    return total / series.sum()
+
+
+def _log_other_species_estimated(
+        df: pd.DataFrame,
+        species_number: int,
+        estimated: pd.Series,
+        name: pd.Series,
+        group: pd.Series,
+        group_sizes: dict
+) -> None:
+    """
+    Log a warning for each plot whose OTHER species was estimated from the average of its functional group.
+
+    A species recorded as OTHER that is not in plant_photoload.csv has no series equation, so its biomass is the
+    average of the species of the functional group the crew chose, at its cover and height. The warning tells the user
+    how the value was obtained and that adding the species to the table replaces the estimate. The warnings are
+    collected by error_handling for the error report.
+
+    :param df: DataFrame with the species cover and height columns.
+    :param species_number: Position of the species within the plot (1 to 5).
+    :param estimated: Boolean Series that is True for the rows estimated from a group average.
+    :param name: Series of the alternate species names entered with OTHER (blank when none was entered).
+    :param group: Series of the functional groups chosen with OTHER.
+    :param group_sizes: Number of species of each functional group in plant_photoload.csv.
+    :return: None. Writes warnings to the module logger, keyed by unique_id when that column exists.
+    """
+    for idx in df.index[estimated]:
+        entered = name[idx] if isinstance(name[idx], str) and name[idx].strip() else None
+        who = f"'{entered}'" if entered else 'with no name'
+        logger.warning(
+            f"Plant species {species_number} is recorded as OTHER {who}, which is not in plant_photoload.csv, so its "
+            f"biomass is the average of the {group_sizes[group[idx]]} {group[idx]} species of the table at its cover "
+            "and height. Add the species to plant_photoload.csv to replace this estimate.",
+            extra={
+                'unique_id': df.loc[idx, 'unique_id'] if 'unique_id' in df.columns else idx,
+                'issue_code': 'plant_species_other_estimated',
+            },
+        )
+
+
+def _log_other_species_without_name(df: pd.DataFrame, species_number: int, skip: pd.Series | None = None) -> None:
     """
     Log a warning for each plot whose species is recorded as OTHER with no alternate code.
 
-    A species recorded as OTHER is identified by the code entered in pc_species_N_other. When that entry is empty the
-    species cannot be identified, so it adds no biomass to any functional group. This must run before OTHER is
-    replaced by the alternate code, which would erase the record. The warnings are collected by error_handling for
-    the error report.
+    A species recorded as OTHER is identified by the code entered in pc_species_N_other. When that entry is empty and no
+    functional group was chosen either, the species cannot be identified or estimated, so it adds no biomass to any
+    functional group. This must run before OTHER is replaced by the alternate code, which would erase the record. The
+    warnings are collected by error_handling for the error report.
 
     :param df: DataFrame with the species code (pc_species_N) and its alternate code (pc_species_N_other).
     :param species_number: Position of the species within the plot (1 to 5).
+    :param skip: Optional boolean Series that is True for rows to leave out (rows estimated from a functional group).
     :return: None. Writes warnings to the module logger, keyed by unique_id when that column exists.
     """
     other_col = f'pc_species_{species_number}_other'
@@ -249,6 +311,8 @@ def _log_other_species_without_name(df: pd.DataFrame, species_number: int) -> No
     alternate = df[other_col]
     no_alternate = alternate.isna() | (alternate.astype(str).str.strip() == '')
     unnamed = (df[f'pc_species_{species_number}'] == 'OTHER') & no_alternate
+    if skip is not None:
+        unnamed = unnamed & ~skip
 
     for idx in df.index[unnamed]:
         logger.warning(
@@ -261,7 +325,7 @@ def _log_other_species_without_name(df: pd.DataFrame, species_number: int) -> No
         )
 
 
-def _log_species_table_issues(df: pd.DataFrame, species_number: int) -> None:
+def _log_species_table_issues(df: pd.DataFrame, species_number: int, skip: pd.Series | None = None) -> None:
     """
     Log a warning for each plot whose recorded species cannot be converted to biomass.
 
@@ -271,12 +335,15 @@ def _log_species_table_issues(df: pd.DataFrame, species_number: int) -> None:
 
     :param df: DataFrame with the species code (pc_species_N) and its PhotoLoad series (pc_species_N_plCode).
     :param species_number: Position of the species within the plot (1 to 5).
+    :param skip: Optional boolean Series that is True for rows to leave out (OTHER species estimated from a group).
     :return: None. Writes warnings to the module logger, keyed by unique_id when that column exists.
     """
     code_col = f'pc_species_{species_number}'
     series_col = f'pc_species_{species_number}_plCode'
     code = df[code_col]
     recorded = code.notna() & (code.astype(str).str.strip() != '') & (code != _NO_SPECIES_CODE)
+    if skip is not None:
+        recorded = recorded & ~skip
     unlisted = recorded & df[series_col].isna()
     no_equation = recorded & df[series_col].notna() & ~df[series_col].isin(_PHOTOLOAD_CODES)
 
@@ -343,7 +410,11 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     Calculate species biomass and cover-weighted plant heights per plot.
 
     Add species PhotoLoad codes, biomass, and labels, together with biomass,
-    cover, and height summaries for moss/bryophyte, grass, herb/forb, and shrub groups.
+    cover, and height summaries for moss/bryophyte, grass, herb/forb, and shrub groups. A species recorded as
+    'NO_SPP' (no further species) contributes zero biomass and no cover or height. A species recorded as 'OTHER'
+    that is not in the table is estimated from the functional group chosen with it (pc_species_N_other_group): its
+    biomass is the average, over the species of that group in the table, of each species' equation at the recorded
+    cover and height, and the species counts in that group.
     Fuel-bed depth weights valid recorded species by cover after normalization; missing
     or nonfinite heights/covers and negative heights are excluded from both sums.
     A measured zero height contributes zero; no usable species yields missing depth.
@@ -380,6 +451,9 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     # Get the plant Photoload codes and labels
     pl_code_map = plant_photoload_df['pl_code'].to_dict()
     label_map = plant_photoload_df['label'].to_dict()
+    species_names = set(plant_photoload_df.index) - set(_NOT_SPECIES)
+    group_sizes = (plant_photoload_df['func_group'].value_counts().to_dict()
+                   if 'func_group' in plant_photoload_df.columns else {})
 
     fuel_bed_ht_wtd = pd.Series(0.0, index=df.index)
     fuel_bed_pct_total = pd.Series(0.0, index=df.index)
@@ -387,13 +461,29 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     # Cycle through the top 5 plant species
     for x in range(1, 6):
         print(f'\t\tProcessing species {x}')
-        # Assign alternate code if species classified as OTHER (an OTHER with no alternate code is logged first)
-        _log_other_species_without_name(df, x)
+        # A species recorded as OTHER is identified by the alternate name entered with it. If that name is not in the
+        # table (or no name was entered) and a functional group was chosen, its biomass is estimated from that group
+        other = df[f'pc_species_{x}'] == _OTHER_SPECIES_CODE
+        alt_name = df[f'pc_species_{x}_other'] if f'pc_species_{x}_other' in df.columns else pd.Series(np.nan, index=df.index)
+        alt_group = (df[f'pc_species_{x}_other_group'].astype('string').str.strip()
+                     if f'pc_species_{x}_other_group' in df.columns else pd.Series(pd.NA, index=df.index, dtype='string'))
+        estimated = (other & ~alt_name.isin(species_names)
+                     & alt_group.isin([g for g in group_sizes if pd.notna(g)])).fillna(False).astype(bool)
+        no_name = alt_name.isna() | (alt_name.astype(str).str.strip() == '')
+
+        # Assign alternate code if species classified as OTHER (an OTHER that cannot be identified or estimated with no
+        # alternate code is logged first). An estimated species with no name keeps OTHER as its code.
+        _log_other_species_without_name(df, x, skip=estimated)
         df[f'pc_species_{x}'] = np.where(
-            df[f'pc_species_{x}'] == 'OTHER',
-            df[f'pc_species_{x}_other'],
+            other,
+            np.where(estimated & no_name, _OTHER_SPECIES_CODE, alt_name),
             df[f'pc_species_{x}']
         )
+
+        # NO_SPP means there is no further species: it adds no biomass, and any cover or height entered with it is
+        # ignored, so it cannot count toward the fuel bed depth or any group total
+        no_species = df[f'pc_species_{x}'] == _NO_SPECIES_CODE
+        df.loc[no_species, [f'pc_species_{x}_pct', f'pc_species_{x}_ht']] = np.nan
 
         # Change plants with 0 percent or 0 cm height values to 1 percent
         mask = (df[f'pc_species_{x}'].notnull()) & (
@@ -403,7 +493,7 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
 
         # Get the Photoload species code for each species
         df[f'pc_species_{x}_plCode'] = df[f'pc_species_{x}'].map(pl_code_map)
-        _log_species_table_issues(df, x)
+        _log_species_table_issues(df, x, skip=estimated)
         df[f'pc_species_{x}_kgpm2'] = df.apply(
             lambda y: _get_photoload_biomass(
                 y[f'pc_species_{x}_plCode'],
@@ -413,11 +503,26 @@ def _process_top_five_spp(df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
             axis=1
         )
 
+        # Estimate an OTHER species that is not in the table from the average of its functional group
+        _log_other_species_estimated(df, x, estimated, alt_name, alt_group, group_sizes)
+        if estimated.any():
+            df[f'pc_species_{x}_kgpm2'] = df[f'pc_species_{x}_kgpm2'].astype(float)
+        for group in alt_group[estimated].unique():
+            rows = estimated & (alt_group == group)
+            df.loc[rows, f'pc_species_{x}_kgpm2'] = _group_mean_biomass(
+                plant_photoload_df, group, df.loc[rows, f'pc_species_{x}_pct'].to_numpy(dtype=float),
+                df.loc[rows, f'pc_species_{x}_ht'].to_numpy(dtype=float)
+            )
+
         # Add species biomass to total surface plant biomass
         df['pc_species_kgpm2'] += df[f'pc_species_{x}_kgpm2']
 
         # Get species labels
         df[f'pc_species_{x}_label'] = df[f'pc_species_{x}'].map(label_map)
+        # The chosen functional group puts an estimated OTHER species into its group totals, which read the label
+        df.loc[estimated, f'pc_species_{x}_label'] = (
+            '[' + alt_group[estimated] + '] OTHER - ' + alt_name[estimated].where(~no_name[estimated], 'no name').astype(str)
+        )
 
         # PROCESS ALL PLANTS FOR FUEL BED DEPTH (i.e., Height only)
         # Accumulate valid cover-weighted heights for fuel-bed depth.

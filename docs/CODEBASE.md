@@ -218,11 +218,20 @@ plant species per plot to biomass with the PhotoLoad equations, using `supportin
 map each species code (matched case-sensitively on `name`) to a series (`pl_code`) and, through its `label`, to
 a functional group. A species whose code is not in the table adds no biomass to any group; a table entry
 whose series has no equation (anything outside `_PHOTOLOAD_CODES`) is also reported, and so is a species
-recorded as `OTHER` with no alternate code in `pc_species_N_other`, which cannot be identified (checked before
-`OTHER` is replaced by the alternate code). These cases log a warning per plot (issue codes
+recorded as `OTHER` with no alternate code in `pc_species_N_other` and no functional group, which cannot be
+identified or estimated (checked before `OTHER` is replaced by the alternate code). These cases log a warning per plot (issue codes
 `plant_species_not_in_table`, `plant_species_no_equation`, and `plant_species_other_no_name`), which prints on
-the console and appears in the Plants and Regeneration column of `fuelanalyst_errors.csv`. The form value
-`NO_SPP` and empty entries are not reported. See `docs/CONTRIBUTION_PROCEDURES.md` > Updating plant_photoload.csv and tree_parameters.csv.
+the console and appears in the Plants and Regeneration column of `fuelanalyst_errors.csv`. `NO_SPP` (no further
+species) and `OTHER` are rows of the table that are not species, with no series or group, because the Plants form
+builds its species choices from the file. `NO_SPP` adds zero biomass, and any cover or height entered with it is
+ignored; it is not warned about, and neither are empty entries. When a crew selects `OTHER`, the form also asks for
+the species name (`pc_species_N_other`) and its functional group (`pc_species_N_other_group`, a choice from the
+unique `func_group` values of the table except `Tree`). An `OTHER` species whose name is not in the table (or has no
+name) and that has a valid group is estimated: its biomass is the average, over all table species of that group, of
+each species' own PhotoLoad series equation at the recorded cover and height, and it counts in that group's totals
+(label `[Group] OTHER - name`). Each such plot logs a `plant_species_other_estimated` warning. A group of mosses and
+lichens averages to zero. An `OTHER` name that is in the table uses the table row; a missing or unknown group keeps
+zero biomass and the `plant_species_not_in_table` warning. See `docs/CONTRIBUTION_PROCEDURES.md` > Updating plant_photoload.csv and tree_parameters.csv.
 
 ### `components/trees.py`
 
