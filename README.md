@@ -111,7 +111,9 @@ For module responsibilities, data flow, and runtime contracts, see the
 
 ```text
 FuelAnalyst/
-|-- .github/workflows/       Release-tag test workflow
+|-- .github/workflows/       Release-tag/manual test workflow and the PR "No AI attribution" check
+|-- packages/                Optional Windows FOFEM 6.9.4 runtime wheel
+|-- scripts/                 Maintenance utilities (vendor refresh, attribution check, git hook)
 |-- docs/                    Codebase, result-field, and contribution references
 |-- examples/
 |   |-- data/                Checked-in Survey123 example inputs
@@ -131,8 +133,10 @@ FuelAnalyst/
 |   |   |-- helper.py                Shared data helpers
 |   |   |-- plants_regen.py          Plants and regeneration
 |   |   |-- plot_attributes.py       Plot attributes
+|   |   |-- table_reader.py          Survey123 input readers (eight formats)
 |   |   |-- trees.py                 Trees, saplings, and stand metrics
 |   |   `-- woody_debris.py          Woody and forest-floor fuels
+|   |-- _vendor/             Vendored BCWFT2018 module and ConPyro package
 |   |-- supporting_data/     Packaged species, plant, and ecodivision data
 |   |-- tools/               Optional supporting scripts
 |   |   |-- extract_nrcan_wx.py  NRCAN weather extraction
@@ -154,7 +158,7 @@ FuelAnalyst/
 - Git, if cloning the repository
 - A Survey123 export matching the expected form and repeat-table structure
 
-The base installation includes NumPy, pandas, SciPy, GeoPandas, Rasterio, PyProj, Shapely, python-dateutil, tqdm, and flame-components. ConPyro is vendored in the package. Matplotlib is not a base dependency: the `photoload` extra installs it, and the tutorial notebook needs it (see its setup guide).
+The base installation includes NumPy, pandas, SciPy, GeoPandas, Rasterio, PyProj, Shapely, python-dateutil, tqdm, openpyxl, pyogrio, and flame-components. ConPyro is vendored in the package. Matplotlib is not a base dependency: the `photoload` extra installs it, and the tutorial notebook needs it (see its setup guide).
 
 FOFEM execution requires the optional `fofem` extra. It is not required to process Survey123 data or generate model-preparation CSVs.
 
@@ -493,14 +497,21 @@ Many stand means are basal-area weighted rather than simple arithmetic means.
 Every `fuel_analyst()` run that completes writes `fuelanalyst_errors.csv`
 alongside `master_fuel_df.csv`. It lists every data-quality issue encountered
 during the run - invalid tree-density inputs, ID mismatches between forms,
-and species-composition or percent-flammable fallbacks - one row per affected
-plot, one column per reporting source, with a `General Error` row for issues
+species-composition or percent-flammable fallbacks, and species that are not in
+the species tables - one row per affected plot, one column per reporting source, with a `General Error` row for issues
 not tied to any specific plot. Known sources use stable display names; unknown
 sources retain their full logger names to prevent column collisions. Invalid
 plot radii remain missing during tree-density
 validation, and the density of only the affected tree records is assigned `0`
 so one bad plot does not stop the batch; check `fuelanalyst_errors.csv`'s
-Trees column for the reason.
+Trees column for the reason. A plant species that is not in `plant_photoload.csv` (or is recorded as `OTHER` with
+no alternate code and no functional group) adds no biomass and is reported in the Plants and Regeneration column. A
+species recorded as `OTHER` that is not in the table but has a functional group is estimated as the average of the
+table species of that group at its cover and height, and is reported as an estimate. A plot that records a
+tree or sapling species that is not in `tree_parameters.csv` is left out of the tree calculations: its tree
+columns are empty, its stand type and density in `conpyro_df.csv` are empty, and it has no row in the FOFEM
+consumption file. A species code in `SPECIES_CD_1` to `SPECIES_CD_6` that is not in `tree_parameters.csv` leaves
+that plot's stand type empty (ConPyro Attributes column).
 
 The other logging-enabled entry points write their own completed-run reports:
 
@@ -673,7 +684,9 @@ must match `default_fire_modelling_dict['fofem_emissions']['emissions_units']` (
 `run_conpyro()` validates this before running either FOFEM emissions backend and raises a clear
 error on a mismatch rather than silently misinterpreting the file.
 
-Every completed `run_conpyro()` call also writes `run_conpyro_errors.csv`.
+Every completed `run_conpyro()` call also writes `run_conpyro_errors.csv`, with one column per reporting source.
+A CFIS run (`cfo_model` 10) on plots without an FBP fuel type is logged per plot in its ConPyro Fire Behavior
+column; the run continues.
 
 ### Configuration
 
@@ -838,9 +851,9 @@ status or type group to obtain a combined summary.
 
 ### Important behavior and limitations
 
-A completed run can include plot-level input warnings and fallbacks. Inspect
-`fuelanalyst_errors.csv` and the other error reports before interpreting its
-outputs. External fire models have their own assumptions, validation scope,
+A completed run can include plot-level input warnings, fallbacks, and plots that are left out of a calculation
+(their results are empty, not zero). Inspect `fuelanalyst_errors.csv` and the other error reports before
+interpreting its outputs. External fire models have their own assumptions, validation scope,
 and licenses; consult their documentation when interpreting model results.
 
 See [runtime contracts and gotchas](docs/CODEBASE.md#runtime-contracts-and-gotchas)
@@ -884,7 +897,7 @@ The suite is organized into:
 - Integration tests for interactions among FuelAnalyst components
 - Regression tests for confirmed defects and compatibility behavior
 
-The GitHub Actions test workflow is configured for version-tag and manual runs. Run the full suite locally before each PR merge. See [tests/README.md](tests/README.md) for fixture and generated-result conventions.
+The GitHub Actions test workflow is configured for version-tag and manual runs; pull requests run only the "No AI attribution" check. Run the full suite locally before each PR merge. See [tests/README.md](tests/README.md) for fixture and generated-result conventions.
 
 ### Contributing
 
@@ -908,6 +921,33 @@ Generated results are intentionally ignored by Git. Put stable test fixtures
 under `tests/test_data`.
 
 Avoid writing tests that merely retest ConPyro, pyFOFEM, flame-components, pandas, GeoPandas, or other dependencies. Fake optional dependencies when the goal is to verify FuelAnalyst wrapper behavior.
+
+#### Updating the species tables
+
+Species-specific values live in two tables in `src/fuel_analyst/supporting_data/`, keyed on the species codes recorded
+in the field (codes are case-sensitive):
+
+- `plant_photoload.csv` assigns each recorded plant species to a PhotoLoad biomass equation (`pl_code`) and to a
+  functional group (the group at the start of `label`).
+- `tree_parameters.csv` holds each tree species' type (`TreeType`, the only record of whether a species is a
+  conifer) and its height-diameter, biomass, FOFEM, ConPyro stand type, and specific gravity values.
+
+A code that is missing from a table does not stop a run. `fuel_analyst()` reports it for each affected plot in
+`fuelanalyst_errors.csv`: a missing plant species adds no biomass (an `OTHER` species with a functional group is estimated from the group
+average instead), and a plot with a missing tree species is left out
+of the tree calculations and of the model inputs. To add a species:
+
+1. Add one row to the table, with every value the code reads. Take the coefficients, or the PhotoLoad series, from a
+   published source or from the closest listed species in growth form.
+2. Add the species to the Survey123 forms. Copy `plant_photoload.csv` unchanged to the media folder of the Plants and
+   Regen form. For a tree species, add it to the `list_tree_species` choices of every form that uses it and to
+   `Tree_Types.csv` in the Trees form. Update the manual-entry forms, then republish the forms.
+3. Pass the full test suite (add a test for a new tree species), and state the species, the source of each
+   coefficient or series, and the reason in the pull request.
+
+[Updating plant_photoload.csv and tree_parameters.csv](docs/CONTRIBUTION_PROCEDURES.md#updating-plant_photoloadcsv-and-tree_parameterscsv)
+lists the columns to fill and the checks for each table. It also covers changes to existing values, which need a line
+in `docs/RELEASE_NOTES.md`.
 
 ## License
 

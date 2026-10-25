@@ -25,7 +25,7 @@ The core pipeline calculates:
 
 ```text
 FuelAnalyst/
-|-- .github/workflows/tests.yml   Release-tag and manual test workflow
+|-- .github/workflows/            tests.yml (release-tag and manual tests) and no-ai-attribution.yml (PR check)
 |-- pyproject.toml                 Package metadata, dependencies, and pytest config
 |-- packages/fofem694-runtime/    Optional Windows FOFEM 6.9.4 runtime wheel
 |-- src/fuel_analyst/
@@ -36,7 +36,7 @@ FuelAnalyst/
 |   |   |-- fbp_fuel_type.py       BC FBP fuel typing
 |   |   |-- merge_wx_data.py       Plot/weather merge
 |   |-- run_conpyro.py             ConPyro and FOFEM orchestration
-|   |-- _vendor/                   Vendored BCWFT2018 implementation
+|   |-- _vendor/                   Vendored BCWFT2018 module and ConPyro package
 |   |-- components/
 |   |   |-- error_handling.py      Run-scoped logging and CSV reports
 |   |   |-- plot_attributes.py
@@ -52,7 +52,7 @@ FuelAnalyst/
 |   |   |-- fofem_units.py
 |   |   |-- fwis_moisture_content.py
 |   |   |-- helper.py
-|   |   `-- table_reader.py        Survey123 table reader (CSV, Excel, file geodatabase)
+|   |   `-- table_reader.py        Survey123 table reader (eight input formats)
 |   `-- supporting_data/           Packaged CSV and ecodivision data
 |-- models/photoload/              Reproducible PhotoLoad model-development workflow
 |-- examples/
@@ -61,7 +61,7 @@ FuelAnalyst/
 |   |-- tutorial/                 Notebook and editor setup guide
 |   `-- results/                  Ignored generated outputs
 |-- tests/                         Unit, integration, regression, and test data
-`-- docs/                          Architecture, references, designs, and plans
+`-- docs/                          Architecture, references, release notes, and Survey123 forms
 ```
 
 FuelAnalyst uses a standard `src` package layout and is installable with
@@ -326,8 +326,9 @@ percentages using the documented Van Wagner equations.
 
 ### `components/helper.py`
 
-Contains CSV utilities, missing-column checks, alphanumeric sorting, repository
-example lookup, and `unique_id` generation. Repository example lookup is for
+Contains CSV utilities, missing-column checks, the overwrite-safe `attach_columns()`, alphanumeric sorting,
+repository example lookup, `unique_id` generation, and the marker for plots left out of the tree calculations
+(`TREES_EXCLUDED_COLUMN`, read through `get_tree_excluded_plots()`). Repository example lookup is for
 the development `__main__` routines; normal installed API calls do not depend
 on the repository layout.
 
@@ -506,7 +507,7 @@ flowchart TD
 
 ### Input names and identities
 
-- Parent/repeat folder and CSV names follow the exact Survey123 layout shown in
+- Parent/repeat folder and table names follow the exact Survey123 layout shown in
   the README and checked-in example data.
 - The authoritative Survey123 form definitions live in
   `docs/survey123/survey123_forms/` (one folder per form); paper/manual-entry
@@ -704,7 +705,7 @@ value from the US columns.
 Regenerate affected results and rebuild weather/plot merges from fresh
 fuel attributes before rerunning ConPyro/FOFEM. Reusing the checked-in
 `conpyro_df_wx.csv` unchanged would retain its old fuel attributes.
-See [release notes](RELEASE_NOTES.md) for the unreleased patch behavior.
+See the 0.1.1 [release notes](RELEASE_NOTES.md).
 
 
 ### Canopy cover
@@ -795,7 +796,6 @@ default suite locally against the latest PR commit and record the result in
 the PR description, as required by the
 [contribution procedures](CONTRIBUTION_PROCEDURES.md). The GitHub `Tests`
 workflow runs on pushed `v*` release tags or deliberate manual dispatch, not
-automatically on PRs. Files under `docs/superpowers/plans`,
-`docs/superpowers/specs`, and `development` record design and implementation
+automatically on PRs. Files under `development` record design and implementation
 work. Their code snippets and planned filenames may describe an earlier state;
 this file, the README, tests, and production code define current behavior.

@@ -7,7 +7,7 @@ data alone: ``examples/data/Survey123_Data`` (raw plot data) and
 ``examples/data/weather/conpyro_df_wx.csv`` (real 2005-2024 NRCAN weather,
 already extracted and merged). No NRCAN weather archive access, no rasterio,
 and no environment-split concerns are needed - just an environment with
-``fuel_analyst``'s ``conpyro`` and ``fofem`` optional dependencies installed.
+FuelAnalyst and its optional ``fofem`` extra (pyfofem) installed.
 
 This intentionally excludes FBP fuel typing and weather extraction/merge
 (``src/fuel_analyst/tools/``) - see ``examples/weather_pipeline/

@@ -12,11 +12,8 @@ against fresh/real NRCAN weather, or for exercising the weather extraction and
 merge steps (``src/fuel_analyst/tools/``) on their own. Runs the documented but
 previously separately-invoked chain (README.md "Weather extraction" / "Merge
 weather with plot data" / "Run ConPyro and FOFEM" sections) as one script
-against the current ``examples/data/Survey123_Data`` dataset. This is Phase 2
-deliverable 1 of
-``development/plans/2026-08-31-demo-dataset-replacement-and-section3.md``
-(weather/ConPyro/FOFEM demonstration) — it does not include FBP fuel typing,
-which is deliverable 2, blocked on Open Question #2 (a new FBP-prep dataset).
+against the current ``examples/data/Survey123_Data`` dataset. It does not include
+FBP fuel typing; see ``examples/run_fuel_analyst_cfis_demo.py`` for that.
 
 ``--stage conpyro`` prefers a freshly-regenerated ``<WEATHER_DIR>/conpyro_df_wx.csv``
 when one already exists on disk (from an earlier ``--stage merge`` run, in this
@@ -25,20 +22,16 @@ process or an earlier one), and otherwise falls back to the checked-in
 user's own regenerated weather in favor of the demo default, regardless of
 whether ``merge`` happened to run in the same invocation.
 
-Known environment split on this machine (documented, not a code issue):
-the project's ``FuelAnalyst`` conda env has a broken ``rasterio`` install
-(DLL load failures, likely a PATH conflict with ArcGIS Pro's ``bin``
-directory shadowing GDAL/Python DLLs) so ``--stage weather`` cannot run
-there; the ``ProcessGeospatial`` conda env has working ``rasterio`` but
-lacks ``conpyro``/``pyfofem``, so ``--stage merge``/``--stage conpyro``
-cannot run there. Run ``--stage weather`` in an environment with a
-working geospatial stack, then ``--stage merge --stage conpyro`` in the
-environment with ``conpyro``/``pyfofem`` installed, to regenerate the
+Environments: ``--stage weather`` needs ``rasterio``, which can be hard to install next to other
+geospatial packages (on Windows, ArcGIS Pro's ``bin`` directory on the PATH can shadow its DLLs), and
+``--stage conpyro`` needs ``pyfofem``; ``--stage merge`` needs only pandas and numpy. If no single
+environment has both, run ``--stage weather`` in an environment with a working geospatial stack, then
+``--stage merge --stage conpyro`` in an environment with ``pyfofem`` installed, to regenerate the
 committed weather-merged file end to end. ``--stage all`` is equivalent
 to ``--stage weather --stage merge --stage conpyro`` in one process, so
 it only works in an environment where every stage's dependencies are
 satisfied at once; it is **not** a substitute for ``--stage merge
---stage conpyro`` in the split-environment workflow above, since it
+--stage conpyro`` in the two-environment workflow above, since it
 would still try (and fail) to re-run the weather stage.
 
 Requires ``examples/results/fuel_analyst/`` to already exist (run
@@ -66,12 +59,11 @@ if _SRC_DIR not in sys.path:
     sys.path.insert(0, _SRC_DIR)
 
 # Each stage's fuel_analyst import is deferred into its own function below,
-# not done here at module level. extract_nrcan_wx pulls in rasterio (broken
-# in the FuelAnalyst conda env on this machine) and run_conpyro pulls in
-# conpyro/pyfofem (not installed in the ProcessGeospatial conda env); an
-# eager top-of-file import of all three would fail in EITHER environment
-# regardless of which --stage was actually requested. merge_wx_data only
-# needs pandas/numpy, so it has no environment restriction.
+# not done here at module level. extract_nrcan_wx pulls in rasterio and run_conpyro
+# pulls in pyfofem, and either can be missing from an environment; an eager
+# top-of-file import of all three would fail regardless of which --stage was
+# actually requested. merge_wx_data only needs pandas/numpy, so it has no
+# environment restriction.
 
 # EXAMPLES_DIR is the repo's examples/ directory - one level up from this script's
 # own (nested) location, unlike examples/run_fuel_analyst_conpyro_demo.py which lives
@@ -151,9 +143,9 @@ def _run_merge_stage() -> None:
     """
     Merge extracted weather data with ``conpyro_df.csv``.
 
-    No ``fbp_fuel_type`` column is present (FBP typing is deliverable 2,
-    tabled pending Open Question #2), so seasonal FBP refinement is
-    disabled explicitly rather than left to silently no-op.
+    No ``fbp_fuel_type`` column is filled by this script (FBP typing is not part
+    of it), so seasonal FBP refinement is disabled explicitly rather than left
+    to silently no-op.
 
     :return: None. Writes the merged table to
         ``<WEATHER_DIR>/conpyro_df_wx.csv``.

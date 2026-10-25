@@ -7,6 +7,7 @@ tests/
 ├── unit/          Fast, isolated tests for functions and components
 ├── integration/   Tests spanning multiple FuelAnalyst components
 ├── regression/    Tests that preserve behavior for previously fixed defects
+├── manual/        Smoke-test scripts for the FOFEM 6.9.4 runtime (run by hand, not by pytest)
 ├── test_data/     Small, version-controlled inputs and golden outputs
 ├── results/       Generated test output (ignored by Git)
 └── utils/         Shared assertions and test helpers
@@ -15,7 +16,7 @@ tests/
 Install FuelAnalyst with its test dependencies:
 
 ```shell
-python -m pip install -e ".[test]"
+python -m pip install -e ".[test,photoload]"
 ```
 
 Run the complete suite:
@@ -24,8 +25,10 @@ Run the complete suite:
 python -m pytest -vv
 ```
 
-GitHub Actions runs this command on Python 3.12 after installing the `test` and
-`photoload` extras.
+The GitHub `Tests` workflow runs the suite on Python 3.11 to 3.14 on Windows, macOS, and Linux, plus
+minimum-dependency, FOFEM, lock-check, and clean-wheel jobs. It runs on `v*` tags or by manual dispatch, not on
+pull requests (a PR runs only the "No AI attribution" workflow). The eight tests that run the official FOFEM
+6.9.4 executable are opt-in on Windows: set `FUEL_ANALYST_RUN_FOFEM694_TESTS=1`.
 
 Run one tier or omit slow tests:
 
