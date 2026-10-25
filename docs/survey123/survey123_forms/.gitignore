@@ -1,0 +1,11 @@
+# Files that Survey123 Connect generates when it opens a form folder. Only the XLSForm, its media folder, and the empty
+# <form name>.xml placeholder belong in the repository (see README.md). The .itemInfo also holds portal item and owner
+# identifiers.
+*.gpkg
+*.webform
+*.info
+*.itemInfo
+forminfo.json
+debug/
+scripts/
+*_.xlsx

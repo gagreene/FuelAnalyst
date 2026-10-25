@@ -14,10 +14,18 @@ and the effect of the change in the PR.
 
 ### Adding a plant species
 
+`plant_photoload.csv` also holds two rows that are not species: `NO_SPP` (no further species) and `OTHER` (a species
+that is not in the list). The Plants form builds its species choices from this file, so crews can select them only
+while the rows are present. Do not remove them. They have no `pl_code` or `func_group`, and their labels carry no
+group.
+
 A plant species code that is not in `plant_photoload.csv` adds no biomass to any functional group.
 `fuel_analyst()` prints a warning for each affected plot and records it in `fuelanalyst_errors.csv`, in the
-Plants and Regeneration column. A species recorded as `OTHER` with no alternate code in `pc_species_N_other` is
-reported in the same way, since it cannot be identified. To add a species:
+Plants and Regeneration column. A species recorded as `OTHER` with no alternate code in `pc_species_N_other` and no
+functional group is reported in the same way, since it cannot be identified. An `OTHER` species that is not in the
+table but has a functional group is estimated instead, as the average of all table species of that group at its cover
+and height, and logs a `plant_species_other_estimated` warning; adding the species to the table replaces the
+estimate. To add a species:
 
 1. Add one row to `plant_photoload.csv`:
    - `name`: a unique code, exactly as it is entered in `pc_species_N` or `pc_species_N_other` (codes are
@@ -32,14 +40,19 @@ reported in the same way, since it cannot be identified. To add a species:
 2. Copy the file unchanged to
    `docs/survey123/survey123_forms/CWC Fuels 2 - Plants and Regen/media/plant_photoload.csv`. The
    Survey123 form builds its species list from that copy, so the two files must stay identical, and
-   the form must be republished before field crews can select the new species.
+   the form must be republished before field crews can select the new species. If the new row has a
+   `func_group` value that no other row has, also add it to the `list_plant_func_group` choices on the
+   form's `choices` sheet: that list is the unique `func_group` values except `Tree`, which the form offers
+   when a crew selects `OTHER`, and a test fails until the two match.
 3. Pass the full test suite. `tests/unit/test_plants_regen.py` checks that names are unique, every
-   series has an equation, and every label starts with a valid group.
+   species has a series with an equation and a label that starts with a valid group, that the two
+   non-species rows are present, that the form copy is identical, and that the form's functional-group
+   choices match the table.
 4. State the species and the series chosen in the PR, with the reason. The series is a scientific
    assumption, so describe it as one.
 
-Until a PR is merged, a user can enter the species under a listed code of similar growth form, or add
-the row to a local copy of the file.
+Until a PR is merged, a crew can select `OTHER` and enter the species in `Other Species` and its
+functional group, which FuelAnalyst uses to estimate the biomass, or a user can add the row to a local copy of the file.
 
 ### Adding a tree species
 
