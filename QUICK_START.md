@@ -51,7 +51,7 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 ```
 
-The base installation is enough to process Survey123 data and generate ConPyro and FOFEM preparation files. It installs ConPyro with FuelAnalyst, but not the FOFEM extra.
+The base installation is enough to process Survey123 data and generate ConPyro and FOFEM preparation files. It installs ConPyro with FuelAnalyst, but not the FOFEM extra or the `parquet` extra (needed only to read Parquet and Feather tables).
 
 ## 5. Run the included example
 
@@ -87,8 +87,8 @@ corresponding optional preparation files.
 
 Check `fuelanalyst_errors.csv` after every completed run. FuelAnalyst
 continues when individual inputs are invalid (e.g. tree-density inputs,
-species composition, percent-flammable cover), assigns safe defaults or `0`
-only to affected records, and logs exactly which plot and form were affected.
+species composition, percent-flammable cover), assigns safe defaults, `0`, or
+missing values only to affected records, and logs exactly which plot and form were affected.
 If the run raises before completion, logging state is cleaned up but a partial
 error report is not written.
 
@@ -115,6 +115,9 @@ Survey123_Data/
     |-- t1_woody_2.csv
     `-- t2_woody_3.csv
 ```
+
+The tables can also be Excel workbooks, file geodatabases, GeoPackages, SQLite files, GeoJSON, Parquet, or Feather files
+(see [Supported file formats](README.md#supported-file-formats)); CSV is used here.
 
 Create a file named `run_fuel_analyst.py` outside your input and output folders:
 
@@ -187,7 +190,7 @@ See the [Public API](README.md#public-api) section of the main README for the FB
 Install the test dependencies (the suite also needs the `photoload` extra to collect its PhotoLoad tests):
 
 ```shell
-python -m pip install -e ".[test,photoload]"
+python -m pip install -e ".[test,photoload,fofem]"
 ```
 
 Contributors who want the exact locked environment can use uv instead; see the
@@ -214,13 +217,13 @@ You can call the environment's Python directly without activating it:
 .venv\Scripts\python.exe -m fuel_analyst.fuel_analyst
 ```
 
-### A Survey123 folder or CSV is missing
+### A Survey123 folder or table is missing
 
-Compare your export with `examples/data/Survey123_Data`. Folder and repeat-table names must match the expected layout. When `gen_conpyro_df=True`, all four component-form folders are required.
+Compare your export with `examples/data/Survey123_Data`. Folder and repeat-table names must match the expected layout (a table can be a CSV file or a sheet, layer, or table in the formats listed under [Supported file formats](README.md#supported-file-formats)). When `gen_conpyro_df=True`, all four component-form folders are required.
 
 ### A date cannot be parsed
 
-The `_date` field must use one of these formats:
+For CSV input, the `_date` field must use one of these formats (the other formats store real dates):
 
 ```text
 05/14/2025 19:00

@@ -8,15 +8,16 @@ default fire-behavior model (``cfo_model=5``). This script instead exercises the
 model - requires a real CFFBPS fuel type: ``src/fuel_analyst/_vendor/conpyro/conpyro.py``
 documents ``fuel_type``/``pct_cnfr`` as "SFC (CFIS only) - set to None if not using CFIS",
 and ``_single_run_fire_behavior()`` only passes a real fuel-type array through when every
-plot in a weather-date batch has one (any missing value silently drops the whole batch to
-``fuel_type=None``).
+plot in a weather-date batch has one (any missing value drops the whole batch to
+``fuel_type=None``, and ``run_conpyro()`` logs each affected plot in the ConPyro Fire Behavior
+column of ``run_conpyro_errors.csv``).
 
 Runs against committed data alone: ``examples/data/Survey123_Data`` (raw plot data),
 ``examples/data/fbp_fuel_typing/fbp_prep_df.csv`` (user-filled BEC/VRI fields feeding
 BCWFT2018 fuel typing), and ``examples/data/weather/conpyro_df_wx.csv`` (real 2005-2024
 NRCAN weather). No NRCAN weather archive access, no rasterio, and no environment-split
-concerns are needed - just an environment with ``fuel_analyst``'s ``conpyro`` and ``fofem``
-optional dependencies installed.
+concerns are needed - just an environment with FuelAnalyst and its optional ``fofem`` extra
+(pyfofem) installed.
 
 CFIS also requires a literal ``time`` (HHMM) for its Rothermel dead-fuel-moisture
 calculation, unlike the default model - the committed weather dataset has no per-scenario

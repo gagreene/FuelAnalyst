@@ -226,7 +226,7 @@ def _calc_sapling_ht(sapling_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> 
         sapling_df.sapling_dead_count == 0, np.nan, sapling_df.sapling_dead_ht
     )
 
-    # Get list of sapling species, excluding 'NO_REGEN'
+    # Get list of sapling species, excluding 'NO_SAPLINGS'
     spp_list = [spp for spp in sapling_df['sapling_species'].unique() if spp != 'NO_SAPLINGS']
 
     # For each species, estimate missing heights for live and dead saplings

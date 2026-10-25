@@ -131,7 +131,7 @@ exist; do not target `master` as a substitute. Patch changes go only to
 reviews a PR from `pre_release` into `master` and merges it. This promotion
 requires a PR just like every other branch merge. Release tags use the
 `vMAJOR.MINOR.PATCH` form (for example, `v1.2.3`) expected by the release-tag
-test workflow. No version tag exists yet.
+test workflow. The latest tag is `v0.1.2`.
 
 ## Local tests before every PR merge
 
@@ -220,7 +220,8 @@ replace review of the test output or prove that other operating systems passed.
 ## GitHub Actions test schedule
 
 The GitHub `Tests` workflow runs the full matrix on pushed `v*` release tags
-or by deliberate manual dispatch. It does not run automatically on PRs. After
+or by deliberate manual dispatch. It does not run automatically on PRs; the only workflow a PR triggers is the
+`No AI attribution` check. After
 the tag-only workflow reaches `master`, enable the workflow in GitHub so these
 triggers work. Keep it disabled while `master` still has a PR trigger. See
 [the workflow](../.github/workflows/tests.yml) for its actual triggers and jobs.
