@@ -26,7 +26,7 @@ for the exact failure mode and where to obtain the redistributable.
   their original relative paths, per the upstream README's own request. `doc/LICENSE` states
   the software was developed by federal employees as part of official duties and is public
   domain - a different license than FuelAnalyst's own MIT-licensed code (see the root
-  `fuel-analyst` package's `LICENSE` file).
+  `fuel-analyst` package's `LICENSE.txt` file).
 - `PROVENANCE.md` - source URL, retrieval date, and file hashes for this bundle.
 
 No Microsoft Visual C++ runtime DLLs are bundled; see the prerequisite note above.
