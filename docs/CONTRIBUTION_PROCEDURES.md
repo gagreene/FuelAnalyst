@@ -131,7 +131,7 @@ exist; do not target `master` as a substitute. Patch changes go only to
 reviews a PR from `pre_release` into `master` and merges it. This promotion
 requires a PR just like every other branch merge. Release tags use the
 `vMAJOR.MINOR.PATCH` form (for example, `v1.2.3`) expected by the release-tag
-test workflow. The latest tag is `v0.1.3`.
+test workflow. The latest tag is `v0.2.0`.
 
 ## Keeping the technical reference current
 

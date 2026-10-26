@@ -1,6 +1,17 @@
 # Release notes
 
-## 0.1.3
+## 0.2.0
+
+This is a minor release, not a patch: the Plants form has a new required question, some results change, and a run that used to stop on an unlisted species now continues without that plot. No function signature, dictionary key, or file name changed.
+
+### Breaking changes and action needed
+
+- **Republish the Plants form.** It has a new required question, `pc_species_N_other_group`, asked when a crew selects `OTHER`. An export from an older form, without that column, still runs: an `OTHER` species with no group adds no biomass and is reported. If you use a custom copy of `plant_photoload.csv` with the form, add the `NO_SPP` and `OTHER` rows (the form builds its species choices from the file).
+- **Dead `F` and `PE` tree biomass changes.** Conifer status now comes only from the `TreeType` column of `tree_parameters.csv`, so ash (`F`, a broadleaf) uses the broadleaf decay table and eastern white pine (`PE`, a conifer) uses the conifer table. Regenerate any outputs that include dead trees of these species. The module-level `conifer_list` of `trees.py` is removed.
+- **Unlisted species no longer stop the run.** A tree or sapling species that is not in `tree_parameters.csv` used to raise a `KeyError`. Now the plot is logged, left out of the tree calculations (empty tree columns, empty stand type and density in `conpyro_df.csv`, no row in the FOFEM consumption file), and the run continues. Read `fuelanalyst_errors.csv` after every run, and do not assume every plot has complete results.
+- **The error reports have new columns.** "ConPyro Attributes" appears in `fuelanalyst_errors.csv` and "ConPyro Fire Behavior" in `run_conpyro_errors.csv`, with new issue codes. Code that reads these files by position must allow for the extra columns.
+
+### Changes
 
 - A plant species code that is not in `plant_photoload.csv` (codes are case-sensitive), or whose table entry names a PhotoLoad series without an equation, now prints a warning for each affected plot and is written to the Plants and Regeneration column of `fuelanalyst_errors.csv` (`plant_species_not_in_table`, `plant_species_no_equation`). Before, such a species added no biomass to any functional group and gave no notice. The calculation is unchanged: the species still adds no biomass. `NO_SPP` and empty entries are not reported.
 - `plant_photoload.csv` has two new rows that are not species: `NO_SPP` (no further species) and `OTHER` (a species that is not in the list). The Survey123 Plants form builds its species choices from this file. `NO_SPP` now explicitly contributes zero biomass, and any cover or height recorded with it is ignored.
@@ -12,7 +23,7 @@
 - `run_conpyro()` warns when the CFIS crown fire model (`cfo_model` 10, or a 10 in a `use_csv` column) runs on plots without an FBP fuel type (`cfis_missing_fuel_type`). It also warns for each plot that has a fuel type but loses it, because ConPyro receives the fuel types of a run only when every plot of the same weather date and time has one (`cfis_fuel_type_not_used`). The warnings are written to a new ConPyro Fire Behavior column of `run_conpyro_errors.csv`. No calculation changes.
 - Documentation: the README has a new "Updating the species tables" section (also described in `docs/CONTRIBUTION_PROCEDURES.md`), a "Calculation methods" summary of each component, and configuration tables for the woody debris, ConPyro, and FOFEM consumption dictionaries. A new technical reference, `docs/TECHNICAL_REFERENCE.md`, carries the detail: every setting and default, the equations and every output variable, and the ConPyro and FOFEM workflow, with figures. A documentation audit also corrected statements in the README, quick start, test guide, architecture notes, and the docstrings of three example scripts. The tutorial notebook has a new section 7 that rebuilds the tables and figures of the FuelAnalyst paper from the example data. A `No AI attribution` check now runs on every pull request. The license file is renamed from `LICENSE` to `LICENSE.txt` (same MIT text), and `pyproject.toml` lists it under `license-files`.
 
-No signature, key, or file name changed, and the example dataset gives byte-identical results to 0.1.2. Check `fuelanalyst_errors.csv` after a run: plots that were silently producing incomplete results before (an unlisted species) are now reported. Regenerate outputs that include dead `F` or `PE` trees. A custom copy of `plant_photoload.csv` should gain the `NO_SPP` and `OTHER` rows if you use the Survey123 Plants form with it.
+The example dataset gives byte-identical results to 0.1.2.
 
 ## 0.1.2
 
