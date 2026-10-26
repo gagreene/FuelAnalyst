@@ -525,8 +525,10 @@ def test_the_form_media_copy_of_the_species_table_is_identical():
     media = os.path.join(PLANTS_FORM_DIR, 'media', 'plant_photoload.csv')
     if not os.path.exists(media):
         pytest.skip('the Survey123 form files are not in this checkout')
+    # The packaged file is stored in Git with CRLF line endings and the form copy with LF, so a checkout on Linux or
+    # macOS gives different bytes for the same content: compare the content, not the line endings.
     with open(packaged, 'rb') as a, open(media, 'rb') as b:
-        assert a.read() == b.read()
+        assert a.read().replace(b'\r\n', b'\n') == b.read().replace(b'\r\n', b'\n')
 
 
 def _form_sheet(name):
