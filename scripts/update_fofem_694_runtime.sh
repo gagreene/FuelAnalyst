@@ -105,7 +105,7 @@ cat > "$BUNDLE_DIR/PROVENANCE.md" <<EOF
 runfofem.exe, fof_spp.csv, README.txt, and doc/ are copied byte-for-byte from the upstream ZIP by
 scripts/update_fofem_694_runtime.sh. doc/LICENSE states the software was developed by federal
 employees as part of official duties and is public domain; it is not the same license as
-FuelAnalyst's own MIT-licensed code (see the repository root LICENSE file). The upstream
+FuelAnalyst's own MIT-licensed code (see the repository root LICENSE.txt file). The upstream
 README.txt requests a citation for data derived from runfofem output.
 
 The three Microsoft Visual C++ runtime DLLs previously bundled here (msvcp140.dll,

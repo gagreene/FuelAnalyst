@@ -133,6 +133,13 @@ requires a PR just like every other branch merge. Release tags use the
 `vMAJOR.MINOR.PATCH` form (for example, `v1.2.3`) expected by the release-tag
 test workflow. The latest tag is `v0.1.3`.
 
+## Keeping the technical reference current
+
+[`TECHNICAL_REFERENCE.md`](TECHNICAL_REFERENCE.md) documents every configuration setting and default (section 2), every
+equation and output variable (section 3), and the `run_conpyro()` workflow (section 4). A change that alters a documented
+default, equation, parameter, output column, or message must update this page in the same PR and keep its section, table,
+equation, and figure numbering consistent.
+
 ## Local tests before every PR merge
 
 Run the full default test suite locally against the **latest PR commit** before
