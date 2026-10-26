@@ -3,6 +3,7 @@
 `FuelAnalyst_Tutorial.ipynb` walks through the full FuelAnalyst workflow on the example dataset in
 `examples/data/`: exploring Survey123 data, `fuel_analyst()`, FBP fuel typing, weather merging, and
 `run_conpyro()` (ConPyro fire behaviour, FOFEM tree mortality, and FOFEM emissions).
+The last section rebuilds the tables and figures of the FuelAnalyst paper from the example data.
 
 Adapted from a tutorial by Sarah Smith-Tripp (UBC Centre for Wildfire Coexistence).
 
