@@ -4,7 +4,7 @@
 
 This is a minor release, not a patch: the Plants form has a new required question, some results change, and a run that used to stop on an unlisted species now continues without that plot. No function signature, dictionary key, or file name changed.
 
-### Breaking changes and action needed
+### Breaking changes and action needed (behaviour and data, not the Python API)
 
 - **Republish the Plants form.** It has a new required question, `pc_species_N_other_group`, asked when a crew selects `OTHER`. An export from an older form, without that column, still runs: an `OTHER` species with no group adds no biomass and is reported. If you use a custom copy of `plant_photoload.csv` with the form, add the `NO_SPP` and `OTHER` rows (the form builds its species choices from the file).
 - **Dead `F` and `PE` tree biomass changes.** Conifer status now comes only from the `TreeType` column of `tree_parameters.csv`, so ash (`F`, a broadleaf) uses the broadleaf decay table and eastern white pine (`PE`, a conifer) uses the conifer table. Regenerate any outputs that include dead trees of these species. The module-level `conifer_list` of `trees.py` is removed.
