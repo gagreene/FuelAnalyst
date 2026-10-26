@@ -27,6 +27,7 @@ The core pipeline calculates:
 FuelAnalyst/
 |-- .github/workflows/            tests.yml (release-tag and manual tests) and no-ai-attribution.yml (PR check)
 |-- pyproject.toml                 Package metadata, dependencies, and pytest config
+|-- LICENSE.txt                    MIT license
 |-- packages/fofem694-runtime/    Optional Windows FOFEM 6.9.4 runtime wheel
 |-- src/fuel_analyst/
 |   |-- __init__.py                Lazily loaded public API
@@ -61,7 +62,7 @@ FuelAnalyst/
 |   |-- tutorial/                 Notebook and editor setup guide
 |   `-- results/                  Ignored generated outputs
 |-- tests/                         Unit, integration, regression, and test data
-`-- docs/                          Architecture, references, release notes, and Survey123 forms
+`-- docs/                          Technical reference, architecture, contribution procedures, release notes, and Survey123 forms
 ```
 
 FuelAnalyst uses a standard `src` package layout and is installable with
@@ -132,7 +133,7 @@ upstream's own copy. Bundling the official FOFEM binaries in a *published* PyPI 
 redistribution/licensing decision that has not been made for either wheel; resolve it
 explicitly before publishing to PyPI. `doc/LICENSE` states the software was developed by
 federal employees as part of official duties and is public domain - a different license than
-FuelAnalyst's own MIT-licensed code (root `LICENSE` file).
+FuelAnalyst's own MIT-licensed code (root `LICENSE.txt` file).
 
 Tree mortality is never run through the official FOFEM application automatically:
 `fofem_attributes.gen_fofem_gui_app_tree_df()` produces a `.tre`-format hand-off CSV

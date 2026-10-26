@@ -24,6 +24,7 @@ FuelAnalyst also:
   - [What FuelAnalyst produces](#what-fuelanalyst-produces)
   - [General Processing workflow](#general-processing-workflow)
 - [How FuelAnalyst is structured](#how-fuelanalyst-is-structured)
+  - [Calculation methods](#calculation-methods)
   - [Repository layout](#repository-layout)
 - [How to install FuelAnalyst](#how-to-install-fuelanalyst)
   - [Requirements](#requirements)
@@ -33,10 +34,12 @@ FuelAnalyst also:
 - [How to use FuelAnalyst](#how-to-use-fuelanalyst)
   - [Input data](#input-data)
   - [Run the included example](#run-the-included-example)
+  - [Example results](#example-results)
   - [Outputs](#outputs)
   - [Units and column-name abbreviations](#units-and-column-name-abbreviations)
   - [Public API](#public-api)
   - [Configuration](#configuration)
+  - [Woody debris, ConPyro, and FOFEM consumption settings](#woody-debris-conpyro-and-fofem-consumption-settings)
   - [Stand summary permutations](#stand-summary-permutations)
   - [Important behavior and limitations](#important-behavior-and-limitations)
 - [How to maintain/contribute to FuelAnalyst](#how-to-maintaincontribute-to-fuelanalyst)
@@ -107,6 +110,49 @@ For a detailed breakdown of the flow between modules and conditional output file
 For module responsibilities, data flow, and runtime contracts, see the
 [codebase reference](docs/CODEBASE.md).
 
+### Calculation methods
+
+FuelAnalyst runs five component modules (one for each Survey123 form), merges their results into plot-level and
+tree-level tables, and then prepares the inputs of the fire models. The summary below names the method of each
+component. The equations, parameters, and every output variable are in the
+[technical reference](docs/TECHNICAL_REFERENCE.md), which also lists every setting and default.
+
+![FuelAnalyst workflow](docs/images/fig_workflow.png)
+
+**FuelAnalyst workflow.** Input data and processing options (left) are passed
+to the orchestrating `fuel_analyst.py` module (center), which runs the selected component modules and generates core
+datasets and optional model-ready datasets (right) for fire behaviour and fire effects modelling. API, application
+programming interface; FBP, Canadian Forest Fire Behaviour Prediction System.
+
+- **Plot attributes** read the primary survey table (location, plot configuration, treatment, and the flags that
+  say which other forms hold data) and build a `unique_id` for each plot from treatment area, unit, type, plot ID,
+  and survey year. When several observations share these values, the most recent one is kept.
+  See [Section 3.1](docs/TECHNICAL_REFERENCE.md#31-plot-attributes).
+- **Plants and regeneration** convert the recorded percent cover and height of up to five plant species per plot
+  to biomass with species-specific equations derived from the PhotoLoad reference photographs (Keane and
+  Dickinson 2007). Each species is assigned to one of nine equations and to a functional group
+  (`plant_photoload.csv`), and each plot gets a dominant substrate class. See
+  [Section 3.2](docs/TECHNICAL_REFERENCE.md#32-surface-vegetation).
+- **Trees** compute density expansion factors, impute missing heights with the Temesgen Model 2
+  height-diameter relationship, and calculate wood, bark, branch, and foliage biomass with the Canadian National
+  Biomass Equations (CNBE). Dead trees lose biomass by decay class, and crown fuels, tree-level flame length and
+  fireline intensity (from bark char height), and basal-area-weighted stand summaries follow. See
+  [Section 3.3](docs/TECHNICAL_REFERENCE.md#33-trees-and-stand-structure).
+- **Canopy cover** turns line-intercept observations along two transects into total, conifer, and broadleaf cover
+  (points marked as excluded are left out of the denominator). See
+  [Section 3.4](docs/TECHNICAL_REFERENCE.md#34-canopy-cover).
+- **Woody debris** applies the planar intercept method with Van Wagner's line intersect estimator to three
+  concurrent protocols (Canadian, US, and modified diameter classes), derives the quadratic mean diameter of tallied
+  classes by regression (with a Delisle and Woodard polynomial fallback), corrects for slope, and calculates duff and
+  litter loads from species-specific bulk density and measured depth. See
+  [Section 3.5](docs/TECHNICAL_REFERENCE.md#35-woody-debris).
+- **Model-ready inputs** (`conpyro_df.csv`, the FOFEM consumption and tree mortality tables) map the calculated
+  values onto the fixed column structure of ConPyro and FOFEM. See
+  [Section 3.6](docs/TECHNICAL_REFERENCE.md#36-fire-model-input-variables).
+- **Fire behaviour and effects** (`run_conpyro()`) run ConPyro or CFIS crown fire models, flame components, FOFEM
+  tree mortality, and FOFEM emissions for every plot and weather scenario. See the
+  [fire modelling workflow](docs/TECHNICAL_REFERENCE.md#4-conpyrofofem-modelling-workflow).
+
 ### Repository layout
 
 ```text
@@ -114,7 +160,7 @@ FuelAnalyst/
 |-- .github/workflows/       Release-tag/manual test workflow and the PR "No AI attribution" check
 |-- packages/                Optional Windows FOFEM 6.9.4 runtime wheel
 |-- scripts/                 Maintenance utilities (vendor refresh, attribution check, git hook)
-|-- docs/                    Codebase, result-field, and contribution references
+|-- docs/                    Technical reference, codebase reference, contribution procedures, release notes, and Survey123 forms
 |-- examples/
 |   |-- data/                Checked-in Survey123 example inputs
 |   `-- results/             Generated example outputs, ignored by Git
@@ -147,6 +193,7 @@ FuelAnalyst/
 |-- tests/                   Unit, integration, and regression suites
 |-- pyproject.toml           Package metadata and dependencies
 |-- QUICK_START.md           Short installation and first-run guide
+|-- LICENSE.txt              MIT license
 `-- README.md                Project documentation
 ```
 
@@ -469,6 +516,27 @@ are set by `fofem_consume_params`'s `fofem_processing_units` key (default `'SI'`
 [Units](#units) and [Configuration](#configuration).
 
 
+### Example results
+
+The example dataset has twenty plots: ten burned and ten unburned (five treated and five untreated). The two figures
+below show results from the included example. The
+[tutorial notebook](examples/tutorial/FuelAnalyst_Tutorial.ipynb) rebuilds them in its last section.
+
+![Char-derived flame length and fireline intensity of the burned plots](docs/images/fig_burned_plots.png)
+
+**Estimated flame length and fireline intensity for the ten burned plots.** Values are back-calculated from
+measured bark char height, independent of any weather-driven fire behaviour model.
+
+![Predicted fire behaviour and fire effects of the unburned plots](docs/images/fig_unburned_plots.png)
+
+**Predicted fire behaviour and fire effects for the ten unburned plots across each plot's 85th to 95th
+percentile Fire Weather Index band.** Conifer Pyrometrics and FOFEM predictions are compared between treated (blue) and
+untreated (grey) plots. (a) Head fire intensity. (b) Total CO2 emissions, flaming plus smoldering (kg/m2), are shown as
+box plots of each plot's scenarios; boxes span the interquartile range, lines mark the median, and whiskers extend to
+1.5 times the interquartile range. (c) The share of scenarios in each fire type per plot. (d) The share of scenarios in
+each fire severity class per plot, defined by the proportion of basal area killed according to the FOFEM crown scorch
+mortality model.
+
 ### Run the tutorial
 
 For a guided walkthrough of the example data, FBP fuel typing, weather
@@ -492,7 +560,8 @@ The output directory mirrors processed form folders and may contain these top-le
 
 Processed copies of each Survey123 parent table are written under their corresponding numbered output folders. Detailed repeat-table outputs may also be generated by individual components.
 
-Many stand means are basal-area weighted rather than simple arithmetic means.
+Many stand means are basal-area weighted rather than simple arithmetic means. Every output variable, with the
+equation that produces it, is described in the [technical reference](docs/TECHNICAL_REFERENCE.md#3-fuelanalyst-variable-descriptions).
 
 Every `fuel_analyst()` run that completes writes `fuelanalyst_errors.csv`
 alongside `master_fuel_df.csv`. It lists every data-quality issue encountered
@@ -729,6 +798,41 @@ Important configuration areas include:
 
 Treat configuration schema as part of the scientific model. Change one setting at a time and retain the configuration used to create analysis outputs.
 
+#### Woody debris, ConPyro, and FOFEM consumption settings
+
+Besides the stand summary dictionary, three dictionaries have fixed top-level keys: `fuel_analyst()` needs every key,
+so change a deep copy of the default instead of passing a partial dictionary. The tables list each key and its default.
+Every setting, option, and effect is in the [technical reference](docs/TECHNICAL_REFERENCE.md#2-configuration-dictionaries).
+
+**Woody debris** (`woody_debris_params`, [Section 2.3](docs/TECHNICAL_REFERENCE.md#23-woody-debris-dictionary))
+
+| Key | Default | Controls |
+| --- | --- | --- |
+| `protocol_transect_params` | `size_classes` `[0.5, 7, 30, inf]` cm, `transect_lengths` `[4, 10, 20, 30]` m | Transect length assigned to each individually measured piece by its diameter |
+| `woody_debris_classes` | Three protocols, `canadian`, `us`, and `modified`, each with `process_classes: True` | Per protocol: `class_extension`, `diameter_cutoffs` (Canadian `[0.5, 1, 3, 5, 7]` cm, US `[0.635, 2.54, 7.62]` cm, modified `[0.5, 1, 2, 3, 4, 5, 6, 7]` cm), `transect_lengths`, and `output_request` (the output classes written as `woody_kgpm2_*` columns) |
+| `measure_vs_tally_qmd_comparison` | `True` | Writes a second set of `compare_woody_` columns that use measured piece diameters instead of tallied counts; `False` omits them |
+
+**ConPyro** (`conpyro_params`, [Section 2.4](docs/TECHNICAL_REFERENCE.md#24-conpyro-dictionary)); used only when `gen_conpyro_df=True`
+
+| Key | Default | Controls |
+| --- | --- | --- |
+| `stand_attributes` | 11 entries with fixed ConPyro column names (canopy fuel load, bulk density, dead branch fuel load, heights, canopy base height, and fuel strata gap, by overstory and midstory) | The source attribute, summary, and metric of each ConPyro stand column. The height, canopy base height, and fuel strata gap entries accept one metric (`min`, `max`, or `mean`, default `mean`). `conpyro_fsg` reads `cbh` of live conifers unless `att_source` is `fsg` |
+| `vegetative_fuel_loads` | `herbaceous`: grass and herb/forb, `grass`: grass, `shrub`: shrubs | Which plant fuel fields are summed into each load. An empty list sets the load to 0. Only the herbaceous load is passed to ConPyro |
+| `canopy_cover_attribute` | `"cc"` | Canopy cover estimate passed to ConPyro: `"cc"` (total), `"cc_cnfr"` (conifer), or `"cc_brdlf"` (broadleaf); it also sets the stand density class |
+| `woody_debris_classes` | One `conpyro` protocol with a single `lt7cm` output | Woody fuel load of pieces up to 7 cm. Fixed: the ConPyro input reads `woody_kgpm2_conpyro_lt7cm_7` |
+
+**FOFEM consumption** (`fofem_consume_params`, [Section 2.5](docs/TECHNICAL_REFERENCE.md#25-fofem-consumption-dictionary)); used only when `gen_fofem_consume_df=True`
+
+| Key | Default | Controls |
+| --- | --- | --- |
+| `canopy_fuels` | Foliage and branches (fixed) | Crown foliage and branch loads from the CNBE biomass of conifers and dead broadleaves |
+| `woody_debris_classes` | US protocol `fofem`, sound and rotten fractions (fixed) | Woody fuel fields `wfl1Hour` to `wfl20plusR`. Do not change the names: the consumption file reads them |
+| `region` | `"InteriorWest"` | FOFEM region, written to the file unchanged (`"InteriorWest"`, `"PacificWest"`, `"NorthEast"`, or `"SouthEast"`) |
+| `season` | `"Summer"` | FOFEM season, written unchanged (`"Spring"`, `"Summer"`, `"Fall"`, or `"Winter"`) |
+| `moisture_regime` | `"Very Dry"` | Duff, 10-hour, 1000-hour, and soil moisture contents: `"Wet"`, `"Moderate"`, `"Dry"`, or `"Very Dry"`. Any other value becomes `"Very Dry"` without a warning |
+| `soil_heating` | `use_soil_heating: False` | Whether `SoilFamily` is read from the plot table (`True`, which needs a `SoilFamily` column in the input) or set to `"NA"` |
+| `fofem_processing_units` | `"SI"` | Unit system of the consumption file: `"SI"` or `"Imperial"`. It must match `emissions_units` of `run_conpyro()` |
+
 #### Valid `att_source` values
 
 Each stand-summary entry reads one per-tree column from the master tree table.
@@ -951,4 +1055,4 @@ in `docs/RELEASE_NOTES.md`.
 
 ## License
 
-The project metadata declares the package under the MIT License. Third-party dependencies and vendored code retain their own licenses.
+FuelAnalyst is released under the MIT License (see [LICENSE.txt](LICENSE.txt)), and the project metadata declares the package under it. Third-party dependencies and vendored code retain their own licenses.
