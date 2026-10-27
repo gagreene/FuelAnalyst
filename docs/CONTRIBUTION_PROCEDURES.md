@@ -9,8 +9,8 @@ Two tables in `src/fuel_analyst/supporting_data/` hold the species lookups: `pla
 plant species to biomass equations) and `tree_parameters.csv` (tree species to height, biomass, fuel, and FOFEM
 parameters). Both are keyed on the species codes recorded in the field. A change to either is a scientific
 change as well as a data change. In addition to the steps below, follow the rest of this document: branch from
-`master`, open a patch PR (see the versioned merge routing), pass the full test suite, and describe the source
-and the effect of the change in the PR.
+`pre_release`, open a PR into `pre_release` (see the merge routing), pass the full test suite, and describe the
+source and the effect of the change in the PR.
 
 ### Adding a plant species
 
@@ -98,7 +98,7 @@ to report which example outputs change, and add a line to `docs/RELEASE_NOTES.md
 
 ## Branches, commits, and pushes
 
-1. Create a focused work branch from its intended PR base under the versioned
+1. Create a focused work branch from its intended PR base under the merge
    routing below. Keep unrelated edits, generated results, temporary files,
    and local reference data out of the change. Check the staged diff before
    committing.
@@ -115,23 +115,64 @@ to report which example outputs change, and add a line to `docs/RELEASE_NOTES.md
    PR, or continue work does not grant permission to commit or push. Do not
    automate commits or pushes without explicit user authorization for each action.
 
-## Versioned merge routing
+## Merge routing and releases
 
-Version numbers use `MAJOR.MINOR.PATCH` (for example, `1.2.3`). Route every
-versioned change as follows:
+Version numbers use `MAJOR.MINOR.PATCH` (for example, `1.2.3`). Two branches live
+permanently, and neither may ever be deleted:
 
-| Change for the next version | Work branch starts from | PR target |
+- `master` holds released code only. Every release tag is on `master`.
+- `pre_release` is the integration branch for all work toward the next release,
+  whatever its size.
+
+Route every change as follows:
+
+| Change | Work branch starts from | PR target |
 | --- | --- | --- |
-| Major or minor version change | `pre_release` | `pre_release` |
-| Patch version change | `master` | `master` |
+| Any change toward the next release (fix, feature, documentation, or data) | `pre_release` | `pre_release` |
+| Hotfix for a serious defect in released code | `master` (`hotfix/<name>`) | `master` |
 
-Create `pre_release` before the first major or minor PR if it does not yet
-exist; do not target `master` as a substitute. Patch changes go only to
-`master`. When the major or minor release is ready, the repository owner
-reviews a PR from `pre_release` into `master` and merges it. This promotion
-requires a PR just like every other branch merge. Release tags use the
-`vMAJOR.MINOR.PATCH` form (for example, `v1.2.3`) expected by the release-tag
-test workflow. The latest tag is `v0.2.0`.
+Do not classify a change as a patch, minor, or major change when its PR is opened.
+The owner chooses the version when the release is promoted, from the combined
+changes: anything that alters inputs, forms, results, or documented behavior is at
+least a minor release, and only fixes with no such change make a patch release.
+
+### Release notes
+
+A PR on `pre_release` that changes behavior adds its bullet under an `Unreleased`
+heading at the top of `docs/RELEASE_NOTES.md` (create the heading if it is absent)
+and does not change the package version. Breaking changes, and the action users need
+to take, go in a `Breaking changes and action needed` block of the same section.
+
+### Releasing
+
+1. Confirm that `pre_release` holds everything intended for the release and that
+   every PR in it has its test record.
+2. Open a promotion PR from `pre_release` into `master`. Along with a hotfix PR, it is
+   the only PR that changes the version: it bumps `pyproject.toml`, regenerates
+   `uv.lock` (see Dependency changes and `uv.lock` below), and renames the `Unreleased`
+   heading of `docs/RELEASE_NOTES.md` to the new version. The description of the
+   promotion PR carries the test record for the head of `pre_release`.
+3. After the owner merges it, run the `Tests` workflow on the full Linux, macOS, and
+   Windows matrix before tagging, then create an annotated tag on `master`. Release
+   tags use the `vMAJOR.MINOR.PATCH` form (for example, `v1.2.3`) expected by the
+   release-tag test workflow.
+4. `master` is now one merge commit ahead of `pre_release`: merge `master` back into
+   `pre_release` through a PR, so that the two branches stay equal after every release.
+
+### Hotfixes
+
+When a serious defect is found in released code and cannot wait for the next release:
+
+1. Branch `hotfix/<name>` from `master`, fix the defect with a regression test, and
+   open a PR into `master`. PRs that are open on `pre_release` are not blocked or
+   changed by this.
+2. The hotfix PR is its own release: it bumps the patch version, regenerates
+   `uv.lock`, and adds a section for the new version to `docs/RELEASE_NOTES.md`. After
+   the owner merges it, run the `Tests` workflow and tag, as for any release.
+3. Merge `master` back into `pre_release` through a PR. Resolve any conflict with
+   unreleased work in that PR, where the author of the fix is best placed to do it;
+   the open feature PRs then only need "Update branch". If `pre_release` already
+   holds a different fix for the same defect, keep the correct one and say so in the PR.
 
 ## Keeping the technical reference current
 
@@ -197,9 +238,10 @@ current PR head.
 
 ## Pull requests and merge review
 
-- Every branch merge requires a PR. Follow the target branch in the versioned
-  routing above. Do not merge or fast-forward work branches directly into
-  either target.
+- Every branch merge requires a PR, including promotions, hotfixes, and the
+  merge of `master` back into `pre_release`. Follow the target branch in the
+  merge routing above. Do not merge or fast-forward work branches directly into
+  either permanent branch.
 - Every PR description must include this checkbox and the test record:
 
   ```markdown
