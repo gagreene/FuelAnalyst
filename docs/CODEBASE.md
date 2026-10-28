@@ -251,7 +251,7 @@ tree and sapling record of those plots, so no plot is summarized from some of it
 `process_trees()` sets the tree-derived columns of those plots to missing (not zero) and marks them in a plot-level
 column (`helper.TREES_EXCLUDED_COLUMN`) that is returned to `fuel_analyst()` but never exported. The model inputs use
 the marker so that no canopy fuel is invented: `gen_conpyro_df()` leaves the plot's stand density and stand type empty
-(the plot stays in `conpyro_df.csv`, and `run_conpyro()` leaves it out like any plot with no live overstory), and
+(the plot stays in `conpyro_df.csv`, and `run_conpyro()` leaves it out and logs it like any plot with no live overstory), and
 `gen_fofem_consumption_df()` omits the plot. Empty entries, sapling rows without a live or dead count, and the
 `NO_SAPLINGS` value are ignored; any other code, including `NO_REGEN`, is looked up like a species. In
 `components/conpyro_attributes.py`, `_calc_stand_type()` likewise logs a plot whose `SPECIES_CD_1` to `SPECIES_CD_6`
@@ -494,7 +494,9 @@ flowchart TD
   `conpyro{_mortality}{_emissions}_results.csv` is written only when mortality or
   emissions ran. Rows with an empty `stand_density` or `stand_type`, such as plots
   with no live overstory, are dropped before ConPyro runs, so the results can have
-  fewer plots than the input.
+  fewer plots than the input. `_log_skipped_empty_stand_plots()` logs each dropped
+  plot once (`conpyro_plot_skipped_empty_stand`, in the ConPyro Fire Behavior column
+  of `run_conpyro_errors.csv`), and the run continues.
 - **`fofem_gui_app_tree_mortality_df.csv` is a hand-off, not an input.** It is
   formatted for import into the external FOFEM GUI application and is not read by
   `run_conpyro()`.
