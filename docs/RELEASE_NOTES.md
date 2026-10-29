@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Breaking changes and action needed (behaviour and data, not the Python API)
+
+- **ConPyro fire behaviour results change.** The vendored ConPyro is refreshed to upstream commit `6086a4f`, which aligns its equations with a pinned reference implementation: updated crown-spread and moisture handling, new FFMC and surface-model coefficients, additional surface and crown models, and new smoothing. No FuelAnalyst function, signature, or column changes, but every `run_conpyro()` result that depends on ConPyro differs from 0.2.0, and the FOFEM mortality and emissions results that use it differ too. On the example dataset (17 modelled plots, 51,968 weather scenarios) the mean head fire rate of spread rises 24 percent (3.05 to 3.77 m/min), head fire intensity 25 percent (2,387 to 2,993 kW/m), crown rate of spread 17 percent, and flame length 21 percent. Surface fuel moisture is unchanged (under 0.1 percent), and 1.0 percent of the scenarios change fire type, mostly toward more crown fire (active crown fire 812 to 1,175 scenarios, 1.6 to 2.3 percent). Rerun `run_conpyro()` on existing data, and do not compare new results with results from 0.2.0 or earlier.
+
+### Changes
+
 - `run_conpyro()` now logs each plot it leaves out because `stand_density` or `stand_type` is empty (a plot with no live overstory, or one whose tree calculations were left out because of a species code that is not in `tree_parameters.csv`). The warning (`conpyro_plot_skipped_empty_stand`) is written to the ConPyro Fire Behavior column of `run_conpyro_errors.csv`, with the plot's identity columns. The plots are still left out of the results and the run continues; no calculation changes.
 
 ## 0.2.0
