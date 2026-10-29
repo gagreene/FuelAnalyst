@@ -70,8 +70,8 @@ def calc_mc_ffmc(
     mc_ffmc = np.zeros_like(ref_array, dtype=np.float64)
 
     # Calculate moisture content from FFMC
-    # 147.27723 * (101 - ffmc) / (59.5 + ffmc)
-    mc_ffmc += 147.27723 * (101.0 - ffmc_arr) / (59.5 + ffmc_arr)
+    # Standard Van Wagner multiplier, matching the pinned R implementation.
+    mc_ffmc += 147.2 * (101.0 - ffmc_arr) / (59.5 + ffmc_arr)
     return mc_ffmc
 
 
@@ -432,7 +432,6 @@ def get_adjusted_mc_areas(
         use_adjusted_mc[mask_invalid_stand] = False
         del mask_invalid_stand
     return use_adjusted_mc
-
 
 
 
