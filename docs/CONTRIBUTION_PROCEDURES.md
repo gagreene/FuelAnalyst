@@ -84,8 +84,13 @@ reported in the ConPyro Attributes column, and that plot's stand type is empty. 
 2. Add the species to the Survey123 forms: the `list_tree_species` choices of every form that uses it (Plot
    Attributes, Plants and Regeneration, Trees, and Woody Debris), and a row (`Species`, `Species_Label`,
    `Type`) in `docs/survey123/survey123_forms/CWC Fuels 3 - Trees/media/Tree_Types.csv`, which the Trees form
-   uses to calculate the tree type. Update the manual-entry forms in `docs/survey123/manual_entry_forms/`,
-   then republish the forms.
+   uses to calculate the tree type. Keep the species lists of the four forms equal and bump the `version` of
+   each changed form (`tests/unit/test_survey123_species_lists.py` checks the lists against each other and
+   against `tree_parameters.csv`); `FD` and `PL` stay out of every list on purpose, because the forms offer
+   the coastal and interior codes (`FDC`, `FDI`, `PLC`, `PLI`), and a shrub (`TreeType` of `shrub`, such as
+   `JD` and `JH`) is not a tree: it gets no row in `Tree_Types.csv` and is offered on the Woody Debris form
+   only, where its stems add small-diameter woody fuel. The manual-entry forms in
+   `docs/survey123/manual_entry_forms/` hold no species list. Republish the forms.
 3. Pass the full test suite, and add a test for the new species. The rows `JD`, `JH`, and `DECAYED`
    intentionally have no allometric coefficients (they are shrubs and a decay placeholder), so a check of
    the table must skip them.
