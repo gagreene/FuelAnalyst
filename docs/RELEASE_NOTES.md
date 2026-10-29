@@ -1,5 +1,9 @@
 # Release notes
 
+## Unreleased
+
+- `run_conpyro()` now logs each plot it leaves out because `stand_density` or `stand_type` is empty (a plot with no live overstory, or one whose tree calculations were left out because of a species code that is not in `tree_parameters.csv`). The warning (`conpyro_plot_skipped_empty_stand`) is written to the ConPyro Fire Behavior column of `run_conpyro_errors.csv`, with the plot's identity columns. The plots are still left out of the results and the run continues; no calculation changes.
+
 ## 0.2.0
 
 This is a minor release, not a patch: the Plants form has a new required question, some results change, and a run that used to stop on an unlisted species now continues without that plot. No function signature, dictionary key, or file name changed.

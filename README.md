@@ -754,8 +754,8 @@ must match `default_fire_modelling_dict['fofem_emissions']['emissions_units']` (
 error on a mismatch rather than silently misinterpreting the file.
 
 Every completed `run_conpyro()` call also writes `run_conpyro_errors.csv`, with one column per reporting source.
-A CFIS run (`cfo_model` 10) on plots without an FBP fuel type is logged per plot in its ConPyro Fire Behavior
-column; the run continues.
+A CFIS run (`cfo_model` 10) on plots without an FBP fuel type, and each plot left out of the run because its
+`stand_density` or `stand_type` is empty, is logged per plot in its ConPyro Fire Behavior column; the run continues.
 
 ### Configuration
 

@@ -420,6 +420,40 @@ def _log_cfis_fuel_type_issues(df: pd.DataFrame, input_params: dict, plot_id_col
         )
 
 
+def _log_skipped_empty_stand_plots(
+        skipped_df: pd.DataFrame,
+        empty_cols: list,
+        plot_id_col: str = 'unique_id',
+) -> None:
+    """
+    Log a warning for each plot that run_conpyro() leaves out because a required stand column is empty.
+
+    A plot has an empty stand_density or stand_type when it has no live overstory, or when the tree calculations of
+    fuel_analyst() left it out because of a species code that is not in tree_parameters.csv (reported in the Trees
+    column of fuelanalyst_errors.csv). The plot is in neither the results nor the model run, so without this warning
+    nothing reports it. A plot with several rows (one per weather date) is logged once.
+
+    :param skipped_df: Rows removed from the ConPyro input, with the plot ID column and the empty columns.
+    :param empty_cols: Names of the required columns that were checked for empty values.
+    :param plot_id_col: Name of the plot ID column (conpyro_params['plot_id_col_name']); the warnings are tagged with
+        its values as the plot unique ID.
+    :return: None. Logs warnings through error_handling.
+    """
+    if skipped_df.empty:
+        return
+    ids = skipped_df[plot_id_col] if plot_id_col in skipped_df.columns else pd.Series(pd.NA, index=skipped_df.index)
+    for unique_id in dict.fromkeys(ids):
+        rows = skipped_df[ids.eq(unique_id)] if pd.notna(unique_id) else skipped_df[ids.isna()]
+        names = [col for col in empty_cols if rows[col].isna().any()]
+        logger.warning(
+            f'This plot was skipped and is not in the results, because {" and ".join(names)} '
+            f'{"is" if len(names) == 1 else "are"} empty. The plot has no live overstory, or its tree calculations '
+            'were left out because a species code is not in tree_parameters.csv (see the Trees column of '
+            'fuelanalyst_errors.csv).',
+            extra={'unique_id': unique_id, 'issue_code': 'conpyro_plot_skipped_empty_stand'},
+        )
+
+
 def _single_run_fire_behavior(args):
     """
     Run one ConPyro fire-behavior calculation for a weather date and time.
@@ -784,6 +818,7 @@ def run_conpyro(
     conpyro_out_list = conpyro_params['output_params']['out_request']
     flame_comp_out_list = conpyro_params['output_params']['flame_comp_out_list']
 
+    skipped_df = pd.DataFrame()  # plots left out of the ConPyro input because of empty stand columns
     if conpyro_params['run_model']:
         # Create fire behavior output directory and remove any existing files if it already exists
         fire_dir = os.path.join(out_dir, 'fire_behavior')
@@ -793,10 +828,11 @@ def run_conpyro(
         # Get dataframe of plot data for ConPyro modelling
         df = pd.read_csv(in_conpyro_csv_path, low_memory=False)
 
-        # Drop rows with empty values in required columns
+        # Drop rows with empty values in required columns, and report each skipped plot
         drop_empty_rows_in_cols = ['stand_density', 'stand_type']
-        for col in drop_empty_rows_in_cols:
-            df = df[df[col].notna()]
+        skipped_df = df[df[drop_empty_rows_in_cols].isna().any(axis=1)]
+        df = df.drop(index=skipped_df.index)
+        _log_skipped_empty_stand_plots(skipped_df, drop_empty_rows_in_cols, conpyro_params['plot_id_col_name'])
 
         # Validate that required columns are present before running ConPyro.
         # Core weather columns must be merged in advance via extract_nrcan_wx -> merge_wx_data.
@@ -899,7 +935,10 @@ def run_conpyro(
 
     error_report_path = os.path.join(out_dir, 'run_conpyro_errors.csv')
     print(f'\nSaving the Error Report to: {error_report_path}')
-    error_handling.write_report(error_report_path, plot_df=df)
+    error_handling.write_report(
+        error_report_path,
+        plot_df=pd.concat([df, skipped_df]) if not skipped_df.empty else df,
+    )
 
     return
 
