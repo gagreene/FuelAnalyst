@@ -567,7 +567,7 @@ where DBH is diameter at breast height in cm and the division by 100 converts cm
 
 ### 3.3.4 Height imputation: Temesgen Model 2
 
-Heights are modelled with Temesgen and Gadow's Model 2 \[6\] in two ways. Missing heights of less-decayed trees, and of saplings, are filled with the modelled value. Separately, for trees with a decay class of 6 or higher (conifers) or 5 or higher (broadleaves), a modelled height is computed from DBH and used in place of the measured height in the biomass equations only. The model is:
+Heights are modelled with Temesgen and Gadow's Model 2 \[6\] in two ways. Missing heights of less-decayed trees, and of saplings, are filled with the modelled value. Separately, for trees with a decay class of 6 or higher (conifers) or 5 or higher (broadleaves), a modelled height is computed from DBH and used in place of the measured height in the biomass equations only. A highly decayed tree with a density above zero and no measured height is reported as a warning in the Trees column of fuelanalyst_errors.csv (decayed_tree_height_modeled), because its height was modelled from its DBH. A highly decayed tree with neither a height nor a DBH cannot be modelled, contributes no biomass, and is reported as an error (decayed_tree_not_modellable); one with a height but no DBH also contributes no biomass and is reported as an error (decayed_tree_dbh_missing). Each plot is reported once per issue, with the tree_id of every affected tree. The model is:
 
 > **(3)** H = 1.3 + a \* (1 - exp(-b \* DBH^c))
 
