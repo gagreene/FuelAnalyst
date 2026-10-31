@@ -9,6 +9,7 @@
 
 ### Changes
 
+- `fuel_analyst()` now reports highly decayed trees (decay class 6 or higher for conifers, 5 or higher for broadleaves, with a density above zero) that have no measured height. When the DBH is recorded, the height is modelled from it (as it already was for the biomass equations) and a warning (`decayed_tree_height_modeled`) is written to the Trees column of `fuelanalyst_errors.csv`. A tree with neither a height nor a DBH cannot be modelled and adds no biomass, which is reported as an error (`decayed_tree_not_modellable`), and so is one with a height but no DBH (`decayed_tree_dbh_missing`). Each plot is reported once per issue, with the `tree_id` of every affected tree. No calculation changes.
 - `run_conpyro()` now logs each plot it leaves out because `stand_density` or `stand_type` is empty (a plot with no live overstory, or one whose tree calculations were left out because of a species code that is not in `tree_parameters.csv`). The warning (`conpyro_plot_skipped_empty_stand`) is written to the ConPyro Fire Behavior column of `run_conpyro_errors.csv`, with the plot's identity columns. The plots are still left out of the results and the run continues; no calculation changes.
 
 ## 0.2.0
