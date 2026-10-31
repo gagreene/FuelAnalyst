@@ -23,6 +23,18 @@ Connect lists a folder only if it contains a `<form name>.xml` file, so the empt
 Keep the `media/` folder with the `.xlsx`. The Plants form builds its species list from `media/plant_photoload.csv`, and
 the Trees form looks up each tree's type in `media/Tree_Types.csv`. Without them the form does not compile.
 
+## Publishing the forms
+
+The forms do not work for your crews until they are published through ArcGIS Online. Opening a form in Survey123
+Connect only lets you review and edit it. Publish every form your crews will use to your own ArcGIS Online account (Connect
+asks you to sign in to it), and publish a form again after you change it, for example to add a species, so that crews get
+the new version. For the steps, see ESRI's instructions:
+[Publish a survey](https://doc.arcgis.com/en/survey123/create/connect/publishsurvey.htm).
+
+The data that crews send are stored in the account that publishes the form, so publish from the account that should own
+your data. The links in `docs/survey123/sampling_protocols/CWC Fuels 2026 Links.pdf` open the Centre for Wildfire
+Coexistence's own published copies, whose data other users cannot access (that document says how to request access).
+
 ## What belongs in the repository
 
 Only the `.xlsx`, the `media/` folder, and the empty `.xml` placeholder. Connect generates the rest when it opens a form

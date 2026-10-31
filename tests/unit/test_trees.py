@@ -21,10 +21,12 @@ from fuel_analyst.components.trees import (
     _calc_tree_density,
     _calc_tree_fire_attributes,
     _calc_tree_fsg,
+    _calc_tree_missing_heights,
     _calc_tree_type,
     _exclude_unlisted_species,
     _gen_master_tree_df,
     _get_temesgen_tree_height,
+    _log_decayed_tree_height_issues,
     _log_tree_density_issues,
     _merge_saplings_to_trees,
     _normalize_sapling_inputs,
@@ -695,3 +697,88 @@ def test_plot_with_an_unlisted_tree_species_is_left_out_of_the_model_inputs(tmp_
     assert '_trees_excluded' not in master.columns and len(master) == len(plot_ids)
     consume = pd.read_csv(out_dir / 'fofem_consume_si_df.csv', low_memory=False)
     assert len(consume) == len(master) - 1
+
+
+# ── Highly decayed trees with no measured height ─────────────────────────────────────────────────────────────────────
+
+def _decayed_trees(rows):
+    """Plot table, tree table, and the real species table for (plot, tree_id, species, decay class, dbh, height, density) rows."""
+    params = pd.read_csv(
+        Path(__file__).resolve().parents[2] / 'src' / 'fuel_analyst' / 'supporting_data' / 'tree_parameters.csv'
+    ).set_index('Species')
+    df = pd.DataFrame({'GlobalID': ['g1', 'g2'], 'unique_id': ['P1', 'P2']})
+    tree_df = pd.DataFrame(rows, columns=['ParentGlobalID', 'tree_id', 'tree_species', 'tree_dcy_class_cnfr',
+                                          'tree_dcy_class_brdlf', 'tree_dbh', 'tree_ht', 'tree_dens_ha'])
+    return df, tree_df, params
+
+
+def test_a_highly_decayed_tree_without_a_height_is_modelled_from_its_dbh_and_reported(caplog):
+    df, tree_df, params = _decayed_trees([['g1', 7, 'FDI', 7, np.nan, 25.0, np.nan, 50.0]])
+    tree_df = _calc_tree_missing_heights(tree_df, params)
+    assert tree_df.loc[0, 'tree_ht_modeled'] > 0
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.components.trees'):
+        _log_decayed_tree_height_issues(df, tree_df)
+    [record] = caplog.records
+    assert record.levelno == logging.WARNING
+    assert (record.unique_id, record.issue_code) == ('P1', 'decayed_tree_height_modeled')
+    assert 'tree_id 7' in record.getMessage() and 'modelled from the DBH' in record.getMessage()
+
+
+def test_a_highly_decayed_tree_with_neither_dbh_nor_height_is_reported_as_not_modellable(caplog):
+    df, tree_df, params = _decayed_trees([['g1', 4, 'FDI', 9, np.nan, np.nan, np.nan, 50.0]])
+    tree_df = _calc_tree_missing_heights(tree_df, params)
+    assert not tree_df.loc[0, 'tree_ht_modeled'] > 0
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.components.trees'):
+        _log_decayed_tree_height_issues(df, tree_df)
+    [record] = caplog.records
+    assert record.levelno == logging.ERROR
+    assert (record.unique_id, record.issue_code) == ('P1', 'decayed_tree_not_modellable')
+    assert 'tree_id 4' in record.getMessage() and 'no biomass is calculated' in record.getMessage()
+
+
+def test_a_highly_decayed_tree_with_a_height_but_no_dbh_is_reported_as_an_error(caplog):
+    df, tree_df, params = _decayed_trees([['g1', 6, 'FDI', 8, np.nan, np.nan, 14.0, 50.0]])
+    tree_df = _calc_tree_missing_heights(tree_df, params)
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.components.trees'):
+        _log_decayed_tree_height_issues(df, tree_df)
+    [record] = caplog.records
+    assert record.levelno == logging.ERROR
+    assert (record.unique_id, record.issue_code) == ('P1', 'decayed_tree_dbh_missing')
+    assert 'tree_id 6' in record.getMessage() and 'no DBH, so no biomass is calculated' in record.getMessage()
+
+
+def test_the_decayed_tree_report_names_every_tree_of_a_plot_once_per_issue(caplog):
+    df, tree_df, params = _decayed_trees([
+        ['g1', 1, 'FDI', 7, np.nan, 25.0, np.nan, 50.0],
+        ['g1', 2, 'AT', np.nan, 5, 20.0, np.nan, 50.0],
+        ['g1', 3, 'FDI', 8, np.nan, np.nan, np.nan, 50.0],
+        ['g2', 5, 'FDI', 7, np.nan, 25.0, np.nan, 50.0],
+    ])
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.components.trees'):
+        _log_decayed_tree_height_issues(df, _calc_tree_missing_heights(tree_df, params))
+    messages = {(r.unique_id, r.issue_code): r.getMessage() for r in caplog.records}
+    assert set(messages) == {('P1', 'decayed_tree_height_modeled'), ('P1', 'decayed_tree_not_modellable'),
+                             ('P2', 'decayed_tree_height_modeled')}
+    assert messages[('P1', 'decayed_tree_height_modeled')].startswith('2 highly decayed trees have')
+    assert 'tree_id 1, 2' in messages[('P1', 'decayed_tree_height_modeled')]
+    assert messages[('P2', 'decayed_tree_height_modeled')].startswith('1 highly decayed tree has')
+
+
+def test_the_decayed_tree_report_skips_trees_that_are_not_highly_decayed_or_have_no_density(caplog):
+    df, tree_df, params = _decayed_trees([
+        ['g1', 1, 'FDI', 2, np.nan, 25.0, np.nan, 50.0],     # live tree: its height is not modelled here
+        ['g1', 2, 'FDI', 7, np.nan, 25.0, 18.0, 50.0],       # highly decayed with a measured height
+        ['g1', 3, 'FDI', 7, np.nan, np.nan, np.nan, 0.0],    # highly decayed but no density
+        ['g1', 4, 'AT', np.nan, 4, np.nan, np.nan, 50.0],    # broadleaf below the decayed threshold (5)
+    ])
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.components.trees'):
+        _log_decayed_tree_height_issues(df, _calc_tree_missing_heights(tree_df, params))
+    assert not caplog.records
+
+
+def test_the_decayed_tree_report_puts_an_unresolvable_plot_in_the_general_row(caplog):
+    df, tree_df, params = _decayed_trees([['unknown', 1, 'FDI', 7, np.nan, 25.0, np.nan, 50.0]])
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.components.trees'):
+        _log_decayed_tree_height_issues(df, _calc_tree_missing_heights(tree_df, params))
+    [record] = caplog.records
+    assert pd.isna(record.unique_id)
