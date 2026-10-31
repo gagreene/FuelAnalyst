@@ -9,6 +9,7 @@
 
 ### Changes
 
+- `run_conpyro()` with the official FOFEM 6.9.4 emissions engine (`model_select` of `fof_gui`) now reports every plot whose `runfofem.exe` rows failed, whatever the number of workers. Before, the report was written only when fewer than four workers ran, because a log record made inside a worker process never reached the parent. Each plot and cause is logged once (`fofem_gui_emissions_runfofem_failure`), with the number of failed weather scenarios and the first weather date, in the FOFEM 6.9.4 Emissions column of `run_conpyro_errors.csv`, under the original plot ID. The failed rows still hold their `fofem_gui_error` message in the results. No calculation changes.
 - `run_conpyro()` now logs each plot it leaves out because `stand_density` or `stand_type` is empty (a plot with no live overstory, or one whose tree calculations were left out because of a species code that is not in `tree_parameters.csv`). The warning (`conpyro_plot_skipped_empty_stand`) is written to the ConPyro Fire Behavior column of `run_conpyro_errors.csv`, with the plot's identity columns. The plots are still left out of the results and the run continues; no calculation changes.
 
 ## 0.2.0

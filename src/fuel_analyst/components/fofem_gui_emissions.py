@@ -8,6 +8,7 @@ __author__ = ['Gregory A. Greene']
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -512,6 +513,40 @@ def _get_season(df: pd.DataFrame, season_start_dict: dict = None) -> pd.DataFram
     return df
 
 
+def _log_emissions_failures(results: list, merged_df: pd.DataFrame, plotid_map: dict) -> None:
+    """
+    Log the runfofem.exe rows that failed, once per plot and cause, from the parent process.
+
+    A logging call made inside a ProcessPoolExecutor worker never reaches error_handling's collecting handler in the
+    parent process, but the return value of _model_emissions() always does. So each worker only returns
+    {'fofem_gui_error': message} for a failed row, and this function reports those messages from the parent, which
+    gives the same report for every worker count. A plot with several failed weather dates and the same cause is
+    logged once, with the number of failed scenarios and the first weather date.
+
+    :param results: One result dict per row of merged_df, in order; a failed row holds 'fofem_gui_error'.
+    :param merged_df: Merged consumption and fire data, with the (underscored) '#PlotId' and 'wx_date' columns.
+    :param plotid_map: Mapping from the underscored '#PlotId' values back to the original plot IDs.
+    :return: None. Logs one error per plot and cause through error_handling.
+    """
+    prefix = re.compile(r'^runfofem\.exe failed for plot ".*?", wx_date .*?: ')
+    plot_ids = merged_df['#PlotId'].tolist()
+    wx_dates = merged_df['wx_date'].tolist() if 'wx_date' in merged_df.columns else [None] * len(plot_ids)
+    totals = merged_df['#PlotId'].value_counts().to_dict()
+    failures = {}
+    for plot_id, wx_date, result in zip(plot_ids, wx_dates, results):
+        message = result.get('fofem_gui_error') if isinstance(result, dict) else None
+        if not isinstance(message, str):
+            continue
+        entry = failures.setdefault((plot_id, prefix.sub('', message)), [0, wx_date])
+        entry[0] += 1
+    for (plot_id, cause), (count, first_date) in failures.items():
+        logger.error(
+            f'runfofem.exe failed for {count} of {totals[plot_id]} weather scenarios of this plot '
+            f'(first wx_date {first_date}): {cause}',
+            extra={'unique_id': plotid_map.get(plot_id, plot_id), 'issue_code': 'fofem_gui_emissions_runfofem_failure'},
+        )
+
+
 def _model_emissions(row: dict, out_dir: str, consume_model: str, emissions_units: str, fofem_dir: str) -> dict:
     """
     Model emissions for one fire-behavior/weather row via a single isolated runfofem.exe call.
@@ -529,9 +564,8 @@ def _model_emissions(row: dict, out_dir: str, consume_model: str, emissions_unit
         model limit, not clipped or otherwise worked around here), returns
         {'fofem_gui_error': <message>} instead: the row's FOFEM result fields become NaN when
         later assembled into a DataFrame, and 'fofem_gui_error' names the real cause inline in
-        the final CSV. Also logged via logger.error(), though that only reaches
-        error_handling's collector for the num_workers<4 (main-process) path - see the comment
-        at the call site.
+        the final CSV. The worker does not log it: process_emissions() reports the returned
+        message from the parent process (see _log_emissions_failures()).
     """
     worker_dir = os.path.join(out_dir, f'FOFEM_Emissions_{os.getpid()}')
     os.makedirs(worker_dir, exist_ok=True)
@@ -588,15 +622,10 @@ def _model_emissions(row: dict, out_dir: str, consume_model: str, emissions_unit
         message = (
             f'runfofem.exe failed for plot "{plot_id}", wx_date {wx_date}: {e}'
         )
-        print(f'Error processing row: {message}')
-        # logger.error() only reaches error_handling's collecting handler for the
-        # num_workers<4 (main-process) path - a logging call made inside a
-        # ProcessPoolExecutor/process_map worker never crosses back to the parent process's
-        # handler (the same documented limitation fofem_emissions.py's pyfofem backend has).
-        # The 'fofem_gui_error' field below is the reliable channel: it is the function's own
-        # return value, which multiprocessing always pickles back to the parent regardless of
-        # worker count, so every failed row is identifiable in the final CSV either way.
-        logger.error(message, extra={'unique_id': plot_id, 'issue_code': 'fofem_gui_emissions_runfofem_failure'})
+        # Not logged here: a logging call inside a ProcessPoolExecutor/process_map worker never crosses back to the
+        # parent process's error_handling handler. The returned 'fofem_gui_error' always does (multiprocessing
+        # pickles it back whatever the worker count), and process_emissions() reports it from the parent through
+        # _log_emissions_failures().
         result = {'fofem_gui_error': message}
     finally:
         # Only this row's own files - not the whole worker_dir, whose copied runtime files
@@ -893,7 +922,8 @@ def process_emissions(
         FOFEM emissions results. A row whose runfofem.exe call failed (e.g. a genuinely
         out-of-range input, such as windspeed exceeding Burnup's documented 0-5 m/s validity
         range) has NaN FOFEM result fields and a non-null 'fofem_gui_error' column naming the
-        real cause; also logged via logger.error() when running with num_workers<4.
+        real cause; each failed plot is also logged once per cause through error_handling, whatever
+        the worker count.
     """
     os.makedirs(out_dir, exist_ok=True)
 
@@ -947,6 +977,8 @@ def process_emissions(
             _model_emissions(row, out_dir, consume_model, emissions_units, fofem_dir)
             for row in tqdm.tqdm(merged_df.to_dict(orient='records'), desc='Emissions')
         ]
+
+    _log_emissions_failures(results, merged_df, plotid_map)
 
     # Each worker's own runtime-file copy (_ensure_worker_fofem_runtime()) and directory persist
     # across that worker's rows for reuse, so clean them all up now that the whole batch is done.
