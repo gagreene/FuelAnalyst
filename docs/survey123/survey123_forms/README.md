@@ -32,8 +32,7 @@ the new version. For the steps, see ESRI's instructions:
 [Publish a survey](https://doc.arcgis.com/en/survey123/create/connect/publishsurvey.htm).
 
 The data that crews send are stored in the account that publishes the form, so publish from the account that should own
-your data. The links in `docs/survey123/sampling_protocols/CWC Fuels 2026 Links.pdf` open the Centre for Wildfire
-Coexistence's own published copies, whose data other users cannot access (that document says how to request access).
+your data.
 
 ## What belongs in the repository
 
