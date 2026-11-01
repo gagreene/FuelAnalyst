@@ -1698,6 +1698,48 @@ def _log_char_on_unburned_plots(df: pd.DataFrame, tree_df: pd.DataFrame, burned_
         )
 
 
+def _log_decayed_tree_height_issues(df: pd.DataFrame, tree_df: pd.DataFrame) -> None:
+    """
+    Report highly decayed trees that have no measured height or no DBH.
+
+    A highly decayed tree (decay class at or above the dead threshold) takes its biomass height from the Temesgen
+    model, which needs only its DBH, so a missing measured height is modelled and reported as a warning. A tree with
+    no DBH contributes no biomass, which is reported as an error: when it also has no height, the height cannot be
+    modelled either. Each plot is logged once per issue, with the tree_id of every affected tree. Only trees with a
+    density above zero are reported, because the others contribute nothing in any case.
+
+    :param df: Plot-level DataFrame with 'GlobalID' and 'unique_id'.
+    :param tree_df: Tree records with 'ParentGlobalID', decay classes, 'tree_dens_ha', 'tree_dbh', and 'tree_ht'.
+    :return: None. Logs warnings and errors through error_handling.
+    """
+    decayed = (
+        (tree_df['tree_dens_ha'] > 0) &
+        ((tree_df['tree_dcy_class_cnfr'] >= _DEAD_DECAY_THRESHOLD_CONIFER) |
+         (tree_df['tree_dcy_class_brdlf'] >= _DEAD_DECAY_THRESHOLD_BROADLEAF))
+    )
+    no_height = tree_df['tree_ht'].isna()
+    no_dbh = ~(tree_df['tree_dbh'] > 0)
+    unique_ids = _resolve_parent_unique_ids(df, tree_df['ParentGlobalID'])
+    issues = (
+        (decayed & no_height & ~no_dbh, logger.warning, 'decayed_tree_height_modeled',
+         'no measured height, so the height was modelled from the DBH'),
+        (decayed & no_height & no_dbh, logger.error, 'decayed_tree_not_modellable',
+         'neither a height nor a DBH, so the height cannot be modelled and no biomass is calculated'),
+        (decayed & ~no_height & no_dbh, logger.error, 'decayed_tree_dbh_missing',
+         'no DBH, so no biomass is calculated'),
+    )
+    for mask, log, code, text in issues:
+        for unique_id, trees in tree_df[mask].groupby(unique_ids[mask], dropna=False, sort=False):
+            tree_ids = []
+            if 'tree_id' in trees.columns:
+                tree_ids = [str(int(i)) if isinstance(i, float) and i.is_integer() else str(i)
+                            for i in trees['tree_id'].dropna()]
+            detail = f' (tree_id {", ".join(tree_ids)})' if tree_ids else ''
+            count = len(trees)
+            subject = '1 highly decayed tree has' if count == 1 else f'{count} highly decayed trees have'
+            log(f'{subject} {text}{detail}', extra={'unique_id': unique_id, 'issue_code': code})
+
+
 def _log_tree_density_issues(
         df: pd.DataFrame,
         sapling_df: pd.DataFrame,
@@ -2156,6 +2198,7 @@ def process_trees(
     partial_log = _log_tree_density_issues(df, sapling_df, tree_df)
     tree_df = _calc_tree_basal_area(tree_df)
     tree_df = _calc_tree_missing_heights(tree_df, tree_params_df)
+    _log_decayed_tree_height_issues(df, tree_df)
     tree_df = _calc_tree_cbh(tree_df)
     tree_df = _calc_tree_fsg(tree_df)
     tree_df = _calc_tree_crown_depth(tree_df)

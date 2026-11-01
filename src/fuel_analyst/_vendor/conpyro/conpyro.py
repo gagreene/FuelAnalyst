@@ -124,72 +124,24 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
             print(msg)
 
     def _check_array(self):
-        # ### CHECK FOR NUMPY ARRAYS IN INPUT PARAMETERS
-        params = inspect.signature(self.initialize).parameters
-        param_names = list(params.keys())
-        param_list = [getattr(self, param) for param in param_names if param != 'self']
-
-        if any(isinstance(data, np.ndarray) for data in param_list):
-            # Set return_array flag to True
-            self.return_array = True
-
-            # Get indices of input parameters that are arrays
-            array_indices = [i for i in range(len(param_list)) if isinstance(param_list[i], np.ndarray)]
-
-            # If more than one array, verify they are all the same shape
-            if len(array_indices) > 1:
-                # Verify all arrays have the same shape
-                arrays = itemgetter(*array_indices)(param_list)
-                # Ensure the result is a list
-                if isinstance(arrays, np.ndarray):  # Single array case
-                    arrays = [arrays]
-                shapes = {arr.shape for arr in arrays}
-                if len(shapes) > 1:
-                    raise ValueError(
-                        'All arrays must have the same dimensions. '
-                        f'The following range of dimensions exists: {shapes}'
-                    )
-
-                # Get first input array as a masked array
-                first_array = param_list[array_indices[0]]
-
-                # If first array is a character array, change all valid (not nodata) values to 1
-                if hasattr(first_array, 'dtype') and first_array.dtype.kind in {'U', 'S'}:
-                    # Assume nodata is represented by masked values if MaskedArray, or by empty string otherwise
-                    if isinstance(first_array, mask.MaskedArray):
-                        valid_mask = ~mask.getmaskarray(first_array)
-                    else:
-                        valid_mask = first_array != ''
-                    # Create an integer array of 1s where valid, 0 elsewhere
-                    arr_ones = np.zeros(first_array.shape, dtype=np.int8)
-                    arr_ones[valid_mask] = 1
-                    # If original was masked, preserve mask
-                    if isinstance(first_array, mask.MaskedArray):
-                        first_array = mask.array(arr_ones, mask=mask.getmaskarray(first_array))
-                    else:
-                        first_array = arr_ones
-                    # Update param_list as well for downstream use
-                    param_list[array_indices[0]] = first_array
-
-                # Create float reference array
-                self.ref_array = mask.array(
-                    np.full(first_array.shape, 0, dtype=np.float64),
-                    mask=~np.isfinite(first_array)
-                )
-
-                # Create integer reference array
-                self.ref_int_array = mask.array(
-                    np.full(first_array.shape, 0, dtype=np.int8),
-                    mask=~np.isfinite(first_array)
-                )
+        """Set the output grid from the first array, including a single array."""
+        arrays = [getattr(self, name) for name in inspect.signature(self.initialize).parameters
+                  if isinstance(getattr(self, name), np.ndarray)]
+        self.return_array = bool(arrays)
+        if arrays:
+            if len({arr.shape for arr in arrays}) > 1:
+                raise ValueError("All arrays must have the same dimensions.")
+            first = mask.asarray(arrays[0])
+            if first.dtype.kind in "USO":
+                invalid = mask.getmaskarray(first) | (first.data == "")
+            else:
+                invalid = mask.getmaskarray(first) | ~np.isfinite(first.data)
+            shape = first.shape
         else:
-            # Set return_array flag to False
-            self.return_array = False
-            # Create float reference array
-            self.ref_array = mask.array([0], mask=np.isnan([self.cfo_model])).astype(np.float64)
-            # Create integer reference array
-            self.ref_int_array = mask.array([0], mask=np.isnan([self.cfo_model])).astype(np.int8)
-        return
+            invalid = [not np.isfinite(self.cfo_model)]
+            shape = (1,)
+        self.ref_array = mask.array(np.zeros(shape, dtype=np.float64), mask=invalid)
+        self.ref_int_array = mask.array(np.zeros(shape, dtype=np.int8), mask=invalid)
 
     def _broadcast_scalar_inputs(self) -> None:
         """
@@ -223,6 +175,8 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
             self.wd = _broadcast_if_scalar(self.wd, np.float64)
             self.cbd = _broadcast_if_scalar(self.cbd, np.float64)
             self.cfl_ovrstry = _broadcast_if_scalar(self.cfl_ovrstry, np.float64)
+            self.fsg = _broadcast_if_scalar(self.fsg, np.float64)
+            self.sfc = _broadcast_if_scalar(self.sfc, np.float64)
             self.slope = _broadcast_if_scalar(self.slope, np.float64)
             self.aspect = _broadcast_if_scalar(self.aspect, np.float64)
         return
@@ -238,7 +192,7 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
                                         mask=~np.isfinite(self.ref_int_array))
         # Raise error for invalid model choices
         mask_invalid = ~mask.isin(self.cfo_model, [1, 2, 3, 4, 5, 10])
-        if np.any(mask_invalid):
+        if np.any(mask_invalid & ~mask.getmaskarray(self.cfo_model)):
             raise Exception('Crown Fire Occurrence model choice is invalid. '
                             'Should be 1, 2, 3, 4, 5 and/or 10.')
         # Raise error for missing CFIS input parameters
@@ -258,19 +212,11 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
                     f'Missing: {", ".join(missing)}.'
                 )
 
-        # Verify sros_model
-        if not isinstance(self.sros_model, (int, np.ndarray)):
-            raise TypeError('sros_model must be int or numpy ndarray data types')
-        if isinstance(self.sros_model, np.ndarray):
-            self.sros_model = mask.array(self.sros_model, mask=~np.isfinite(self.sros_model))
-        else:
-            self.sros_model = mask.array(np.full_like(self.ref_int_array, self.sros_model, dtype=np.int8),
-                                         mask=~np.isfinite(self.ref_int_array))
-        # Raise error for invalid model choices
-        mask_invalid = ~mask.isin(self.sros_model, [1, 2, 3, 4, 12, 13, 20])
-        if np.any(mask_invalid):
-            raise Exception('Surface Fire Rate of Spread model choice is invalid. '
-                            'Should be 1, 2, 3, 4, 12, 13, and/or 20.')
+        # Normalize public labels before parameter lookup and equation dispatch.
+        self.sros_model = conpyro_eqs.normalize_sros_model(self.sros_model)
+        if self.model_terrain_effects_on_wind and np.any(
+                np.isin(self.sros_model.compressed(), [9, 11, 16, 17, 18, 19, 21])):
+            raise ValueError("Selected surface ROS model has no terrain wind extension")
 
         # Verify cros_model
         if not isinstance(self.cros_model, (int, np.ndarray)):
@@ -281,9 +227,9 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
             self.cros_model = mask.array(np.full_like(self.ref_int_array, self.cros_model, dtype=np.int8),
                                          mask=~np.isfinite(self.ref_int_array))
         # Raise error for invalid model choices
-        mask_invalid = ~mask.isin(self.cros_model, [1, 2])
-        if np.any(mask_invalid):
-            raise Exception('Crown Fire Rate of Spread model choice is invalid. Should be 1 and/or 2.')
+        mask_invalid = ~mask.isin(self.cros_model, [1, 2, 3])
+        if np.any(mask_invalid & ~mask.getmaskarray(self.cros_model)):
+            raise Exception('Crown Fire Rate of Spread model choice is invalid. Should be 1, 2 and/or 3.')
 
         # Verify ws
         self.ws = validate_numeric(self.ws, 'ws', use_isfinite=False)
@@ -314,6 +260,7 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
             self.aspect = mask.where(self.aspect < 0, 270, self.aspect)
 
         # Verify sfc
+        self.fsg = validate_numeric(self.fsg, 'fsg', use_isfinite=False)
         if self.sfc is not None:
             self.sfc = validate_numeric(self.sfc, 'sfc', use_isfinite=False, clip_min=0.1, clip_max=6)
 
@@ -339,7 +286,7 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
             self,
             *,
             cfo_model: Union[int, np.ndarray],              # ConPyro
-            sros_model: Union[int, np.ndarray],             # ConPyro
+            sros_model: Union[int, str, np.ndarray],             # ConPyro
             cros_model: Union[int, np.ndarray],             # ConPyro
             smooth_ros: bool,                               # ConPyro
             model_terrain_effects_on_wind: bool,            # ConPyro
@@ -384,6 +331,7 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
             dj: Optional[Union[int, float, np.ndarray]] = None,     # Ladder (if fmc is None, and wx_date is None)
             sfc: Optional[Union[int, float, np.ndarray]] = None,    # ConPyro (overrides modelled SFC value if not None)
             suppress_messages: bool = False,    # ConPyro (whether to suppress processing messages)
+            smoothing_wind_axis: Optional[int] = None,
     ) -> None:
         # Initialize parent classes
         MoistureContent.__init__(self)
@@ -393,6 +341,7 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
 
         # Enable/disable ConPyro processing messages
         self.suppress_messages = suppress_messages
+        self.smoothing_wind_axis = smoothing_wind_axis
 
         # Moisture Content Variables
         self.season = season
@@ -499,12 +448,14 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
         self.cros_param_b3 = np.full_like(self.ref_array, np.nan, dtype=np.float64)
         self.cros_param_b4 = np.full_like(self.ref_array, np.nan, dtype=np.float64)
         for model in mask.unique(self.cros_model[~self.cros_model.mask]):
+            if model != 1:
+                continue  # Wind-only models do not consume fitted parameters.
             mask_model = self.cros_model == model
             params = conpyro_eqs.CROS_PARAMS_DICT[int(model)]
             self.cros_param_b1[mask_model] = params[0]
             self.cros_param_b2[mask_model] = params[1]
             self.cros_param_b3[mask_model] = params[2]
-            self.cros_param_b4[mask_model] = params[2]
+            self.cros_param_b4[mask_model] = params[3]
         # Set flag to indicate CROS parameters have been initialized
         self.cros_params_initialized = True
         return
@@ -519,6 +470,8 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
         self.sros_param_c = np.full_like(self.ref_array, np.nan, dtype=np.float64)
         for model in mask.unique(self.sros_model[~self.sros_model.mask]):
             mask_model = self.sros_model == model
+            if int(model) not in conpyro_eqs.SROS_PARAMS_DICT:
+                continue  # Wind-only and linear models have no fitted tuple.
             params = conpyro_eqs.SROS_PARAMS_DICT[int(model)]
             self.sros_param_a[mask_model] = params[0]
             self.sros_param_b[mask_model] = params[1]
@@ -616,7 +569,17 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
     def process_mc_sa(self) -> None:
         if self.model_terrain_effects_on_ffmc:
             self.ffmc = ffmc_adj_eqs.adjust_ffmc_for_terrain(self.ffmc, self.slope, self.aspect)
+        ref_array, ref_int_array = self.ref_array, self.ref_int_array
         self.run_mc()
+        # Component calculations may use a scalar grid; retain the scenario grid.
+        for name in ('mc_ffmc', 'mc_dmc', 'mc_sa'):
+            value = mask.asarray(getattr(self, name))
+            setattr(self, name, mask.array(
+                np.broadcast_to(value.data, ref_array.shape),
+                mask=np.broadcast_to(mask.getmaskarray(value), ref_array.shape)
+                     | mask.getmaskarray(ref_array),
+                copy=True))  # broadcast_to is read-only; CFIS assigns into mc_sa in place
+        self.ref_array, self.ref_int_array = ref_array, ref_int_array
         return
 
     def process_ros(self) -> None:
@@ -626,7 +589,8 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
 
         # Calculate surface fire rate of spread and mask invalid areas
         self.sros = conpyro_eqs.calc_sros(self.isi, self.sfc, self.sros_model,
-                                          self.sros_param_a, self.sros_param_b, self.sros_param_c)
+                                          self.sros_param_a, self.sros_param_b, self.sros_param_c,
+                                          wsv=self.wsv, stand_type=self.stand_type, mc_sa=self.mc_sa)
         self.sros = mask.where(np.isfinite(self.stand_type), self.sros, mask.masked)
 
         # Get CROS parameters
@@ -655,19 +619,30 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
         # Calculate head fire rate of spread
         if self.smooth_ros:
             # Apply smoothing if requested
-            self.hros = conpyro_eqs.calc_ros_smooth(self.sros, self.cros_p, self.cros_a, self.cfo_prob, self.cac)
+            self.hros = conpyro_eqs.calc_ros_smooth(
+                self.sros, self.cros_p, self.cros_a, self.cfo_prob, self.cac,
+                wind_axis=self.smoothing_wind_axis)
         else:
             self.hros = conpyro_eqs.calc_hros(self.sros, self.cros, self.cfo_prob)
 
         # Calculate backing fire rate of spread and mask invalid areas
         self.bros = conpyro_eqs.calc_bros(self.bisi, self.sfc, self.sros_model,
-                                          self.sros_param_a, self.sros_param_b, self.sros_param_c)
+                                          self.sros_param_a, self.sros_param_b, self.sros_param_c,
+                                          stand_type=self.stand_type)
         self.bros = mask.where(np.isfinite(self.stand_type), self.bros, mask.masked)
         return
 
     def process_sfc(self) -> None:
         if self.sfc is None:
+            ref_array, ref_int_array = self.ref_array, self.ref_int_array
             self.run_sfc(self.cfo_model)
+            value = mask.asarray(self.sfc)
+            self.sfc = mask.array(
+                np.broadcast_to(value.data, ref_array.shape),
+                mask=np.broadcast_to(mask.getmaskarray(value), ref_array.shape)
+                     | mask.getmaskarray(ref_array),
+                copy=True)
+            self.ref_array, self.ref_int_array = ref_array, ref_int_array
         return
 
     def return_params(self, out_request: list) -> list:

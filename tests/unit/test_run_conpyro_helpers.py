@@ -247,3 +247,60 @@ def test_cfis_fuel_type_warning_uses_the_configured_plot_id_column(caplog):
     assert {r.unique_id: r.issue_code for r in caplog.records} == {
         'P0': 'cfis_fuel_type_not_used', 'P1': 'cfis_missing_fuel_type',
     }
+
+
+def test_skipped_empty_stand_plots_are_logged_once_each_with_the_empty_columns(caplog):
+    skipped = pd.DataFrame({
+        'unique_id': ['A', 'A', 'B'],
+        'stand_density': [None, None, 'L'],
+        'stand_type': [None, None, None],
+    })
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.run_conpyro'):
+        module._log_skipped_empty_stand_plots(skipped, ['stand_density', 'stand_type'])
+    logged = {r.unique_id: r for r in caplog.records}
+    assert len(caplog.records) == 2
+    assert logged['A'].issue_code == logged['B'].issue_code == 'conpyro_plot_skipped_empty_stand'
+    assert 'stand_density and stand_type are empty' in logged['A'].getMessage()
+    assert 'stand_type is empty' in logged['B'].getMessage()
+
+
+def test_skipped_empty_stand_plots_are_silent_when_no_plot_is_skipped(caplog):
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.run_conpyro'):
+        module._log_skipped_empty_stand_plots(pd.DataFrame(columns=['unique_id', 'stand_density']), ['stand_density'])
+    assert not caplog.records
+
+
+def test_run_conpyro_reports_plots_without_stand_type_in_the_error_csv(tmp_path, monkeypatch):
+    conpyro_csv_path = tmp_path / 'conpyro_df.csv'
+    pd.DataFrame({
+        'unique_id': ['A', 'B', 'C'], 'treatment_unit': ['U1', 'U2', 'U3'],
+        'stand_density': ['L', None, 'L'], 'stand_type': ['P', None, 'P'],
+        'ws': [10.0, 10.0, 10.0], 'wd': [180.0, 180.0, 180.0], 'ffmc': [90.0, 90.0, 90.0],
+        'dmc': [40.0, 40.0, 40.0], 'bui': [60.0, 60.0, 60.0],
+    }).to_csv(conpyro_csv_path, index=False)
+    modelled = {}
+
+    def fake_model_fire_behavior(df, **kwargs):
+        modelled['ids'] = df['unique_id'].tolist()
+        return df
+
+    monkeypatch.setattr(module, '_model_fire_behavior', fake_model_fire_behavior)
+    monkeypatch.setattr(module, '_model_flame_components', lambda df, *args, **kwargs: df)
+    params = {
+        'num_workers': 1,
+        'conpyro': {
+            'run_model': True, 'plot_id_col_name': 'unique_id',
+            'input_params': {},
+            'output_params': {'out_request': [], 'flame_comp_out_list': []},
+        },
+        'fofem_mortality': {'run_model': False},
+        'fofem_emissions': {'run_model': False},
+    }
+
+    module.run_conpyro(out_dir=str(tmp_path), in_conpyro_csv_path=str(conpyro_csv_path), fire_modelling_params=params)
+
+    assert modelled['ids'] == ['A', 'C']
+    report = pd.read_csv(tmp_path / 'run_conpyro_errors.csv', keep_default_na=False).set_index('unique_id')
+    assert list(report.index) == ['B']
+    assert 'skipped' in report.loc['B', 'ConPyro Fire Behavior']
+    assert report.loc['B', 'treatment_unit'] == 'U2'

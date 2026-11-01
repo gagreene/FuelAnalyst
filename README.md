@@ -754,8 +754,8 @@ must match `default_fire_modelling_dict['fofem_emissions']['emissions_units']` (
 error on a mismatch rather than silently misinterpreting the file.
 
 Every completed `run_conpyro()` call also writes `run_conpyro_errors.csv`, with one column per reporting source.
-A CFIS run (`cfo_model` 10) on plots without an FBP fuel type is logged per plot in its ConPyro Fire Behavior
-column; the run continues.
+A CFIS run (`cfo_model` 10) on plots without an FBP fuel type, and each plot left out of the run because its
+`stand_density` or `stand_type` is empty, is logged per plot in its ConPyro Fire Behavior column; the run continues.
 
 ### Configuration
 
@@ -1008,9 +1008,11 @@ The GitHub Actions test workflow is configured for version-tag and manual runs; 
 See [Contribution procedures](docs/CONTRIBUTION_PROCEDURES.md) for the
 repository's commit, pull-request, and test rules.
 
-Versioned routing uses `MAJOR.MINOR.PATCH`: major and minor changes target
-`pre_release`, while patches target `master`. The repository owner reviews and
-merges `pre_release` into `master` through a PR.
+Every pull request targets `pre_release`, the integration branch for the next
+release. `master` holds released code only: the repository owner promotes
+`pre_release` into `master` through a PR, chooses the version at that moment, and
+tags it. An urgent fix to released code uses a `hotfix/` branch from `master` and
+is merged back into `pre_release`.
 
 Before submitting a change:
 

@@ -1,4 +1,5 @@
 import importlib
+import logging
 import os
 
 import pandas as pd
@@ -610,3 +611,79 @@ def test_process_emissions_threads_units_via_process_map_path(tmp_path, monkeypa
     )
 
     assert recorded_units == ['SI']
+
+
+# ── Reporting runfofem.exe failures from the parent process ──────────────────────────────────────────────────────────
+
+def _failure(plot_id, wx_date, cause):
+    """The result a failed _model_emissions() call returns."""
+    return {'fofem_gui_error': f'runfofem.exe failed for plot "{plot_id}", wx_date {wx_date}: {cause}'}
+
+
+def test_failed_emissions_rows_are_logged_once_per_plot_and_cause(caplog):
+    merged = pd.DataFrame({
+        '#PlotId': ['A_1', 'A_1', 'A_1', 'B'],
+        'wx_date': [20250101, 20250102, 20250103, 20250101],
+    })
+    results = [
+        _failure('A_1', 20250101, 'windspeed above 5 m/s'),
+        {'LitPre': 1.0},
+        _failure('A_1', 20250103, 'windspeed above 5 m/s'),
+        _failure('B', 20250101, 'unexpected output'),
+    ]
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.fofem_gui_emissions'):
+        fofem_gui_emissions._log_emissions_failures(results, merged, {'A_1': 'A 1'})
+    logged = {r.unique_id: r for r in caplog.records}
+    assert len(caplog.records) == 2
+    assert logged['A 1'].issue_code == 'fofem_gui_emissions_runfofem_failure'  # the original plot ID, with its space
+    assert logged['A 1'].getMessage() == (
+        'runfofem.exe failed for 2 of 3 weather scenarios of this plot (first wx_date 20250101): windspeed above 5 m/s'
+    )
+    assert 'for 1 of 1 weather scenarios' in logged['B'].getMessage()
+    assert logged['B'].getMessage().endswith('unexpected output')
+
+
+def test_runfofem_failures_with_different_causes_are_logged_separately(caplog):
+    merged = pd.DataFrame({'#PlotId': ['A', 'A'], 'wx_date': [1, 2]})
+    results = [_failure('A', 1, 'cause one'), _failure('A', 2, 'cause two')]
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.fofem_gui_emissions'):
+        fofem_gui_emissions._log_emissions_failures(results, merged, {})
+    assert sorted(r.getMessage().rsplit(': ', 1)[1] for r in caplog.records) == ['cause one', 'cause two']
+
+
+def test_no_runfofem_failure_logs_nothing(caplog):
+    merged = pd.DataFrame({'#PlotId': ['A'], 'wx_date': [1]})
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.fofem_gui_emissions'):
+        fofem_gui_emissions._log_emissions_failures([{'LitPre': 1.0}], merged, {})
+    assert not caplog.records
+
+
+def test_the_worker_returns_the_failure_without_logging_it(tmp_path, caplog):
+    row = {'#PlotId': 'p1', 'wx_date': 20250615}
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.fofem_gui_emissions'):
+        result = fofem_gui_emissions._model_emissions(row, str(tmp_path), 'C', 'SI', str(tmp_path / 'missing_runtime'))
+    assert 'runfofem.exe failed for plot "p1", wx_date 20250615' in result['fofem_gui_error']
+    assert not caplog.records  # the parent process reports it; a worker's log record would never reach the report
+
+
+@pytest.mark.parametrize('num_workers', [1, 4])
+def test_process_emissions_reports_failed_rows_for_every_worker_count(tmp_path, monkeypatch, caplog, num_workers):
+    consume_csv, fire_csv, out_dir = _write_process_emissions_inputs(tmp_path, 'SI')
+    pd.DataFrame([dict(_FIRE_ROW, wx_date=20250615), dict(_FIRE_ROW, wx_date=20250616)]).to_csv(fire_csv, index=False)
+
+    def failing(row, out_dir, consume_model, emissions_units, fofem_dir):
+        return _failure(row['#PlotId'], row['wx_date'], 'windspeed above 5 m/s')
+
+    monkeypatch.setattr(fofem_gui_emissions, '_model_emissions', failing)
+    monkeypatch.setattr(fofem_gui_emissions, 'process_map', lambda fn, *args, **kwargs: [fn(*a) for a in zip(*args)],
+                        raising=False)
+    monkeypatch.setattr(fofem_gui_emissions, '_TQDM_PROCESS_MAP_AVAILABLE', True)
+    monkeypatch.setattr(fofem_gui_emissions.shutil, 'rmtree', lambda path, **kwargs: None)
+    with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.fofem_gui_emissions'):
+        fofem_gui_emissions.process_emissions(
+            plot_wx_fire_csv_path=fire_csv, plot_id_col_name='unique_id', fofem_consume_csv_path=consume_csv,
+            out_dir=out_dir, num_workers=num_workers,
+        )
+    [record] = caplog.records
+    assert record.unique_id == 'p1'
+    assert 'for 2 of 2 weather scenarios of this plot (first wx_date 20250615)' in record.getMessage()

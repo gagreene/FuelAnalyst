@@ -12,9 +12,12 @@ DR,DR - red alder,broadleaf
 E,E - birch,broadleaf
 EA,EA - alaska paper birch,broadleaf
 EB,EB - scrub birch,broadleaf
+EG,EG - grey birch,broadleaf
 EP,EP - paper birch,broadleaf
 ES,ES - swamp birch,broadleaf
 EW,EW - water birch,broadleaf
+EWT,EWT - white birch,broadleaf
+EY,EY - yellow birch,broadleaf
 EX,EX - birch hybrid,broadleaf
 EXP,EXP - alaska paper x paper,broadleaf
 EXW,EXW - water x paper,broadleaf
@@ -24,13 +27,18 @@ GR,GR - red-osier dogwood,broadleaf
 M,M - maple,broadleaf
 MB,MB - bigleaf maple,broadleaf
 MR,MR - douglas maple (n),broadleaf
+MRD,MRD - red maple,broadleaf
+MS,MS - sugar maple,broadleaf
 MV,MV - vine maple (n),broadleaf
 Q,Q - oak,broadleaf
 QG,QG - garry oak,broadleaf
+QR,QR - red oak,broadleaf
+QW,QW - white oak,broadleaf
 RA,RA - arbutus (n),broadleaf
 UP,UP - pacific crab apple (malus fusca),broadleaf
 V,V - cherry (n),broadleaf
 VB,VB - bitter cherry (n),broadleaf
+VL,VL - black cherry,broadleaf
 VP,VP - pin cherry,broadleaf
 VW,VW - choke cherry,broadleaf
 W,W - willow,broadleaf
@@ -48,6 +56,7 @@ BG,BG - grand fir,conifer
 BL,BL - subalpine fir,conifer
 BN,BN - noble fir,conifer
 C,C - cedar,conifer
+CE,CE - eastern red cedar,conifer
 CW,CW - western red cedar,conifer
 FD,FD - douglas-fir,conifer
 FDC,FDC - douglas-fir (coast),conifer
@@ -73,6 +82,7 @@ PLC,PLC - lodgepole pine (coast),conifer
 PLI,PLI - lodgepole pine (interior),conifer
 PR,PR - red pine,conifer
 PW,PW - western white pine,conifer
+PE,PE - eastern white pine,conifer
 PX,PX - pine hybrid,conifer
 PXJ,PXJ - lodgepole x jack,conifer
 PY,PY - yellow pine,conifer

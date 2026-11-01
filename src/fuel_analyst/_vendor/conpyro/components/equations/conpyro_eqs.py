@@ -34,8 +34,11 @@ SROS_PARAMS_DICT = {
     2: (30, 0.0232, 1.6),               # FBPS D-1 (no BE)
     3: (30, 0.08, 3),                   # FBPS C-6 (surface only, no BE)
     4: (0.015822, 0.344379, None),      # ISI2SFC.agg (Perrakis et al. 2026, model 7)
-    12: (0.15, 0.128, 5.25),            # sl.con.ISI (Perrakis et al. 2026, model 12): default for mcFFMC
-    13: (0.15, 0.101379, 4.164469),     # sl.con.isim (Perrakis et al. 2026, model 13): default for mcSA
+    12: (0.15, 0.12832, 5.24622),       # sl.con.ISI: default for mcFFMC
+    13: (0.15, 0.09661, 3.84172),       # sl.con.isim: default for mcSA
+    9: (0.01473, 0.59430, None),        # R 9c
+    11: (0.15, 0.06680, 2.20254),        # R 11c
+    18: (0.15, 0.07207, 2.28189),        # R 18c
     20: (120, 0.02751, 1.7),            # Perrakis gray-stage MPB-affected stand model
 }
 
@@ -169,7 +172,10 @@ def calc_cfb(hros: np.ndarray, cros_a: np.ndarray) -> np.ndarray:
     :param cros_a: Active Crown Fire Rate of Spread (m/min)
     :return: CFB value (0-1)
     """
-    return mask.clip(mask.round(hros / cros_a, 2), 0, 1)
+    # At zero wind the active crown estimate is zero; no crown fuel is consumed.
+    denominator = mask.where(cros_a == 0, 1, cros_a)
+    ratio = mask.where(cros_a == 0, 0, hros / denominator)
+    return mask.clip(mask.round(ratio, 2), 0, 1)
 
 
 def calc_tfc(sfc: np.ndarray, cfc: np.ndarray) -> np.ndarray:
@@ -310,99 +316,125 @@ def calc_wsv_raz(
 # SURFACE RATE OF SPREAD (SROS) CALCULATIONS
 # ============================================================================
 
-def calc_sros(
-        isi: np.ndarray,
-        sfc: np.ndarray,
-        sros_model: np.ndarray,
-        sros_param_a: np.ndarray,
-        sros_param_b: np.ndarray,
-        sros_param_c: np.ndarray
-) -> np.ndarray:
-    """
-    Calculate Surface Fire Rate of Spread (m/min).
-
-    Supports multiple model forms:
-    - Form a (models 1, 2, 3, 20): Power-exponential
-    - Form b (model 4): Quadratic
-    - Form c (models 12, 13): Root-finding
-
-    :param isi: Initial Spread Index
-    :param sfc: Surface Fuel Consumption
-    :param sros_model: SROS model code
-    :param sros_param_a: Parameter a for SROS equation
-    :param sros_param_b: Parameter b for SROS equation
-    :param sros_param_c: Parameter c for SROS equation
-    :return: Surface Fire Rate of Spread (m/min)
-    """
-    sros = np.full_like(isi, np.nan, dtype=np.float64)
-
-    # Power-exponential models (form a) [1, 2, 3, 20]
-    mask_form_a = np.isin(sros_model, [1, 2, 3, 20])
-    if np.any(mask_form_a):
-        sros[mask_form_a] = (sros_param_a[mask_form_a] *
-                             np.power(1 - np.exp(-sros_param_b[mask_form_a] * isi[mask_form_a]),
-                                      sros_param_c[mask_form_a]))
-
-    # Quadratic models (form b) [4]
-    mask_form_b = np.isin(sros_model, [4])
-    if np.any(mask_form_b):
-        isi_capped = mask.clip(isi[mask_form_b], 0, 25)
-        sros[mask_form_b] = (sros_param_a[mask_form_b] * np.power(isi_capped, 2) +
-                             sros_param_b[mask_form_b] * sfc[mask_form_b])
-
-    # Root-finding models (form c) [12, 13]
-    mask_form_c = np.isin(sros_model, [12, 13])
-    if np.any(mask_form_c):
-        sros[mask_form_c] = ((sros_param_a[mask_form_c] * isi[mask_form_c] + 13) *
-                             np.power(1 - np.exp(-sros_param_b[mask_form_c] * isi[mask_form_c]),
-                                      sros_param_c[mask_form_c]))
-
-    return sros
+SROS_MODEL_IDS = frozenset((1, 2, 3, 4, 9, 11, 12, 13, 16, 17, 18, 19, 20, 21))
+SROS_ALIASES = {"9c": 9, "11c": 11, "18c": 18, "r20": 21}
 
 
-def calc_bros(
-        bisi: np.ndarray,
-        sfc: np.ndarray,
-        sros_model: np.ndarray,
-        sros_param_a: np.ndarray,
-        sros_param_b: np.ndarray,
-        sros_param_c: np.ndarray
-) -> np.ndarray:
-    """
-    Calculate Backing Fire Rate of Spread (m/min).
+def normalize_sros_model(value) -> mask.MaskedArray:
+    """Normalize labels and numeric grids without per-cell numeric iteration."""
+    raw = mask.atleast_1d(mask.asarray(value))
+    missing = mask.getmaskarray(raw).copy()
+    result = np.zeros(raw.shape, dtype=np.int16)
+    if raw.dtype.kind in "biuf":
+        missing |= ~np.isfinite(raw.data)
+        valid = ~missing
+        numbers = raw.data[valid]
+        if not np.all(np.isin(numbers, tuple(SROS_MODEL_IDS))):
+            raise ValueError("Unknown or fractional surface ROS model ID")
+        result[valid] = numbers.astype(np.int16)
+        return mask.array(result, mask=missing)
 
-    :param bisi: Backing ISI
-    :param sfc: Surface Fuel Consumption
-    :param sros_model: SROS model code
-    :param sros_param_a: Parameter a for SROS equation
-    :param sros_param_b: Parameter b for SROS equation
-    :param sros_param_c: Parameter c for SROS equation
-    :return: Backing Fire Rate of Spread (m/min)
-    """
-    bros = np.full_like(bisi, np.nan, dtype=np.float64)
+    def parse(item):
+        if isinstance(item, (str, np.str_)):
+            label = item.strip().lower()
+            if label in SROS_ALIASES:
+                return SROS_ALIASES[label]
+            if label.isdigit():
+                code = int(label)
+            else:
+                raise ValueError(f"Unknown surface ROS model: {item!r}")
+        else:
+            if not np.isfinite(item):
+                return None
+            code = int(item)
+            if code != item:
+                raise ValueError(f"Surface ROS model must be an integer or label: {item!r}")
+        if code not in SROS_MODEL_IDS:
+            raise ValueError(f"Unknown surface ROS model: {item!r}")
+        return code
 
-    # Power-exponential models (form a) [1, 2, 3, 20]
-    mask_form_a = np.isin(sros_model, [1, 2, 3, 20])
-    if np.any(mask_form_a):
-        bros[mask_form_a] = (sros_param_a[mask_form_a] *
-                             np.power(1 - np.exp(-sros_param_b[mask_form_a] * bisi[mask_form_a]),
-                                      sros_param_c[mask_form_a]))
+    if raw.dtype.kind in "US":
+        for item in np.unique(raw.data[~missing]):
+            result[(raw.data == item) & ~missing] = parse(item)
+    else:
+        # Heterogeneous object arrays are uncommon; preserve their scalar types.
+        for index in np.ndindex(raw.shape):
+            if not missing[index]:
+                code = parse(raw.data[index])
+                if code is None:
+                    missing[index] = True
+                else:
+                    result[index] = code
+    return mask.array(result, mask=missing)
 
-    # Quadratic models (form b) [4]
-    mask_form_b = np.isin(sros_model, [4])
-    if np.any(mask_form_b):
-        bisi_capped = mask.clip(bisi[mask_form_b], 0, 25)
-        bros[mask_form_b] = (sros_param_a[mask_form_b] * np.power(bisi_capped, 2) +
-                             sros_param_b[mask_form_b] * sfc[mask_form_b])
 
-    # Root-finding models (form c) [12, 13]
-    mask_form_c = np.isin(sros_model, [12, 13])
-    if np.any(mask_form_c):
-        bros[mask_form_c] = ((sros_param_a[mask_form_c] * bisi[mask_form_c] + 13) *
-                             np.power(1 - np.exp(-sros_param_b[mask_form_c] * bisi[mask_form_c]),
-                                      sros_param_c[mask_form_c]))
+def calc_sros(isi, sfc, sros_model, sros_param_a, sros_param_b, sros_param_c,
+              *, wsv=None, stand_type=None, mc_sa=None) -> np.ndarray:
+    """Surface ROS in m/min; wind-based models require wind in km/h."""
+    models = normalize_sros_model(sros_model)
+    inputs = [mask.asarray(x, dtype=float) for x in
+              (isi, sfc, models, sros_param_a, sros_param_b, sros_param_c)]
+    values = np.broadcast_arrays(*[x.data for x in inputs])
+    index, fuel, codes, a, b, c = values
+    invalid = np.zeros(index.shape, dtype=bool)
+    for x in inputs[:3]:
+        invalid |= np.broadcast_to(mask.getmaskarray(x), index.shape)
+    # A masked fitted parameter invalidates only models that consume it.
+    for parameter, used_by in zip(inputs[3:], (
+            (1, 2, 3, 4, 9, 11, 12, 13, 18, 20),
+            (1, 2, 3, 4, 9, 11, 12, 13, 18, 20),
+            (1, 2, 3, 11, 12, 13, 18, 20))):
+        invalid |= (np.broadcast_to(mask.getmaskarray(parameter), index.shape)
+                    & np.isin(codes, used_by))
+    result = np.full(index.shape, np.nan)
 
-    return bros
+    def context(value, name, selected):
+        if value is None:
+            raise ValueError(f"{name} is required for the selected surface ROS model")
+        value = mask.asarray(value)
+        data = np.broadcast_to(value.data, index.shape)
+        invalid[selected] |= np.broadcast_to(mask.getmaskarray(value), index.shape)[selected]
+        return data[selected]
+
+    for code in np.unique(codes[~invalid]):
+        selected = (codes == code) & ~invalid
+        x = index[selected]
+        if code in (1, 2, 3, 20):
+            result[selected] = a[selected] * (1 - np.exp(-b[selected] * x))**c[selected]
+        elif code == 4:
+            result[selected] = a[selected] * np.clip(x, 0, 25)**2 + b[selected] * fuel[selected]
+        elif code == 9:
+            result[selected] = a[selected] * x**2 + b[selected] * np.sqrt(fuel[selected])
+        elif code in (11, 12, 13, 18):
+            offset = 13 if code in (12, 13) else 10
+            value = (a[selected] * x + offset) * (1 - np.exp(-b[selected] * x))**c[selected]
+            if code == 18:
+                stand = context(stand_type, "stand_type", selected)
+                value = np.maximum(value + 2.69568 * (stand == 2)
+                                   - .76090 * np.isin(stand, [1, 3]), 0)
+            result[selected] = value
+        elif code in (16, 17):
+            wind = context(wsv, "wsv", selected)
+            moisture = context(mc_sa, "mc_sa", selected)
+            scale, power, decay = {16: (.39813, 1.91399, .31551),
+                                   17: (.29629, 1.69839, .23260)}[code]
+            result[selected] = scale * wind**power * np.exp(-decay * moisture)
+        elif code == 19:
+            result[selected] = .11771 * x
+        elif code == 21:
+            result[selected] = .2 * context(wsv, "wsv", selected)
+    return mask.masked_invalid(mask.array(result, mask=invalid))
+
+
+def calc_bros(bisi, sfc, sros_model, sros_param_a, sros_param_b, sros_param_c,
+              *, stand_type=None) -> np.ndarray:
+    """Backing ROS; wind-only models have no defined backing extension."""
+    models = normalize_sros_model(sros_model)
+    unsupported = np.isin(models.data, [16, 17, 21])
+    # Mask unsupported entries before dispatch so missing wind context is not used.
+    supported = mask.array(models.data, mask=mask.getmaskarray(models) | unsupported)
+    return calc_sros(bisi, sfc, supported, sros_param_a, sros_param_b, sros_param_c,
+                     stand_type=stand_type)
 
 
 def calc_isf(
@@ -430,34 +462,27 @@ def calc_isf(
     """
     isf = np.full_like(isz, np.nan, dtype=np.float64)
 
-    # Power-exponential models (form a) [1, 2, 3, 20]
-    model_list = [1, 2, 3, 20]
-    mask_form_a = np.isin(sros_model, model_list)
-    if np.any(mask_form_a):
-        agg_rsz = (sros_param_a *
-                   np.power(1 - np.exp(-sros_param_b * isz[mask_form_a]), sros_param_c))
-        rsf = agg_rsz * sf[mask_form_a]
-        with np.errstate(invalid='ignore'):
-            isf[mask_form_a] = mask.where(
-                (rsf < sros_param_a) & (rsf > 0),
-                -np.log(1 - np.power(rsf / sros_param_a, 1 / sros_param_c)) / sros_param_b,
-                mask.masked
-            )
+    # Terrain inversion is defined only for the original Python model set.
+    supported = np.isin(mask.asarray(sros_model).compressed(), [1, 2, 3, 4, 12, 13, 20])
+    if not np.all(supported):
+        raise ValueError("Selected surface model has no terrain inversion")
+    selected = np.isin(sros_model, [1, 2, 3, 20])
+    if np.any(selected):
+        a, b, c = (p[selected] for p in (sros_param_a, sros_param_b, sros_param_c))
+        rsz = a * (1 - np.exp(-b * isz[selected]))**c
+        rsf = rsz * sf[selected]
+        with np.errstate(invalid="ignore", divide="ignore"):
+            isf[selected] = mask.where((rsf < a) & (rsf > 0),
+                -np.log(1 - (rsf / a)**(1 / c)) / b, mask.masked)
 
-    # Quadratic models (form b) [4]
-    model_list = [4]
-    mask_form_b = np.isin(sros_model, model_list)
-    if np.any(mask_form_b):
-        isz_capped = mask.clip(isz[mask_form_b], 0, 25)
-        agg_rsz = (sros_param_a * np.power(isz_capped, 2) +
-                   sros_param_b * sfc[mask_form_b])
-        rsf = agg_rsz * sf[mask_form_b]
-        with np.errstate(invalid='ignore'):
-            isf[mask_form_b] = mask.where(
-                (rsf - sros_param_b * sfc[mask_form_b]) / sros_param_a >= 0,
-                np.sqrt((rsf - sros_param_b * sfc[mask_form_b]) / sros_param_a),
-                mask.masked
-            )
+    selected = sros_model == 4
+    if np.any(selected):
+        a, b = sros_param_a[selected], sros_param_b[selected]
+        rsz = a * mask.clip(isz[selected], 0, 25)**2 + b * sfc[selected]
+        rsf = rsz * sf[selected]
+        with np.errstate(invalid="ignore"):
+            target = (rsf - b * sfc[selected]) / a
+            isf[selected] = mask.where(target >= 0, np.sqrt(target), mask.masked)
 
     # Root-finding models (form c) [12, 13]
     model_list = [12, 13]
@@ -606,7 +631,7 @@ def calc_cros_a(
     # Model 1: Cruz et al. (2005)
     mask_model1 = cros_model == 1
     if np.any(mask_model1):
-        effm_mod = 0.0079 + 3.6059 * np.log(mc_sa[mask_model1])
+        effm_mod = -0.4812 + 3.8842 * np.log(mc_sa[mask_model1])
         cros_a[mask_model1] = (
             cros_param_b1[mask_model1] *
             np.power(wsv[mask_model1], cros_param_b2[mask_model1]) *
@@ -619,7 +644,13 @@ def calc_cros_a(
     if np.any(mask_model2):
         cros_a[mask_model2] = 0.084 * wsv[mask_model2] * 1000 / 60
 
-    return cros_a
+    mask_model3 = cros_model == 3
+    if np.any(mask_model3):
+        cros_a[mask_model3] = 0.1 * wsv[mask_model3] * 1000 / 60
+
+    invalid = (mask.getmaskarray(wsv) | mask.getmaskarray(cbd)
+               | mask.getmaskarray(mc_sa) | mask.getmaskarray(cros_model))
+    return mask.masked_invalid(mask.array(cros_a, mask=invalid))
 
 
 def calc_cros_p(cros_a: np.ndarray, cac: np.ndarray) -> np.ndarray:
@@ -647,40 +678,33 @@ def calc_cros(cros_a: np.ndarray, cros_p: np.ndarray, cac: np.ndarray) -> np.nda
     return mask.where(cac >= 1, cros_a, cros_p)
 
 
-def calc_ros_smooth(
-        sros: np.ndarray,
-        cros_p: np.ndarray,
-        cros_a: np.ndarray,
-        cfo_prob: np.ndarray,
-        cac: np.ndarray
-) -> np.ndarray:
+def calc_ros_smooth(sros, cros_p, cros_a, cfo_prob, cac, *, wind_axis=None) -> np.ndarray:
+    """R composite smoothing, with explicit scenario grouping.
+
+    None treats every element as a separate single-wind scenario. An integer
+    axis groups winds; the passive-phase decision never crosses other axes.
     """
-    Calculate rate of spread using a smooth crown fire occurrence transition between sros -> cros_p -> cros_a.
-
-    :param sros: Surface Fire Rate of Spread (m/min)
-    :param cros_p: Passive Crown Fire Rate of Spread (m/min)
-    :param cros_a: Active Crown Fire Rate of Spread (m/min)
-    :param cfo_prob: Crown Fire Occurrence probability
-    :param cac: Criterion for Active Crowning
-    :return: Smoothed Surface Fire Rate of Spread (m/min)
-    """
-    ros_smooth = sros.copy()
-
-    # Passive crowning: blend SROS and CROS_P
-    passive_crowning = (cfo_prob >= 0.5) & (cac < 1.0)
-    if np.any(passive_crowning):
-        ros_smooth[passive_crowning] = (
-            cfo_prob[passive_crowning] * cros_p[passive_crowning] +
-            (1.0 - cfo_prob[passive_crowning]) * sros[passive_crowning]
-        )
-
-    # Active crowning: set to CROS_A
-    active_crowning = (~passive_crowning) & (cfo_prob >= 0.5)
-    if np.any(active_crowning):
-        ros_smooth[active_crowning] = cros_a[active_crowning]
-
-    # All other: remain SROS
-    return ros_smooth
+    arrays = [mask.asarray(x, dtype=float) for x in (sros, cros_p, cros_a, cfo_prob, cac)]
+    values = np.broadcast_arrays(*[x.data for x in arrays])
+    invalid = np.zeros(values[0].shape, dtype=bool)
+    for x in arrays:
+        invalid |= np.broadcast_to(mask.getmaskarray(x), invalid.shape)
+    surface, passive_ros, active_ros, probability, criterion = values
+    invalid |= ~np.isfinite(surface + passive_ros + active_ros + probability + criterion)
+    passive = (probability >= .5) & (criterion < 1) & ~invalid
+    if wind_axis is None:
+        has_passive = passive
+    else:
+        if isinstance(wind_axis, (bool, np.bool_)) or not isinstance(wind_axis, (int, np.integer)):
+            raise TypeError("wind_axis must be an integer or None")
+        if not -surface.ndim <= wind_axis < surface.ndim:
+            raise ValueError("wind_axis is outside the input dimensions")
+        has_passive = np.any(passive, axis=wind_axis, keepdims=True)
+    target = np.where(has_passive, passive_ros, active_ros)
+    blended = surface * (1 - probability) + target * probability
+    active = (probability >= .5) & (criterion >= 1)
+    composite = np.where(has_passive & active, active_ros, blended)
+    return mask.array(composite, mask=invalid)
 
 
 def calc_cros_a_smooth(sros: np.ndarray, cros_a: np.ndarray, cfo_prob: np.ndarray) -> np.ndarray:
@@ -880,4 +904,3 @@ def calc_fire_type(cfo_prob: np.ndarray, cac: np.ndarray) -> np.ndarray:
     fire_type[mask_active] = 3   # Active Crown Fire
 
     return fire_type
-
