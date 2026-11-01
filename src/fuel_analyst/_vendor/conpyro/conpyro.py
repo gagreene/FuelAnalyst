@@ -577,7 +577,8 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
             setattr(self, name, mask.array(
                 np.broadcast_to(value.data, ref_array.shape),
                 mask=np.broadcast_to(mask.getmaskarray(value), ref_array.shape)
-                     | mask.getmaskarray(ref_array)))
+                     | mask.getmaskarray(ref_array),
+                copy=True))  # broadcast_to is read-only; CFIS assigns into mc_sa in place
         self.ref_array, self.ref_int_array = ref_array, ref_int_array
         return
 
@@ -639,7 +640,8 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
             self.sfc = mask.array(
                 np.broadcast_to(value.data, ref_array.shape),
                 mask=np.broadcast_to(mask.getmaskarray(value), ref_array.shape)
-                     | mask.getmaskarray(ref_array))
+                     | mask.getmaskarray(ref_array),
+                copy=True)
             self.ref_array, self.ref_int_array = ref_array, ref_int_array
         return
 
