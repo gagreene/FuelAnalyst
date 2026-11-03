@@ -59,6 +59,10 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
         self.sros_param_a = None
         self.sros_param_b = None
         self.sros_param_c = None
+        self.sros_param_d = None
+        self.sros_param_e = None
+        self.sros_isi = None
+        self.sros_bisi = None
         self.cros_param_b1 = None
         self.cros_param_b2 = None
         self.cros_param_b3 = None
@@ -215,7 +219,7 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
         # Normalize public labels before parameter lookup and equation dispatch.
         self.sros_model = conpyro_eqs.normalize_sros_model(self.sros_model)
         if self.model_terrain_effects_on_wind and np.any(
-                np.isin(self.sros_model.compressed(), [9, 11, 16, 17, 18, 19, 21])):
+                np.isin(self.sros_model.compressed(), [16, 17, 20])):
             raise ValueError("Selected surface ROS model has no terrain wind extension")
 
         # Verify cros_model
@@ -232,7 +236,7 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
             raise Exception('Crown Fire Rate of Spread model choice is invalid. Should be 1, 2 and/or 3.')
 
         # Verify ws
-        self.ws = validate_numeric(self.ws, 'ws', use_isfinite=False)
+        self.ws = validate_numeric(self.ws, 'ws', use_isfinite=True)
         # Mask negative values
         self.ws = mask.where(self.ws < 0, mask.masked, self.ws)
 
@@ -468,14 +472,18 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
         self.sros_param_a = np.full_like(self.ref_array, np.nan, dtype=np.float64)
         self.sros_param_b = np.full_like(self.ref_array, np.nan, dtype=np.float64)
         self.sros_param_c = np.full_like(self.ref_array, np.nan, dtype=np.float64)
+        self.sros_param_d = np.full_like(self.ref_array, np.nan, dtype=np.float64)
+        self.sros_param_e = np.full_like(self.ref_array, np.nan, dtype=np.float64)
         for model in mask.unique(self.sros_model[~self.sros_model.mask]):
             mask_model = self.sros_model == model
             if int(model) not in conpyro_eqs.SROS_PARAMS_DICT:
-                continue  # Wind-only and linear models have no fitted tuple.
+                continue  # Model 20 has no fitted parameters.
             params = conpyro_eqs.SROS_PARAMS_DICT[int(model)]
             self.sros_param_a[mask_model] = params[0]
             self.sros_param_b[mask_model] = params[1]
             self.sros_param_c[mask_model] = params[2]
+            self.sros_param_d[mask_model] = params[3]
+            self.sros_param_e[mask_model] = params[4]
         # Set flag to indicate SROS parameters have been initialized
         self.sros_params_initialized = True
         return
@@ -489,28 +497,42 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
         self.fF = conpyro_eqs.calc_ff(self.mc_sa)
 
         if self.model_terrain_effects_on_wind:
+            # Models 12/18c use standard ISI for surface slope inversion.
+            terrain_ff = mask.where(np.isin(self.sros_model, [12, 18]),
+                                    conpyro_eqs.calc_ff(self.mc_ffmc), self.fF)
             self._log('\t[ConPyro] process_cfo: applying slope effects (invert wind/aspect, slope factor, ISZ/ISF, WSV/RAZ)...')
             self._log('\t[ConPyro] process_cfo: inverting wind direction and slope aspect...')
-            self.wd, self.aspect = conpyro_eqs.calc_inverted_wind_aspect(self.wd, self.aspect)
+            wind_azimuth, upslope_azimuth = conpyro_eqs.calc_inverted_wind_aspect(self.wd, self.aspect)
 
             self._log('\t[ConPyro] process_cfo: calculating slope factor...')
             self.sf = conpyro_eqs.calc_sf(self.slope)
 
             self._log('\t[ConPyro] process_cfo: calculating ISZ (no wind/slope ISI)...')
-            self.isz = conpyro_eqs.calc_isz(self.fF)
+            self.isz = conpyro_eqs.calc_isz(terrain_ff)
 
             self._log('\t[ConPyro] process_cfo: calculating ISF (slope/wind adjusted ISI)...')
             if not self.sros_params_initialized:
                 self.get_sros_params()
             self.isf = conpyro_eqs.calc_isf(self.isz, self.sf, self.sfc, self.sros_model,
-                                            self.sros_param_a, self.sros_param_b, self.sros_param_c)
+                                            self.sros_param_a, self.sros_param_b, self.sros_param_c,
+                                            self.sros_param_d, self.sros_param_e,
+                                            stand_type=self.stand_type)
 
             self._log('\t[ConPyro] process_cfo: calculating effective wind speed and direction (WSV/RAZ)...')
-            self.wsv, self.raz = conpyro_eqs.calc_wsv_raz(self.ws, self.wd, self.isf, self.fF, self.aspect)
+            self.wsv, self.raz = conpyro_eqs.calc_wsv_raz(
+                self.ws, wind_azimuth, self.isf, terrain_ff, upslope_azimuth)
+            # Avoid inverse roundoff moving flat cells across the 40 km/h branch.
+            flat_valid = (
+                (self.sf == 1)
+                & ~mask.getmaskarray(self.wsv)
+                & ~mask.getmaskarray(self.raz)
+            )
+            self.wsv = mask.where(flat_valid, self.ws, self.wsv)
+            self.raz = mask.where(flat_valid, wind_azimuth, self.raz)
         else:
             self._log('\t[ConPyro] process_cfo: slope effects disabled; using input wind speed and direction.')
             self.wsv = self.ws
-            self.raz = self.wd
+            self.raz = (self.wd + 180) % 360
 
         self._log('\t[ConPyro] process_cfo: calculating wind and backing fire indices...')
         self.fW = conpyro_eqs.calc_fw(self.wsv)
@@ -587,10 +609,18 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
         if not self.sros_params_initialized:
             self.get_sros_params()
 
+        # Paper models 12/18c use standard ISI; other models retain adjusted ISI.
+        standard_isi = np.isin(self.sros_model, [12, 18])
+        surface_ff = mask.where(standard_isi, conpyro_eqs.calc_ff(self.mc_ffmc), self.fF)
+        self.sros_isi = conpyro_eqs.calc_isi(self.fW, surface_ff)
+        self.sros_bisi = conpyro_eqs.calc_bisi(self.bfw, surface_ff)
+
         # Calculate surface fire rate of spread and mask invalid areas
-        self.sros = conpyro_eqs.calc_sros(self.isi, self.sfc, self.sros_model,
+        self.sros = conpyro_eqs.calc_sros(self.sros_isi, self.sfc, self.sros_model,
                                           self.sros_param_a, self.sros_param_b, self.sros_param_c,
-                                          wsv=self.wsv, stand_type=self.stand_type, mc_sa=self.mc_sa)
+                                          self.sros_param_d, self.sros_param_e,
+                                          wsv=self.wsv, stand_type=self.stand_type,
+                                          mc_sa=self.mc_sa, mc_ffmc=self.mc_ffmc)
         self.sros = mask.where(np.isfinite(self.stand_type), self.sros, mask.masked)
 
         # Get CROS parameters
@@ -626,8 +656,9 @@ class ConPyro(MoistureContent, RothMC, SFC, LadderFuels):
             self.hros = conpyro_eqs.calc_hros(self.sros, self.cros, self.cfo_prob)
 
         # Calculate backing fire rate of spread and mask invalid areas
-        self.bros = conpyro_eqs.calc_bros(self.bisi, self.sfc, self.sros_model,
+        self.bros = conpyro_eqs.calc_bros(self.sros_bisi, self.sfc, self.sros_model,
                                           self.sros_param_a, self.sros_param_b, self.sros_param_c,
+                                          self.sros_param_d, self.sros_param_e,
                                           stand_type=self.stand_type)
         self.bros = mask.where(np.isfinite(self.stand_type), self.bros, mask.masked)
         return

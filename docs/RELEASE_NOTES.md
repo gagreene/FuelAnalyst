@@ -1,5 +1,15 @@
 # Release notes
 
+## Unreleased
+
+### Breaking changes and action needed (behaviour and data, not the Python API)
+
+- **Surface rate of spread models other than the default change.** The vendored ConPyro is refreshed to upstream commit `13c497e` (ConPyro 0.2.0). Surface model 20 is now the R wind heuristic (0.2 times the wind speed, in m/min) and the legacy mountain pine beetle curve is model 21: if you set `sros_model` to 20 for the beetle curve, change it to 21. Models 16, 17, and 20 do not support terrain wind adjustment, so a run that selects one of them must set `model_terrain_effects_on_wind` to `False`; otherwise it stops with "Selected surface ROS model has no terrain wind extension". Models 9c, 11c, 18c, and 19 now support terrain wind adjustment (before, selecting one of them with the default settings stopped the run). The slope scaling of model 4 is corrected and the inputs of models 12, 16, 17, and 18c are routed differently, so the results of these models differ from 0.3.0: in calm wind on a 7 percent slope, for example, the surface rate of spread of model 4 is 6 percent lower and that of model 12 is 36 percent lower (upstream's example for model 4 at 40 percent slope, no wind, and 12 percent moisture: 2.92 to 1.38 m/min). The default model (13) is not affected: on the example dataset the fire behaviour, FOFEM mortality, and emissions results equal those of 0.3.0 apart from floating-point differences below 3 parts in a billion, and fire types and severity classes are identical.
+
+### Changes
+
+- `conpyro.input_params.sros_model` accepts every surface model of the refreshed ConPyro: 1 to 4, 9, 11, 12, 13, and 16 to 21, the labels `"9c"`, `"11c"`, `"18c"`, and `"r20"`, or `"use_csv"`. The full list is in `docs/TECHNICAL_REFERENCE.md`.
+
 ## 0.3.0
 
 This is a minor release, not a patch: the vendored ConPyro is refreshed so fire behaviour, FOFEM mortality, and emissions results change, and the Survey123 forms change. No function signature, dictionary key, or output file name changed.

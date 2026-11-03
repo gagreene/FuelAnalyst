@@ -954,7 +954,7 @@ The settings of default_fire_modelling_dict are listed in Table 34. Entries that
 | conpyro.run_model | True | Toggle ConPyro fire-behaviour modelling |
 | conpyro.plot_id_col_name | "unique_id" | Column that identifies each plot |
 | conpyro.input_params.cfo_model | 5 | Crown fire initiation model: 1 to 5, 10 (CFIS), or "use_csv" to read it from a column of the input table |
-| conpyro.input_params.sros_model | 13 | Surface rate of spread model: 1 to 4, 12, 13, 20, or "use_csv" |
+| conpyro.input_params.sros_model | 13 | Surface rate of spread model: 1 to 4, 9, 11, 12, 13, 16 to 21, the labels "9c", "11c", "18c", and "r20" (model 20), or "use_csv". Model 20 is the R wind heuristic (0.2 times the wind speed, m/min) and model 21 is the legacy gray-stage mountain pine beetle curve (it was model 20 before ConPyro 0.2.0). Models 16, 17, and 20 do not support terrain wind adjustment: set model_terrain_effects_on_wind to False to use them |
 | conpyro.input_params.cros_model | 1 | Crown rate of spread model: 1, 2, or "use_csv" |
 | conpyro.input_params.wx_date | "use_csv" | Weather date, read from the wx_date column, or a YYYYMMDD integer |
 | conpyro.input_params.fmc | None | Foliar moisture content (float, integer, or None); overrides the value derived from wx_date |
