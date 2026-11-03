@@ -43,7 +43,9 @@ default_fire_modelling_dict = {
         'plot_id_col_name': 'unique_id',
         'input_params': {
             'cfo_model': 5,    # Options: 1, 2, 3, 4, 5, 10, or string "use_csv" (assumes cfo_model column in csv)
-            'sros_model': 13,  # Options: 1, 2, 3, 4, 12, 13, 20, or string "use_csv" (assumes sros_model column in csv)
+            'sros_model': 13,  # Options: 1-4, 9, 11, 12, 13, 16-21, labels "9c", "11c", "18c", "r20", or "use_csv"
+                               # (assumes sros_model column in csv). 16, 17, and 20 need model_terrain_effects_on_wind
+                               # False; 21 is the legacy mountain pine beetle curve (it was 20 before ConPyro 0.2.0)
             'cros_model': 1,   # Options: 1, 2, or string "use_csv" (assumes cros_model column in csv)
             'process_ladder': False,     # Toggle ladder fuel processing on/off
             'smooth_ros': True,          # Toggle ROS smoothing function on/off
