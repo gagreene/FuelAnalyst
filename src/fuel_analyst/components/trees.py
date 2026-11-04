@@ -1066,6 +1066,9 @@ def _calc_tree_density(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame:
     radius_class.loc[valid_dbh & dbh.ge(12.5)] = 'lgtree'
     radius_class.loc[valid_dbh & dbh.ge(5) & dbh.lt(12.5)] = 'smtree'
     radius_class.loc[valid_dbh & dbh.lt(5)] = 'sapling'
+    # Aggregated saplings were counted in the sapling plot, even when DBH is imputed.
+    source = tree_df.get('tree_density_source_table', pd.Series('', index=tree_df.index))
+    radius_class.loc[valid_dbh & source.eq('sapling_1.csv')] = 'sapling'
     radius_field = radius_class.map(_PLOT_RADIUS_FIELDS)
 
     selected_multiplier = pd.Series(np.nan, index=tree_df.index, dtype='float64')
