@@ -4,6 +4,8 @@
 
 - **Sapling expansion corrected:** Records from the sapling table now use their recorded sapling-plot radius regardless of measured or imputed DBH. Earlier densities, biomass and model inputs can change when a sapling crosses a DBH threshold and the plot radii differ. Measured-tree defaults are unchanged.
 
+- Fixed pandas 3 dtype handling for empty sapling repeats and blank tree-note columns during crown-base-height cleanup. Fractional DBH normalization and explanatory notes no longer fail on inferred numeric dtypes.
+
 ## 0.4.0
 
 This is a minor release, not a patch: the vendored ConPyro is refreshed to ConPyro 0.2.0, which renumbers surface models 20 and 21 and corrects the terrain scaling and inputs of other surface models, so their results change. The default surface model (13) and the example results are unchanged. No function signature, dictionary key, or output file name changed.

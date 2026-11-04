@@ -14,6 +14,24 @@ def _plots(ids=('p1',), small_radius=5.64):
     }))
 
 
+@pytest.mark.parametrize('cbh', [2., 99.])
+def test_blank_tree_notes_accept_cbh_normalization(cbh):
+    frame = pd.DataFrame({'tree_status': ['L'], 'tree_cbh': [cbh], 'tree_note': [np.nan]})
+    result = trees._calc_tree_cbh(frame)
+    if cbh == 99:
+        assert pd.isna(result.loc[0, 'tree_cbh'])
+        assert 'entered as 99' in result.loc[0, 'tree_note']
+    else:
+        assert result.loc[0, 'tree_cbh'] == cbh
+        assert pd.isna(result.loc[0, 'tree_note'])
+
+
+def test_empty_sapling_repeat_normalizes_without_integer_assignment_error():
+    empty = pd.DataFrame(columns=['sapling_species', 'sapling_live_count', 'sapling_dead_count',
+                                  'sapling_live_dbh', 'sapling_dead_dbh'])
+    assert trees._normalize_sapling_inputs(empty).empty
+
+
 @pytest.mark.parametrize('status', ['L', 'D'])
 def test_sapling_source_keeps_counted_area_above_dbh_boundaries(status):
     frame = pd.DataFrame({

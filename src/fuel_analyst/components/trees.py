@@ -885,8 +885,9 @@ def _calc_tree_cbh(tree_df: pd.DataFrame) -> pd.DataFrame:
     # Append message to tree note if CBH was set to NaN
     if 'tree_note' not in tree_df.columns:
         tree_df['tree_note'] = ''
+    tree_df['tree_note'] = tree_df['tree_note'].astype(object)
     tree_df.loc[mask, 'tree_note'] = (
-        tree_df.loc[mask, 'tree_note'].astype(str) +
+        tree_df.loc[mask, 'tree_note'].fillna('').astype(str) +
         ' [Fuel Analyst Note] Crown base height entered as 99. Value set to NaN; '
     )
 
@@ -1999,7 +2000,7 @@ def _normalize_sapling_inputs(sapling_df: pd.DataFrame) -> pd.DataFrame:
         sapling_df[count_col] = count
 
         raw_dbh = sapling_df[dbh_col].copy()
-        dbh = pd.to_numeric(raw_dbh, errors='coerce')
+        dbh = pd.to_numeric(raw_dbh, errors='coerce').astype(float)
         dbh_issue = _classify_numeric_input(raw_dbh, dbh, 'sapling_dbh', allow_zero=True)
         positive_count = count.gt(0)
         # Missing DBH for observed saplings follows the existing 2.5 cm
