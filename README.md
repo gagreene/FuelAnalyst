@@ -798,6 +798,34 @@ Important configuration areas include:
 
 Treat configuration schema as part of the scientific model. Change one setting at a time and retain the configuration used to create analysis outputs.
 
+#### Tree sampling thresholds
+
+`tree_sampling_params` controls which plot radius supplies the expansion factor. It is independent of `stand_summary_params` DBH output classes. The public default is available as `default_tree_sampling_dict` in `fuel_analyst.fuel_analyst`.
+
+```python
+from copy import deepcopy
+from fuel_analyst.fuel_analyst import default_tree_sampling_dict, fuel_analyst
+
+tree_sampling = deepcopy(default_tree_sampling_dict)
+tree_sampling['protocol_column'] = 'sampling_protocol'
+tree_sampling['protocol_overrides'] = {
+    'CWC': {},  # Register the label and inherit the default 5 / 12.5 cm cutoffs.
+    'NFI': {'large_tree_min': 9.0},
+}
+fuel_analyst(
+    in_dir='data/Survey123_Data', out_dir='results',
+    surface_fire_intensity_model='Byram', tree_sampling_params=tree_sampling,
+)
+```
+
+By default, `dbh_thresholds_cm` is `{'small_tree_min': 5.0, 'large_tree_min': 12.5}`, `protocol_column` is `None`, and `protocol_overrides` is empty. For one protocol, set the base thresholds and leave protocol selection disabled. With overrides enabled, add the named column to the Trees parent table (`3_Trees/survey_0`); the standard Survey123 forms are unchanged. Every label used by an eligible plot must be explicitly registered, including the base label as `{}`. Labels are case-sensitive and are not trimmed: `NFI ` and `nfi` do not match a registered `NFI` label. Unknown labels never silently inherit the base.
+
+Measured trees below the small cutoff use `sapling_plot_radius`; those at or above it but below the large cutoff use `smtree_plot_radius`; those at or above the large cutoff use `lgtree_plot_radius`. **Records from `sapling_1` always use the sapling radius**, because that is where their counts were collected, regardless of measured or imputed DBH. This corrects prior results when sapling DBH crossed a cutoff and radii differed.
+
+Factors are still calculated from radii. For an NFI design, supply 11.28 m for large trees and 3.99 m for both smaller radius fields; changing cutoffs does not change radii or impose height-inclusion rules. The pipeline rounds measured DBH to 0.1 cm before comparison. Threshold precision is retained, so 9.05 has an effective cutoff of 9.1 cm on that grid.
+
+Malformed dictionaries stop the run and write an error report. A missing column or invalid protocol label is a per-plot data error: affected tree-derived results remain missing, the Trees error names the plot, and other plots continue. Unused, species-excluded and ambiguous parents do not require labels. Model exporters honor tree exclusion instead of substituting zero canopy fuel. See [Tree sampling configuration](docs/TECHNICAL_REFERENCE.md#226-tree-sampling-configuration) for validation details.
+
 #### Woody debris, ConPyro, and FOFEM consumption settings
 
 Besides the stand summary dictionary, three dictionaries have fixed top-level keys: `fuel_analyst()` needs every key,

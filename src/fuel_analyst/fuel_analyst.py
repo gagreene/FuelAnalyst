@@ -16,11 +16,21 @@ from .components import table_reader
 from .components import plot_attributes as pa
 from .components import plants_regen as pr
 from .components import trees
+from .components import tree_sampling
 from .components import canopy_cover as cc
 from .components import woody_debris as wd
 from .components import conpyro_attributes
 from .components import fofem_attributes
 from .components import fofem_units
+
+default_tree_sampling_dict = {
+    'dbh_thresholds_cm': {
+        'small_tree_min': 5.0,
+        'large_tree_min': 12.5,
+    },
+    'protocol_column': None,
+    'protocol_overrides': {},
+}
 
 default_stand_summary_dict = {
     'dens': {
@@ -550,6 +560,19 @@ def _find_id_mismatches(plot_ids, form_ids) -> tuple[list, list]:
     return missing_from_form, extra_in_form
 
 
+def _report_tree_sampling_error(error: tree_sampling.TreeSamplingError, out_dir: str) -> None:
+    """
+    Report an invalid sampling dictionary before aborting the run.
+
+    :param error: Configuration validation error to log and re-raise.
+    :param out_dir: Directory for the run's error report.
+    :return: None; writes fuelanalyst_errors.csv and raises the original error.
+    """
+    error_handling.get_logger('trees').error(str(error), extra={'issue_code': error.issue_code})
+    error_handling.write_report(os.path.join(out_dir, 'fuelanalyst_errors.csv'))
+    raise error
+
+
 def _validate_stand_summary_permutations(stand_summary_params: dict, out_dir: str) -> None:
     """Report and reject combined stand summaries with no usable tree group.
 
@@ -585,7 +608,8 @@ def fuel_analyst(
         fofem_consume_params: Optional[dict] = None,
         gen_conpyro_df: bool = False,
         gen_fofem_gui_app_tree_df: bool = False,
-        gen_fofem_consume_df: bool = False
+        gen_fofem_consume_df: bool = False,
+        tree_sampling_params: Optional[dict] = None
 ) -> None:
     """
     Process Survey123 fuel attributes and write the selected result tables.
@@ -606,10 +630,19 @@ def fuel_analyst(
     :param gen_conpyro_df: Boolean indicating whether to generate the ConPyro DataFrame.
     :param gen_fofem_gui_app_tree_df: Boolean indicating whether to generate the FOFEM GUI app tree mortality DataFrame.
     :param gen_fofem_consume_df: Boolean indicating whether to generate the FOFEM consumption DataFrame.
+    :param tree_sampling_params: Sampling DBH thresholds and optional parent protocol overrides.
+        Defaults to default_tree_sampling_dict; independent of stand-summary output classes.
     :return: None. Every completed run writes master_fuel_df.csv and
         fuelanalyst_errors.csv; model-preparation outputs depend on the generation
         flags.
     """
+    try:
+        tree_sampling_params = tree_sampling.normalize_tree_sampling_params(
+            default_tree_sampling_dict if tree_sampling_params is None else tree_sampling_params
+        )
+    except tree_sampling.TreeSamplingError as error:
+        _report_tree_sampling_error(error, out_dir)
+
     # Create the list of forms to process
     form_select_list = ['plants', 'trees', 'cover', 'woody']
 
@@ -768,7 +801,8 @@ def fuel_analyst(
                                                        out_path,
                                                        surface_fire_intensity_model,
                                                        stand_summary_params,
-                                                       gen_conpyro_df)
+                                                       gen_conpyro_df,
+                                                       tree_sampling_params=tree_sampling_params)
             elif form == 'cover':
                 form_df, add_columns = cc.process_canopy_cover(form_source, out_path)
             elif form == 'woody':

@@ -608,6 +608,16 @@ interchangeable:
   replaces it with tree height before deriving flame length and crown-fire
   intensity, so `444` is not treated as a physical height.
 
+### Tree sampling configuration
+
+`fuel_analyst.py` defines `default_tree_sampling_dict` beside the other public default dictionaries. `tree_sampling.py` reads that definition at call time to avoid an initialization cycle and deep-copies it before validation. The optional `tree_sampling_params` flows through `fuel_analyst()` to `trees.process_trees()` and `_calc_tree_density()`. `normalize_tree_sampling_params()` is shared, defensive and idempotent; each entry point deep-copies rather than maintaining separate validation policies. Dictionary errors use `_report_tree_sampling_error()` to log, write the report and raise before form processing.
+
+The resolver receives only unambiguous parents referenced by surviving required records after species exclusion and sapling merging. It returns index-aligned thresholds and `sampling_issue_code`; invalid or missing protocol labels produce missing thresholds without raising. `_log_tree_sampling_issues()` logs once per affected plot and returns canonical IDs that join the existing tree-exclusion set. Protocol-invalid density stays NaN instead of taking the legacy zero-density fallback, and per-area outputs are remasked after calculations. The generic density logger skips the protocol code to avoid duplicate errors and an incorrect zero-density message.
+
+Measured records use configured cutoffs (defaults 5/12.5 cm); `sapling_1.csv` source records always use their counted sapling area. This deliberately corrects out-of-class sapling results even with default settings. Source provenance is assigned during input normalization/merge. Missing source markers in legacy direct helper calls retain measured-tree behavior. DBH rounding to 0.1 cm and reporting/classification bins are unchanged.
+
+`helper.TREES_EXCLUDED_COLUMN` carries protocol exclusions through the existing downstream flow. ConPyro masks tree-derived inputs for excluded plots, FOFEM consumption excludes them, and positive-density filtering excludes their mortality rows. No sampling settings need to be duplicated in model dictionaries. Standard forms are unchanged: mixed-protocol users add the configured label column to their Trees parent data.
+
 ### Stand-summary configuration
 
 `summary_permutation` supports `all`, `exact`, and `combined`. The `combined`

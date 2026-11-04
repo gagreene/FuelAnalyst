@@ -185,6 +185,30 @@ In a BA-weighted mean, only the trees that have a value for the attribute carry 
 
 The classes field defines DBH breakpoints (cm) used to partition trees into size classes before aggregation. A class includes its lower bound and excludes its upper bound. For example, classes: {"dbh": \[0, 5, float("inf")\]} produces two classes: trees with DBH of 0 cm or more and less than 5 cm, and trees with DBH of 5 cm or more. Class columns are named with the class label before the metric: dbh{lower}-{upper} (for example, dbh5-7.5), or dbh{lower}plus for the open-ended class (for example, dbh12.5plus), as in stand_ba_m2pha_live_dbh12.5plus_sum. Every summary is also written for all trees without a class label. The default breakpoints are 0, 5, 7.5, 12.5, and infinity (four classes) for dens and ba; 0, 5, and infinity (two classes) for ht, cbh, dcbh, fsg, cfl, and cbd; and 0 and infinity (one class, labelled dbh0plus) for foliage, branches, wood, and bark. flame_length and fire_intensity have no classes. Omitting classes gives only the all-tree summary, and setting classes to {"dbh": \[0, float("inf")\]} collapses all trees into a single class.
 
+### 2.2.6 Tree sampling configuration
+
+The optional `tree_sampling_params` argument to `fuel_analyst()` is separate from stand-summary reporting classes. `default_tree_sampling_dict` is defined directly in `fuel_analyst.py`, alongside the other default dictionaries. Components deep-copy it before use:
+
+```python
+{
+    'dbh_thresholds_cm': {'small_tree_min': 5.0, 'large_tree_min': 12.5},
+    'protocol_column': None,
+    'protocol_overrides': {},
+}
+```
+
+For a single NFI dataset, use `{'dbh_thresholds_cm': {'large_tree_min': 9.0}}`. Partial settings inherit defaults. For mixed data, configure a user-supplied Trees parent column and register all labels, for example `protocol_column='sampling_protocol'` with `protocol_overrides={'CWC': {}, 'NFI': {'large_tree_min': 9.0}}`. An empty override explicitly recognizes the label and inherits base thresholds. No XLSForm change is required; users or adapters add this metadata to their input copy. A column in Plot Attributes alone is insufficient.
+
+Measured-tree intervals are lower-inclusive: DBH below `small_tree_min` selects the sapling radius, DBH from that cutoff to below `large_tree_min` selects the small-tree radius, and DBH at or above `large_tree_min` selects the large-tree radius. A record merged from the sapling table always uses its sapling radius, even when DBH was estimated. Its count multiplies the factor once. Radius factors remain `10000 / round(pi * radius**2, 0)` with existing radius validation. NFI's two-class design requires the small-tree and sapling radii both to be 3.99 m; its large-tree radius is 11.28 m. Sampling configuration does not enforce minimum height or change reported DBH classes.
+
+Thresholds accept finite Python and NumPy real scalars, including `np.float64` and `np.int64`, but reject booleans (including `np.bool_`), strings, complex numbers and missing/infinite values. Require `0 <= small_tree_min < large_tree_min` in the base and every effective override. Unknown dictionary keys are errors. Protocol selection requires a nonblank column name and nonempty dictionary of registered, nonblank string labels. Matching is exact and case-sensitive; labels are not trimmed. For example, `NFI ` and `nfi` do not match a registered `NFI` label. Settings and nested overrides are deep-copied; repeated calls cannot alter their defaults.
+
+DBH is rounded to one decimal before selection; threshold values are not rounded. The effective cutoff is the smallest 0.1 cm value at or above the supplied threshold (9.05 therefore acts as 9.1). Original stand-summary class boundaries and BC tree classifications are independent of these sampling thresholds.
+
+Dictionary errors raise `TreeSamplingError` and are written to `fuelanalyst_errors.csv`. Protocol-column/label errors do not raise. Labels are required only for unique, nonblank, unambiguous parents referenced by surviving required tree or sapling records after species exclusions. An invalid measurement does not waive a parent's label requirement; unused parents and zero/no-sapling groups producing no merged record require no label. Missing entire columns mark all eligible plots invalid; an empty eligible set produces no label errors.
+
+A plot with an invalid protocol has missing density, expansion and per-area tree quantities, missing stand summaries, and one Trees error with plot identity. Diagnostic tree rows are retained. The existing tree-exclusion marker keeps the plot out of FOFEM consumption and mortality inputs and leaves ConPyro tree inputs missing and ineligible. FBP preparation retains plot identity without a species ranking. Independently measured plant, canopy and woody values remain available. Existing non-protocol measurement-error handling is unchanged.
+
 ## 2.3 Woody Debris Dictionary
 
 The woody debris dictionary controls transect parameters and the three concurrent debris measurement protocols. Each protocol can be enabled or disabled independently. The dictionary has three top-level keys: protocol_transect_params, woody_debris_classes (one sub-dictionary per protocol, named canadian, us, and modified), and measure_vs_tally_qmd_comparison.
