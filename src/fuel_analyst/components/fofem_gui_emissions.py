@@ -21,6 +21,7 @@ import concurrent.futures
 
 from . import fofem_units
 from . import helper
+from ._default_configs import default_season_start_dict
 from . import fwis_moisture_content as mc
 try:
     from tqdm.contrib.concurrent import process_map
@@ -30,13 +31,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Dictionary of seasons for each month in the year
-default_season_start_dict = {
-    'Spring': '0415',
-    'Summer': '0615',
-    'Fall': '0915',
-    'Winter': '1115',
-}
 # Environment variable override for _get_fofem_dir(), for use when the bundled
 # src/fuel_analyst/supporting_data/fofem_694 directory is not present (e.g. an alternate
 # installation of the official FOFEM 6.9.4 batch runtime).

@@ -15,6 +15,9 @@ from typing import Optional
 from .components import error_handling
 from .components import fofem_units
 from .components import helper
+
+# Re-export the public fire-modelling defaults.
+from .components._default_configs import default_fire_modelling_dict
 from ._vendor.conpyro import conpyro
 import flame_components as fc
 import tqdm
@@ -34,78 +37,6 @@ except ImportError:
 # internally. Re-verify these against pyfofem if it's updated.
 _FOFEM_MIN_FLAME_RES_TIME_S = 10.0
 _FOFEM_MAX_FLAME_RES_TIME_S = 200.0
-
-
-default_fire_modelling_dict = {
-    'num_workers': max(1, os.cpu_count()-1),
-    'conpyro': {
-        'run_model': True,
-        'plot_id_col_name': 'unique_id',
-        'input_params': {
-            'cfo_model': 5,    # Options: 1, 2, 3, 4, 5, 10, or string "use_csv" (assumes cfo_model column in csv)
-            'sros_model': 13,  # Options: 1-4, 9, 11, 12, 13, 16-21, labels "9c", "11c", "18c", "r20", or "use_csv"
-                               # (assumes sros_model column in csv). 16, 17, and 20 need model_terrain_effects_on_wind
-                               # False; 21 is the legacy mountain pine beetle curve (it was 20 before ConPyro 0.2.0)
-            'cros_model': 1,   # Options: 1, 2, or string "use_csv" (assumes cros_model column in csv)
-            'process_ladder': False,     # Toggle ladder fuel processing on/off
-            'smooth_ros': True,          # Toggle ROS smoothing function on/off
-            'model_terrain_effects_on_wind': True,  # Toggle terrain (slope/aspect) effects on wind speed and direction
-            'model_terrain_effects_on_ffmc': True,  # Toggle terrain (slope/aspect) effects on FFMC
-            'suppress_messages': True,              # Toggle ConPyro processing messages on/off
-            'wx_date': 'use_csv',   # Options: Integer in format YYYYMMDD, or string "use_csv" (default)
-                                    #    wx_date used for fine dead fuel and ladder foliar MC calculations
-            'fmc': None,            # Options: float, integer, None (default)
-                                    #     fmc overrides wx_date for foliar MC calculations
-            'season': None,         # Options: None (default), "Sp", "Sp-Su", "T", "Su", "F", "use_csv";
-                                    #     season overrides wx_date for fine dead fuel MC calculations
-            'time': None,           # Options: Integer in format HHMM, None (default), or string "use_csv"
-                                    #     time is only needed for CFIS (cfo_model == 10) to calculate
-                                    #     Rothermel dead fuel moisture content at a specific time of day
-        },
-        'output_params': {
-            'out_request': [
-                'mc_sa', 'mc_dmc', # Needed for FOFEM emissions modelling
-                'fsg', 'cac', 'cfo_prob',
-                'sros', 'cros', 'hros', 'bros',
-                'sfc', 'cfc', 'tfc',
-                'sfi', 'cfi', 'hfi',
-                'cfb', 'fire_type'
-            ],
-            # Leave flame_comp_out_list fixed for the time being - do not let user adjust
-            'flame_comp_out_list': [
-                'instand_ws', 'flame_length_m', 'flame_tilt', 'flame_height', 'flame_res_time', 'flame_depth'
-            ],
-        },
-    },
-    'fofem_mortality': {
-        'run_model': True,                      # Switch; Default: True
-        'plot_id_col_name': 'unique_id',        # User defined; default: 'unique_id'
-        'fofem_tree_id_col_name': 'unique_id',  # User defined; default: 'unique_id'
-    },
-    'fofem_emissions': {
-        'run_model': True,                  # Switch; Default: True
-        'model_select': 'pyfofem',          # Options: 'pyfofem', 'fof_gui'; Default: 'pyfofem'
-                                            #     pyfofem uses the pyfofem Python package to model emissions
-                                            #     fof_gui uses the USFS FOFEM GUI executable to batch model emissions
-                                            #        using "legacy" (old) emissions calculation settings
-        'plot_id_col_name': 'unique_id',    # User defined; default: 'unique_id'
-        'emissions_mode': 'expanded',       # Emissions modelling modes for pyfofem
-                                            #     Options: 'legacy', 'default', 'expanded'
-        'model_soil_heating': False,        # If True, pass SoilFamily data to pyfofem soil-heating model
-        'emissions_units': 'SI',            # Options: 'Imperial', 'SI'. Must match the unit system
-                                            #     of in_fofem_consume_csv_path's own filename (see
-                                            #     fofem_units.py) - validated against it before any
-                                            #     backend runs. Set independently from, and not
-                                            #     automatically synced with, fuel_analyst()'s own
-                                            #     fofem_processing_units setting (a separate call,
-                                            #     possibly a separate process); it is this setting
-                                            #     and the consumption file it points to that must
-                                            #     agree, not the two dictionaries themselves.
-        'force_flame_res_time_limits': True,  # Clip flame_res_time_sec to FOFEM/Burnup's valid range
-                                              #     (10-200s) instead of letting Burnup silently drop
-                                              #     out-of-range scenarios from the emissions estimate
-    },
-}
 
 
 def _calc_instand_ws(df: pd.DataFrame) -> pd.DataFrame:

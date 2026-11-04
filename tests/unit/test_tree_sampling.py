@@ -12,15 +12,17 @@ import pytest
 from fuel_analyst.components import tree_sampling as sampling
 
 
-def test_component_defaults_follow_public_configuration(monkeypatch):
+def test_component_defaults_follow_shared_configuration(monkeypatch):
+    from fuel_analyst.components import _default_configs
+
     api = importlib.import_module('fuel_analyst.fuel_analyst')
-    configured = deepcopy(api.default_tree_sampling_dict)
-    configured['dbh_thresholds_cm']['large_tree_min'] = 9.0
-    monkeypatch.setattr(api, 'default_tree_sampling_dict', configured)
+    shared = _default_configs.default_tree_sampling_dict
+    monkeypatch.setitem(shared['dbh_thresholds_cm'], 'large_tree_min', 9.0)
+    assert api.default_tree_sampling_dict is shared
     result = sampling.normalize_tree_sampling_params(None)
     assert result['dbh_thresholds_cm']['large_tree_min'] == 9.0
     result['dbh_thresholds_cm']['small_tree_min'] = 0
-    assert configured['dbh_thresholds_cm']['small_tree_min'] == 5.0
+    assert shared['dbh_thresholds_cm']['small_tree_min'] == 5.0
 
 
 def test_component_imports_before_entry_point_without_cycle():
@@ -94,6 +96,27 @@ def test_public_default_and_early_error_report(tmp_path):
     assert report['Trees'].str.contains('tree sampling', case=False).any()
     assert not (out/'1_Plot_Attributes').exists()
 
+
+def test_public_rebinding_reaches_pipeline_but_not_direct_component(monkeypatch, tmp_path):
+    api = importlib.import_module('fuel_analyst.fuel_analyst')
+    configured = deepcopy(api.default_tree_sampling_dict)
+    configured['dbh_thresholds_cm']['large_tree_min'] = 9.0
+    monkeypatch.setattr(api, 'default_tree_sampling_dict', configured)
+    assert sampling.normalize_tree_sampling_params(None)['dbh_thresholds_cm']['large_tree_min'] == 12.5
+    monkeypatch.setattr(api.pa, 'process_plot_attributes', lambda *args: (
+        pd.DataFrame({'unique_id': ['plot'], 'form_select': ['trees']}), []
+    ))
+
+    def capture(*args, **kwargs):
+        assert kwargs['tree_sampling_params']['dbh_thresholds_cm']['large_tree_min'] == 9.0
+        assert kwargs['tree_sampling_params'] is not configured
+        raise RuntimeError('captured resolved pipeline settings')
+
+    monkeypatch.setattr(api.trees, 'process_trees', capture)
+    source = Path(__file__).resolve().parents[2] / 'examples/data/Survey123_Data'
+    with pytest.raises(RuntimeError, match='captured resolved pipeline settings'):
+        api.fuel_analyst(str(source), str(tmp_path/'out'), 'Byram')
+    assert configured['dbh_thresholds_cm']['large_tree_min'] == 9.0
 
 def test_resolver_keeps_order_and_marks_bad_labels_without_raising():
     settings = {'protocol_column': 'protocol', 'protocol_overrides': {'CWC': {}, 'NFI': {'large_tree_min': 9}}}

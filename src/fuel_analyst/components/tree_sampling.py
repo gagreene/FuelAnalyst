@@ -5,6 +5,8 @@ from numbers import Real
 import numpy as np
 import pandas as pd
 
+from ._default_configs import default_tree_sampling_dict
+
 
 class TreeSamplingError(ValueError):
     """An invalid tree sampling dictionary, rather than a plot measurement error."""
@@ -48,12 +50,9 @@ def normalize_tree_sampling_params(params: dict | None) -> dict:
     """
     Validate and deep-copy global and per-protocol tree sampling settings.
 
-    :param params: Partial settings, or None for defaults declared in fuel_analyst.py.
+    :param params: Partial settings, or None for the shared default configuration dictionaries.
     :return: Independent normalized settings; invalid dictionaries raise TreeSamplingError.
     """
-    # Resolve at call time: the entry-point module imports this validator during initialization.
-    from ..fuel_analyst import default_tree_sampling_dict
-
     if params is None:
         params = {}
     if not isinstance(params, dict):

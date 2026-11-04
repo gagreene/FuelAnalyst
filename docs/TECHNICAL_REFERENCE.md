@@ -187,7 +187,7 @@ The classes field defines DBH breakpoints (cm) used to partition trees into size
 
 ### 2.2.6 Tree sampling configuration
 
-The optional `tree_sampling_params` argument to `fuel_analyst()` is separate from stand-summary reporting classes. `default_tree_sampling_dict` is defined directly in `fuel_analyst.py`, alongside the other default dictionaries. Components deep-copy it before use:
+The optional `tree_sampling_params` argument to `fuel_analyst()` is separate from stand-summary reporting classes. `default_tree_sampling_dict` is defined with all defaults in `components/_default_configs.py` and remains publicly importable from `fuel_analyst.fuel_analyst`. Components deep-copy it before use:
 
 ```python
 {

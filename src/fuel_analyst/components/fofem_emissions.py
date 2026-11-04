@@ -14,18 +14,12 @@ from typing import Union
 
 from . import fofem_units
 from . import helper
+from ._default_configs import default_season_start_dict
 from . import fwis_moisture_content as mc
 from pyfofem import pyfofem as fofem
 
 logger = logging.getLogger(__name__)
 
-
-default_season_start_dict = {
-    'Spring': '0415',
-    'Summer': '0615',
-    'Fall': '0915',
-    'Winter': '1115',
-}
 
 _VALID_EMISSIONS_MODES = {'legacy', 'default', 'expanded'}
 

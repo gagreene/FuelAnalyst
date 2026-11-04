@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Default fire-modelling worker count now falls back to one when the system cannot report its CPU count. Default dictionaries are centralized internally; their documented public import paths are unchanged.
+
 - Tree-derived ConPyro inputs now remain missing for every tree-excluded plot, including plots excluded for unsupported species. Fields such as canopy fuel load, canopy bulk density and conifer percentage previously filled with zero now retain NaN; excluded plots remain ineligible for simulation.
 - Fixed pandas 3 dtype handling for empty sapling repeats and blank tree-note columns during crown-base-height cleanup. Fractional DBH normalization and explanatory notes no longer fail on inferred numeric dtypes.
 

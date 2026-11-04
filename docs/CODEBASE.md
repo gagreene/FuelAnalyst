@@ -31,7 +31,7 @@ FuelAnalyst/
 |-- packages/fofem694-runtime/    Optional Windows FOFEM 6.9.4 runtime wheel
 |-- src/fuel_analyst/
 |   |-- __init__.py                Lazily loaded public API
-|   |-- fuel_analyst.py            Survey123 orchestrator and preparation defaults
+|   |-- fuel_analyst.py            Survey123 orchestrator and default re-exports
 |   |-- tools/                     Optional supporting scripts
 |   |   |-- extract_nrcan_wx.py    NRCAN raster extraction
 |   |   |-- fbp_fuel_type.py       BC FBP fuel typing
@@ -39,6 +39,7 @@ FuelAnalyst/
 |   |-- run_conpyro.py             ConPyro and FOFEM orchestration
 |   |-- _vendor/                   Vendored BCWFT2018 module and ConPyro package
 |   |-- components/
+|   |   |-- _default_configs.py    All default configuration dictionaries (stdlib only)
 |   |   |-- error_handling.py      Run-scoped logging and CSV reports
 |   |   |-- plot_attributes.py
 |   |   |-- plants_regen.py
@@ -164,14 +165,22 @@ console-script entry points.
 
 ### `fuel_analyst.py`
 
-The main orchestrator owns the default stand-summary, woody-debris, ConPyro,
-and FOFEM-consumption dictionaries. It processes Plot
+The main orchestrator re-exports the default stand-summary, woody-debris, ConPyro,
+FOFEM-consumption and tree-sampling dictionaries from `components/_default_configs.py`. It processes Plot
 Attributes first, processes the four selected component forms, checks form IDs
 in both directions, left-merges component results, and writes the requested
 tables. Stand-summary entries are merged on an internal top-level copy, and
 the nested `woody_debris_classes` dictionary is copied before ConPyro and
 FOFEM classes are added. Those merges leave caller-supplied
 `stand_summary_params` and `woody_debris_params` unchanged across runs.
+
+### `components/_default_configs.py`
+
+Defines all seven default configuration dictionaries once, including shared season starts for both emission routes. It imports only standard-library `os`; importing it does not load pandas, NumPy, pyfofem or an orchestrator. The default worker count is `max(1, (os.cpu_count() or 2) - 1)`, which returns one worker when CPU count is unavailable.
+
+Public imports remain unchanged: five dictionaries are re-exported from `fuel_analyst.py`, fire-modelling defaults from `run_conpyro.py`, and season defaults from both emission modules. These names initially refer to the same objects as the private module. Entry points resolve `None` from their own public names and pass configuration down as arguments; components use shared defaults only for fallback/normalization.
+
+In-place mutation of a shared dictionary is visible through all its aliases. Rebinding a public name is different: `fuel_analyst()` and `run_conpyro()` honor their own rebound names when resolving `None`, but a direct `tree_sampling.normalize_tree_sampling_params(None)` call retains the imported shared default. Prefer explicit arguments and deep copies for per-run changes. Rebinding the orchestrator's name does not update component aliases.
 
 ### `components/table_reader.py`
 
@@ -610,7 +619,7 @@ interchangeable:
 
 ### Tree sampling configuration
 
-`fuel_analyst.py` defines `default_tree_sampling_dict` beside the other public default dictionaries. `tree_sampling.py` reads that definition at call time to avoid an initialization cycle and deep-copies it before validation. The optional `tree_sampling_params` flows through `fuel_analyst()` to `trees.process_trees()` and `_calc_tree_density()`. `normalize_tree_sampling_params()` is shared, defensive and idempotent; each entry point deep-copies rather than maintaining separate validation policies. Dictionary errors use `_report_tree_sampling_error()` to log, write the report and raise before form processing.
+`components/_default_configs.py` defines `default_tree_sampling_dict` with all other default configuration dictionaries. `fuel_analyst.py` re-exports that object, and `tree_sampling.py` imports it from its sibling module and deep-copies it before validation. There is no upward or lazy import from the component to the orchestrator. The optional `tree_sampling_params` flows through `fuel_analyst()` to `trees.process_trees()` and `_calc_tree_density()`. `normalize_tree_sampling_params()` is shared, defensive and idempotent; each entry point deep-copies rather than maintaining separate validation policies. Dictionary errors use `_report_tree_sampling_error()` to log, write the report and raise before form processing.
 
 The resolver receives only unambiguous parents referenced by surviving required records after species exclusion and sapling merging. It returns index-aligned thresholds and `sampling_issue_code`; invalid or missing protocol labels produce missing thresholds without raising. `_log_tree_sampling_issues()` logs once per affected plot and returns canonical IDs that join the existing tree-exclusion set. Protocol-invalid density stays NaN instead of taking the legacy zero-density fallback, and per-area outputs are remasked after calculations. The generic density logger skips the protocol code to avoid duplicate errors and an incorrect zero-density message.
 

@@ -167,6 +167,7 @@ FuelAnalyst/
 |-- models/photoload/        Reproducible PhotoLoad model-development workflow
 |-- src/fuel_analyst/
 |   |-- components/          FuelAnalyst processing components
+|   |   |-- _default_configs.py     Shared default configuration dictionaries
 |   |   |-- canopy_cover.py          Canopy-cover summaries
 |   |   |-- conpyro_attributes.py    ConPyro input attributes
 |   |   |-- error_handling.py        Run-scoped issue reporting
@@ -188,7 +189,7 @@ FuelAnalyst/
 |   |   |-- extract_nrcan_wx.py  NRCAN weather extraction
 |   |   |-- fbp_fuel_type.py     BC FBP fuel typing
 |   |   `-- merge_wx_data.py     Plot/weather merge
-|   |-- fuel_analyst.py      Core orchestrator and preparation defaults
+|   |-- fuel_analyst.py      Core orchestrator and default re-exports
 |   `-- run_conpyro.py       Fire-model orchestration
 |-- tests/                   Unit, integration, and regression suites
 |-- pyproject.toml           Package metadata and dependencies
@@ -800,7 +801,7 @@ Treat configuration schema as part of the scientific model. Change one setting a
 
 #### Tree sampling thresholds
 
-`tree_sampling_params` controls which plot radius supplies the expansion factor. It is independent of `stand_summary_params` DBH output classes. The public default is available as `default_tree_sampling_dict` in `fuel_analyst.fuel_analyst`.
+`tree_sampling_params` controls which plot radius supplies the expansion factor. It is independent of `stand_summary_params` DBH output classes. All default dictionary definitions live in `components/_default_configs.py`. The public default remains available as `default_tree_sampling_dict` in `fuel_analyst.fuel_analyst`.
 
 ```python
 from copy import deepcopy
