@@ -28,7 +28,8 @@ def _calc_stand_density(df: pd.DataFrame, cc_field: str) -> pd.DataFrame:
 
     :param df: DataFrame containing the canopy-cover field.
     :param cc_field: Name of the canopy-cover field used to classify stand density.
-    :return: DataFrame with an added 'conpyro_density_class' column.
+    :return: DataFrame with an added 'conpyro_density_class' column; logs a warning
+        per plot with missing source cover without changing the input values.
     """
     # Calculate stand density class from canopy cover
     mask_l = (df[cc_field] >= 0) & (df[cc_field] <= 45)
@@ -39,6 +40,19 @@ def _calc_stand_density(df: pd.DataFrame, cc_field: str) -> pd.DataFrame:
     density_class.loc[mask_l] = 'L'
     density_class.loc[mask_m] = 'M'
     density_class.loc[mask_h] = 'H'
+
+    # Report the source value before gen_conpyro_df separately fills exported cover with zero.
+    missing_cover = df[cc_field].isna()
+    plot_ids = df.get('unique_id', pd.Series(pd.NA, index=df.index))
+    for unique_id in plot_ids.loc[missing_cover].drop_duplicates():
+        logger.warning(
+            f"Canopy cover in '{cc_field}' is missing; ConPyro stand_density cannot be assigned. "
+            'stand_density is a canopy-cover class (L/M/H), not trees per hectare; '
+            'live trees may still be present. Check canopy observations and plot links, then '
+            'regenerate the ConPyro input CSV and weather merge. A zero-filled exported '
+            'canopy_cover does not establish measured zero cover or supply a density class.',
+            extra={'unique_id': unique_id, 'issue_code': 'conpyro_missing_canopy_cover'},
+        )
 
     return helper.attach_columns(df, {'conpyro_density_class': density_class})
 

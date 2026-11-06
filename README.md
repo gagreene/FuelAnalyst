@@ -799,6 +799,10 @@ Important configuration areas include:
 
 Treat configuration schema as part of the scientific model. Change one setting at a time and retain the configuration used to create analysis outputs.
 
+#### Tree presence
+
+Set the Trees parent flags `tree_large_present`, `tree_small_present` and `sapling_present` to `N` for confirmed absence. FuelAnalyst skips records for those classes and reports any conflict. All three `N` flags produce zero density, basal-area and biomass sums; height/CBH summaries remain missing. Blank or missing flags preserve legacy handling. See [Tree presence flags](docs/TECHNICAL_REFERENCE.md#tree-presence-flags) for missing-repeat and mixed-protocol behavior.
+
 #### Tree sampling thresholds
 
 `tree_sampling_params` controls which plot radius supplies the expansion factor. It is independent of `stand_summary_params` DBH output classes. All default dictionary definitions live in `components/_default_configs.py`. The public default remains available as `default_tree_sampling_dict` in `fuel_analyst.fuel_analyst`.

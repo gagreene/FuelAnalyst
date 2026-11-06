@@ -29,6 +29,8 @@ def _inputs(tmp_path, ranking=False):
     parents['lgtree_plot_radius'] = 11.28
     parents['smtree_plot_radius'] = 3.99
     parents['sapling_plot_radius'] = 3.99
+    # Synthetic 10 cm trees are present even where the copied survey marked small trees absent.
+    parents.loc[parents.index[:2], 'tree_small_present'] = 'Y'
     parents.to_csv(parent_path, index=False)
     tree_path = target / '3_Trees/tree_plot_2.csv'
     original = pd.read_csv(tree_path)

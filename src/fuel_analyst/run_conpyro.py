@@ -361,10 +361,10 @@ def _log_skipped_empty_stand_plots(
     """
     Log a warning for each plot that run_conpyro() leaves out because a required stand column is empty.
 
-    A plot has an empty stand_density or stand_type when it has no live overstory, or when the tree calculations of
-    fuel_analyst() left it out because of a species code that is not in tree_parameters.csv (reported in the Trees
-    column of fuelanalyst_errors.csv). The plot is in neither the results nor the model run, so without this warning
-    nothing reports it. A plot with several rows (one per weather date) is logged once.
+    Explain the distinct canopy-cover and live-species inputs used for the two
+    stand fields. Exported cover can already be zero-filled, so the skip stage
+    must not infer the original missing-data cause from that value. A plot with
+    several rows (one per weather date) is logged once.
 
     :param skipped_df: Rows removed from the ConPyro input, with the plot ID column and the empty columns.
     :param empty_cols: Names of the required columns that were checked for empty values.
@@ -378,11 +378,27 @@ def _log_skipped_empty_stand_plots(
     for unique_id in dict.fromkeys(ids):
         rows = skipped_df[ids.eq(unique_id)] if pd.notna(unique_id) else skipped_df[ids.isna()]
         names = [col for col in empty_cols if rows[col].isna().any()]
+        details = []
+        if 'stand_density' in names:
+            details.append(
+                'stand_density is the L/M/H canopy-cover class, not trees per hectare. '
+                'Missing or out-of-range source canopy cover can leave it empty even with live trees. '
+                'Check the configured cover field (default cc, valid range 0-100%) in master_fuel_df.csv; '
+                'exported canopy_cover may have been filled with zero.'
+            )
+        if 'stand_type' in names:
+            details.append(
+                'stand_type is derived from live species composition; no usable live species '
+                'composition can leave it empty.'
+            )
+        details.append(
+            'Tree exclusions can also clear these fields. Check the Trees and ConPyro Attributes '
+            'columns of fuelanalyst_errors.csv, correct the source inputs, and regenerate the '
+            'ConPyro input CSV and weather merge.'
+        )
         logger.warning(
             f'This plot was skipped and is not in the results, because {" and ".join(names)} '
-            f'{"is" if len(names) == 1 else "are"} empty. The plot has no live overstory, or its tree calculations '
-            'were left out because a species code is not in tree_parameters.csv (see the Trees column of '
-            'fuelanalyst_errors.csv).',
+            f'{"is" if len(names) == 1 else "are"} empty. ' + ' '.join(details),
             extra={'unique_id': unique_id, 'issue_code': 'conpyro_plot_skipped_empty_stand'},
         )
 

@@ -4,6 +4,10 @@
 
 - Tree sampling protocol labels now retain literal numeric-looking and NA-like text during CSV, Excel and other supported format reads. Registered labels such as `001` and `NA` no longer lose tree-derived results because of input inference; other columns retain their existing parsing behavior.
 
+- Missing source canopy cover now produces a plot-specific ConPyro Attributes warning naming the configured field. ConPyro skip messages distinguish the canopy-cover density class from trees per hectare and explain missing live species composition. Classification, zero-fill defaults and plot eligibility are unchanged.
+
+- Trees processing now honors explicit absence in `tree_large_present`, `tree_small_present` and `sapling_present`. Absent-class records are skipped with a conflict warning, absent repeats may be omitted when all parents agree, and confirmed empty plots receive zero additive tree totals without synthetic tree records. Blank/missing flags retain legacy behavior.
+
 - Default fire-modelling worker count now falls back to one when the system cannot report its CPU count. Default dictionaries are centralized internally; their documented public import paths are unchanged.
 
 - Tree-derived ConPyro inputs now remain missing for every tree-excluded plot, including plots excluded for unsupported species. Fields such as canopy fuel load, canopy bulk density and conifer percentage previously filled with zero now retain NaN; excluded plots remain ineligible for simulation.
