@@ -207,6 +207,8 @@ DBH is rounded to one decimal before selection; threshold values are not rounded
 
 Dictionary errors raise `TreeSamplingError` and are written to `fuelanalyst_errors.csv`. Protocol-column/label errors do not raise. Labels are required only for unique, nonblank, unambiguous parents referenced by surviving required tree or sapling records after species exclusions. An invalid measurement does not waive a parent's label requirement; unused parents and zero/no-sapling groups producing no merged record require no label. Missing entire columns mark all eligible plots invalid; an empty eligible set produces no label errors.
 
+The configured protocol column is preserved as literal text during input reading and format normalization. Labels such as `001`, `NA`, `NULL` and `NaN` retain their spelling; case and whitespace are not changed. This applies only to the configured column: other fields retain their normal numeric and missing-value inference. Empty cells and genuine missing values still fail protocol validation for eligible plots. A value already stored as a numeric cell cannot recover leading zeros that are no longer in the source.
+
 A plot with an invalid protocol has missing density, expansion and per-area tree quantities, missing stand summaries, and one Trees error with plot identity. Diagnostic tree rows are retained. The existing tree-exclusion marker keeps the plot out of FOFEM consumption and mortality inputs and leaves ConPyro tree inputs missing and ineligible. FBP preparation retains plot identity without a species ranking. Independently measured plant, canopy and woody values remain available. Existing non-protocol measurement-error handling is unchanged.
 
 ## 2.3 Woody Debris Dictionary

@@ -825,6 +825,8 @@ Measured trees below the small cutoff use `sapling_plot_radius`; those at or abo
 
 Factors are still calculated from radii. For an NFI design, supply 11.28 m for large trees and 3.99 m for both smaller radius fields; changing cutoffs does not change radii or impose height-inclusion rules. The pipeline rounds measured DBH to 0.1 cm before comparison. Threshold precision is retained, so 9.05 has an effective cutoff of 9.1 cm on that grid.
 
+The configured protocol column is preserved as literal text during input reading and format normalization. Labels such as `001`, `NA`, `NULL` and `NaN` retain their spelling; case and whitespace are not changed. This applies only to the configured column: other fields retain their normal numeric and missing-value inference. Empty cells and genuine missing values still fail protocol validation for eligible plots. A value already stored as a numeric cell cannot recover leading zeros that are no longer in the source.
+
 Malformed dictionaries stop the run and write an error report. A missing column or invalid protocol label is a per-plot data error: affected tree-derived results remain missing, the Trees error names the plot, and other plots continue. Unused, species-excluded and ambiguous parents do not require labels. Model exporters honor tree exclusion instead of substituting zero canopy fuel. See [Tree sampling configuration](docs/TECHNICAL_REFERENCE.md#226-tree-sampling-configuration) for validation details.
 
 #### Woody debris, ConPyro, and FOFEM consumption settings

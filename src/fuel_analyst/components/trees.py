@@ -2223,7 +2223,9 @@ def process_trees(
     # ### PROCESS PLOT-LEVEL ATTRIBUTES
     # Get plot dataframe and retain ambiguous parent IDs before survey
     # deduplication selects the latest record.
-    df = table_reader.read_table(in_folder, 'survey_0')
+    protocol_column = tree_sampling_params['protocol_column']
+    literal_columns = (protocol_column,) if protocol_column is not None else ()
+    df = table_reader.read_table(in_folder, 'survey_0', literal_text_columns=literal_columns)
     ambiguous_parent_ids = set(
         df.loc[df['GlobalID'].notna() & df['GlobalID'].duplicated(keep=False), 'GlobalID']
     )
