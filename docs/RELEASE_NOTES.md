@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Trees Survey123 form version `2026.11.06` adds hidden `sampling_protocol` metadata defaulting to `CWC`, immediately before `tree_large_present`. Republish the form to collect the new field. FuelAnalyst still does not require a protocol column under its default configuration.
+
 - Tree sampling protocol labels now retain literal numeric-looking and NA-like text during CSV, Excel and other supported format reads. Registered labels such as `001` and `NA` no longer lose tree-derived results because of input inference; other columns retain their existing parsing behavior.
 
 - Missing source canopy cover now produces a plot-specific ConPyro Attributes warning naming the configured field. ConPyro skip messages distinguish the canopy-cover density class from trees per hectare and explain missing live species composition. Classification, zero-fill defaults and plot eligibility are unchanged.
@@ -13,7 +15,7 @@
 - Tree-derived ConPyro inputs now remain missing for every tree-excluded plot, including plots excluded for unsupported species. Fields such as canopy fuel load, canopy bulk density and conifer percentage previously filled with zero now retain NaN; excluded plots remain ineligible for simulation.
 - Fixed pandas 3 dtype handling for empty sapling repeats and blank tree-note columns during crown-base-height cleanup. Fractional DBH normalization and explanatory notes no longer fail on inferred numeric dtypes.
 
-- Added `tree_sampling_params` and public `default_tree_sampling_dict` for global or explicit per-protocol DBH sampling cutoffs. Default measured-tree cutoffs remain 5/12.5 cm. Invalid protocol labels leave the affected plot's tree results missing, log an error and allow other plots to continue; malformed configuration dictionaries still stop the run. Users supply any protocol column in their Trees parent table; Survey123 forms are unchanged.
+- Added `tree_sampling_params` and public `default_tree_sampling_dict` for global or explicit per-protocol DBH sampling cutoffs. Default measured-tree cutoffs remain 5/12.5 cm. Invalid protocol labels leave the affected plot's tree results missing, log an error and allow other plots to continue; malformed configuration dictionaries still stop the run. Users select the protocol column in their Trees parent table; older exports remain supported without one under the default configuration.
 
 - **Sapling expansion corrected:** Records from the sapling table now use their recorded sapling-plot radius regardless of measured or imputed DBH. Earlier densities, biomass and model inputs can change when a sapling crosses a DBH threshold and the plot radii differ. Measured-tree defaults are unchanged.
 

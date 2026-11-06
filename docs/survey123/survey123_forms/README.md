@@ -11,6 +11,10 @@ The five field forms that collect the data FuelAnalyst reads. Each folder is one
 | `CWC Fuels 4 - Canopy Cover` | Canopy cover transects |
 | `CWC Fuels 5 - Woody Debris` | Woody debris transects |
 
+## Trees sampling protocol metadata
+
+Trees form version `2026.11.06` includes a hidden string question named `sampling_protocol`, defaulting to `CWC`, immediately before `tree_large_present`. It is stored on the parent survey record. Republish the form to collect this field. For imported non-CWC observations, supply their actual protocol label in the processing input. FuelAnalyst's default `protocol_column=None` is unchanged, so older exports without this field still work with default settings.
+
 ## Opening a form in Survey123 Connect
 
 1. Copy the form's whole folder into `ArcGIS\My Survey Designs` in your user folder (a subfolder of it also works).
