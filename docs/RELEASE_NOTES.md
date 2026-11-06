@@ -1,5 +1,18 @@
 # Release notes
 
+## Unreleased
+
+- Tree sampling protocol labels now retain literal numeric-looking and NA-like text during CSV, Excel and other supported format reads. Registered labels such as `001` and `NA` no longer lose tree-derived results because of input inference; other columns retain their existing parsing behavior.
+
+- Default fire-modelling worker count now falls back to one when the system cannot report its CPU count. Default dictionaries are centralized internally; their documented public import paths are unchanged.
+
+- Tree-derived ConPyro inputs now remain missing for every tree-excluded plot, including plots excluded for unsupported species. Fields such as canopy fuel load, canopy bulk density and conifer percentage previously filled with zero now retain NaN; excluded plots remain ineligible for simulation.
+- Fixed pandas 3 dtype handling for empty sapling repeats and blank tree-note columns during crown-base-height cleanup. Fractional DBH normalization and explanatory notes no longer fail on inferred numeric dtypes.
+
+- Added `tree_sampling_params` and public `default_tree_sampling_dict` for global or explicit per-protocol DBH sampling cutoffs. Default measured-tree cutoffs remain 5/12.5 cm. Invalid protocol labels leave the affected plot's tree results missing, log an error and allow other plots to continue; malformed configuration dictionaries still stop the run. Users supply any protocol column in their Trees parent table; Survey123 forms are unchanged.
+
+- **Sapling expansion corrected:** Records from the sapling table now use their recorded sapling-plot radius regardless of measured or imputed DBH. Earlier densities, biomass and model inputs can change when a sapling crosses a DBH threshold and the plot radii differ. Measured-tree defaults are unchanged.
+
 ## 0.4.0
 
 This is a minor release, not a patch: the vendored ConPyro is refreshed to ConPyro 0.2.0, which renumbers surface models 20 and 21 and corrects the terrain scaling and inputs of other surface models, so their results change. The default surface model (13) and the example results are unchanged. No function signature, dictionary key, or output file name changed.

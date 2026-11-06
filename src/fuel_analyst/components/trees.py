@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 import itertools
 
-from . import error_handling, helper, table_reader
+from . import error_handling, helper, table_reader, tree_sampling
 
 
 # VARIABLES FOR BIOMASS MODELING
@@ -885,8 +885,9 @@ def _calc_tree_cbh(tree_df: pd.DataFrame) -> pd.DataFrame:
     # Append message to tree note if CBH was set to NaN
     if 'tree_note' not in tree_df.columns:
         tree_df['tree_note'] = ''
+    tree_df['tree_note'] = tree_df['tree_note'].astype(object)
     tree_df.loc[mask, 'tree_note'] = (
-        tree_df.loc[mask, 'tree_note'].astype(str) +
+        tree_df.loc[mask, 'tree_note'].fillna('').astype(str) +
         ' [Fuel Analyst Note] Crown base height entered as 99. Value set to NaN; '
     )
 
@@ -1007,19 +1008,25 @@ def _calc_tree_decay_classes(tree_df: pd.DataFrame) -> pd.DataFrame:
     return tree_df
 
 
-def _calc_tree_density(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame:
+def _calc_tree_density(
+        df: pd.DataFrame,
+        tree_df: pd.DataFrame,
+        tree_sampling_params: dict | None = None
+) -> pd.DataFrame:
     """
-    Assigns tree density multipliers to each tree based on its DBH class.
+    Select sampling areas by source for saplings and by DBH for measured trees.
 
     For each tree:
-    - If DBH >= 12.5 cm, use the large tree multiplier.
-    - If 5 cm <= DBH < 12.5 cm, use the small tree multiplier.
-    - If DBH < 5 cm, use the sapling multiplier.
+    - Measured trees use configured DBH cutoffs (defaults: 5 and 12.5 cm).
+    - Sapling-table records always use the sapling sampling area.
+    - Missing protocol labels leave affected densities missing and do not raise.
 
     :param df: DataFrame containing plot-level multipliers.
     :param tree_df: DataFrame containing individual tree data, including DBH.
-    :return: Updated tree_df with a new 'tree_dens' column for tree density multiplier.
+    :param tree_sampling_params: Global DBH thresholds and optional parent protocol overrides.
+    :return: Updated tree_df with tree_dens_ha, sampling-area selection and validation diagnostics.
     """
+    settings = tree_sampling.normalize_tree_sampling_params(tree_sampling_params)
     print('\tCalculating tree density (per hectare)')
     tree_df = tree_df.copy()
 
@@ -1041,6 +1048,20 @@ def _calc_tree_density(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame:
         ~parent_missing & ~parent_id.isin(duplicate_ids) & ~parent_id.isin(set(plot_ids.dropna()))
     ] = 'orphan_tree_record'
 
+    required = tree_df.get(
+        'tree_density_required', pd.Series(True, index=tree_df.index)
+    ).fillna(True).astype(bool)
+    eligible_ids = parent_id.loc[required & parent_issue.eq('')]
+    eligible = valid_plots.loc[valid_plots.index.isin(eligible_ids)]
+    resolution = tree_sampling.resolve_tree_sampling_thresholds(eligible, settings)
+    sampling_issue = parent_id.map(resolution['sampling_issue_code']).fillna('')
+    small_min = parent_id.map(resolution['small_tree_min']).where(
+        required, settings['dbh_thresholds_cm']['small_tree_min']
+    )
+    large_min = parent_id.map(resolution['large_tree_min']).where(
+        required, settings['dbh_thresholds_cm']['large_tree_min']
+    )
+    sampling_valid = sampling_issue.eq('')
     raw_dbh = tree_df.get('_tree_dbh_raw', tree_df['tree_dbh']).copy()
     dbh = pd.to_numeric(tree_df['tree_dbh'], errors='coerce')
     if '_tree_dbh_issue' in tree_df.columns:
@@ -1063,9 +1084,12 @@ def _calc_tree_density(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame:
     valid_count = count_issue.eq('')
 
     radius_class = pd.Series(pd.NA, index=tree_df.index, dtype='object')
-    radius_class.loc[valid_dbh & dbh.ge(12.5)] = 'lgtree'
-    radius_class.loc[valid_dbh & dbh.ge(5) & dbh.lt(12.5)] = 'smtree'
-    radius_class.loc[valid_dbh & dbh.lt(5)] = 'sapling'
+    radius_class.loc[valid_dbh & sampling_valid & dbh.ge(large_min)] = 'lgtree'
+    radius_class.loc[valid_dbh & sampling_valid & dbh.ge(small_min) & dbh.lt(large_min)] = 'smtree'
+    radius_class.loc[valid_dbh & sampling_valid & dbh.lt(small_min)] = 'sapling'
+    # Aggregated saplings were counted in the sapling plot, even when DBH is imputed.
+    source = tree_df.get('tree_density_source_table', pd.Series('', index=tree_df.index))
+    radius_class.loc[valid_dbh & sampling_valid & source.eq('sapling_1.csv')] = 'sapling'
     radius_field = radius_class.map(_PLOT_RADIUS_FIELDS)
 
     selected_multiplier = pd.Series(np.nan, index=tree_df.index, dtype='float64')
@@ -1082,7 +1106,7 @@ def _calc_tree_density(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame:
         selected_radius_issue.loc[class_mask] = parent_id.loc[class_mask].map(issue_map).fillna('')
 
     missing_multiplier = (
-        valid_dbh & parent_issue.eq('') & selected_multiplier.isna()
+        valid_dbh & sampling_valid & parent_issue.eq('') & selected_multiplier.isna()
         & selected_radius_issue.eq('')
     )
     selected_radius_issue.loc[missing_multiplier] = 'invalid_plot_radius'
@@ -1101,7 +1125,7 @@ def _calc_tree_density(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame:
         error_codes = []
         for code in (
             parent_issue.loc[idx], dbh_issue.loc[idx], count_issue.loc[idx],
-            selected_radius_issue.loc[idx],
+            selected_radius_issue.loc[idx], sampling_issue.loc[idx],
         ):
             if code and code not in error_codes:
                 error_codes.append(code)
@@ -1138,7 +1162,9 @@ def _calc_tree_density(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame:
         '; '.join(code.replace('_', ' ') for code in codes.split('|') if code)
         for codes in all_codes
     ]
-    tree_df['tree_dens_ha'] = calculated_density.where(input_valid, 0.0).fillna(0.0)
+    tree_df['tree_dens_ha'] = calculated_density.where(input_valid, 0.0).fillna(0.0).mask(~sampling_valid)
+    tree_df['_tree_sampling_issue_code'] = sampling_issue
+    tree_df['_tree_sampling_protocol_column'] = settings['protocol_column'] or ''
 
     return tree_df
 
@@ -1779,7 +1805,13 @@ def _log_tree_density_issues(
             return pd.NA
         return parent_by_id.loc[parent_id].get('unique_id')
 
-    def log_issue(parent_id, issue_code, results_partial, detail=None):
+    def log_issue(
+            parent_id,
+            issue_code,
+            results_partial,
+            detail=None,
+            density_missing=False
+    ):
         """
         Log one tree-density issue and retain partial-result errors for the summary.
 
@@ -1787,6 +1819,7 @@ def _log_tree_density_issues(
         :param issue_code: Stable machine-readable issue code.
         :param results_partial: Whether the issue caused density to be assigned zero.
         :param detail: Optional human-readable issue detail.
+        :param density_missing: Whether protocol failure kept the density missing instead of zero.
         :return: None.
         """
         unique_id = resolve_unique_id(parent_id)
@@ -1795,7 +1828,8 @@ def _log_tree_density_issues(
             message = f'{message} ({detail})'
         extra = {'unique_id': unique_id, 'issue_code': issue_code}
         if results_partial:
-            full_message = f'{message}; affected density assigned zero'
+            outcome = 'left missing' if density_missing else 'assigned zero'
+            full_message = f'{message}; affected density {outcome}'
             logger.error(full_message, extra=extra)
             partial_log.append((unique_id, full_message))
         else:
@@ -1842,11 +1876,14 @@ def _log_tree_density_issues(
                 f"record {tree.get('tree_density_source_record_id', 'unknown')}"
             )
         for code in codes:
-            if code in radius_issue_codes:
+            if code in radius_issue_codes or code == 'tree_sampling_invalid_protocol':
                 continue
             is_warning = code == 'sapling_dbh_zero_normalized'
             partial = bool(tree.get('tree_density_affected', False)) and not is_warning
-            log_issue(tree.get('ParentGlobalID'), code, results_partial=partial, detail=tree_detail)
+            log_issue(
+                tree.get('ParentGlobalID'), code, results_partial=partial, detail=tree_detail,
+                density_missing=bool(tree.get('_tree_sampling_issue_code', '')),
+            )
 
     # Invalid sapling counts cannot be synthesized into tree rows, so report
     # them directly from their source table. Parent linkage is also checked at
@@ -1880,6 +1917,32 @@ def _log_tree_density_issues(
                 log_issue(parent_id, issue_code, results_partial=True, detail=sapling_detail)
 
     return partial_log
+
+
+def _log_tree_sampling_issues(df: pd.DataFrame, tree_df: pd.DataFrame) -> set[str]:
+    """
+    Report protocol data errors once per affected plot and return its exclusion ID.
+
+    :param df: Parent records with canonical plot identities.
+    :param tree_df: Processed tree records carrying sampling issue codes.
+    :return: Canonical IDs whose tree-derived results must remain missing.
+    """
+    issue = tree_df.get('_tree_sampling_issue_code', pd.Series('', index=tree_df.index))
+    affected = tree_df.loc[issue.eq('tree_sampling_invalid_protocol')]
+    excluded = set()
+    for parent_id, records in affected.groupby('ParentGlobalID'):
+        parent = df.loc[df['GlobalID'].eq(parent_id)]
+        if len(parent) != 1:
+            continue
+        unique_id = parent.iloc[0]['unique_id']
+        column = records['_tree_sampling_protocol_column'].iloc[0]
+        logger.error(
+            f"Invalid or missing tree sampling protocol in column '{column}' for parent {parent_id}; "
+            'tree-derived results left missing for this plot.',
+            extra={'unique_id': unique_id, 'issue_code': 'tree_sampling_invalid_protocol'},
+        )
+        excluded.add(unique_id)
+    return excluded
 
 
 def _merge_saplings_to_trees(tree_df: pd.DataFrame, sapling_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -1996,7 +2059,7 @@ def _normalize_sapling_inputs(sapling_df: pd.DataFrame) -> pd.DataFrame:
         sapling_df[count_col] = count
 
         raw_dbh = sapling_df[dbh_col].copy()
-        dbh = pd.to_numeric(raw_dbh, errors='coerce')
+        dbh = pd.to_numeric(raw_dbh, errors='coerce').astype(float)
         dbh_issue = _classify_numeric_input(raw_dbh, dbh, 'sapling_dbh', allow_zero=True)
         positive_count = count.gt(0)
         # Missing DBH for observed saplings follows the existing 2.5 cm
@@ -2127,7 +2190,8 @@ def process_trees(
         out_folder: str,
         surface_fire_intensity_model: str,
         stand_summary_params: dict,
-        gen_conpyro_df: bool
+        gen_conpyro_df: bool,
+        tree_sampling_params: dict | None = None
 ) -> tuple[pd.DataFrame, list, pd.DataFrame]:
     """
     Get the tree data from CSV files.
@@ -2138,11 +2202,13 @@ def process_trees(
         Options: ['Byram', 'Thomas']
     :param stand_summary_params: Dictionary containing stand summary parameters.
     :param gen_conpyro_df: Boolean indicating whether to generate ConPyro DataFrame.
+    :param tree_sampling_params: Sampling thresholds and optional parent protocol overrides.
     :return: Tuple containing:
         - Updated DataFrame with plot-level attributes.
         - List of columns to keep in the final DataFrame.
         - Master tree DataFrame with selected attributes for export.
     """
+    tree_sampling_params = tree_sampling.normalize_tree_sampling_params(tree_sampling_params)
     print('\nProcessing Tree data')
     in_folder = table_reader.ensure_form_source(in_folder)
 
@@ -2157,7 +2223,9 @@ def process_trees(
     # ### PROCESS PLOT-LEVEL ATTRIBUTES
     # Get plot dataframe and retain ambiguous parent IDs before survey
     # deduplication selects the latest record.
-    df = table_reader.read_table(in_folder, 'survey_0')
+    protocol_column = tree_sampling_params['protocol_column']
+    literal_columns = (protocol_column,) if protocol_column is not None else ()
+    df = table_reader.read_table(in_folder, 'survey_0', literal_text_columns=literal_columns)
     ambiguous_parent_ids = set(
         df.loc[df['GlobalID'].notna() & df['GlobalID'].duplicated(keep=False), 'GlobalID']
     )
@@ -2194,7 +2262,9 @@ def process_trees(
     tree_df = _calc_tree_dbh_classes(tree_df)
     tree_df = _calc_tree_decay_classes(tree_df)
     tree_df = _calc_tree_type(tree_df, tree_params_df)
-    tree_df = _calc_tree_density(df, tree_df)
+    tree_df = _calc_tree_density(df, tree_df, tree_sampling_params=tree_sampling_params)
+    sampling_excluded = _log_tree_sampling_issues(df, tree_df)
+    excluded_plot_ids = set(excluded_plot_ids) | sampling_excluded
     partial_log = _log_tree_density_issues(df, sapling_df, tree_df)
     tree_df = _calc_tree_basal_area(tree_df)
     tree_df = _calc_tree_missing_heights(tree_df, tree_params_df)
@@ -2213,8 +2283,16 @@ def process_trees(
         _log_char_on_unburned_plots(df, tree_df, burned_plot_ids)
     # Calculate weighted attributes
     tree_df = _calc_tree_weighted_attributes(tree_df)
-    # Generate Master Tree DataFrame
+    # Master generation also adds live density/BA columns to the diagnostic tree frame.
     master_tree_df = _gen_master_tree_df(df, tree_df)
+    # Mask afterwards so dead trees cannot turn unknown live-area values into zero.
+    sampling_invalid = tree_df['_tree_sampling_issue_code'].ne('')
+    area_columns = [column for column in tree_df if column.endswith('_ha')]
+    tree_df.loc[sampling_invalid, area_columns] = np.nan
+    master_tree_df.loc[
+        master_tree_df['unique_id'].isin(sampling_excluded),
+        ['dens_live_ha', 'dens_ha', 'ba_live_ha', 'ba_ha'],
+    ] = np.nan
 
     # ### PROCESS STAND_LEVEL (PER HA) ATTRIBUTES
     df, add_columns = _calc_stand_composition(df, tree_df, gen_conpyro_df)

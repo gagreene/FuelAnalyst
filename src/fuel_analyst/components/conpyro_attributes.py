@@ -244,4 +244,12 @@ def gen_conpyro_df(df: pd.DataFrame, conpyro_params: dict) -> tuple[pd.DataFrame
         'shrub_fuel_load': df['conpyro_shrub_fuel_load'].fillna(0),
     })
 
+    # Excluded tree inputs are unknown, not measured zero canopy fuel.
+    tree_columns = [
+        'pct_cnfr', 'cfl_ovrstry', 'cbd_ovrstry', 'cfl_midstry', 'cbd_midstry',
+        'dead_branch_fl_midstry', 'ht_ovrstry_live', 'ht_midstry_live',
+        'ht_midstry_dead', 'cbh_ovrstry', 'cbh_midstry', 'fsg',
+    ]
+    conpyro_df.loc[tree_excluded, tree_columns] = np.nan
+
     return conpyro_df, fbp_prep_df
