@@ -318,11 +318,17 @@ def calc_min_ladder_fsg(
     :param fsg_dead_ladder: Fuel strata gap for dead ladder fuels (m)
     :return: Minimum fuel strata gap across all layers (m)
     :raises TypeError: If inputs are not numeric types
+    :raises ValueError: If layer shapes cannot broadcast together
     """
     # Ensure inputs are masked arrays
     fsg = _ensure_masked_array(fsg)
     fsg_live_ladder = _ensure_masked_array(fsg_live_ladder)
     fsg_dead_ladder = _ensure_masked_array(fsg_dead_ladder)
 
+    layers = (fsg, fsg_live_ladder, fsg_dead_ladder)
+    values = np.broadcast_arrays(*(layer.data for layer in layers))
+    missing = np.broadcast_arrays(*(mask.getmaskarray(layer) for layer in layers))
+    combined = mask.array(np.stack(values), mask=np.stack(missing))
+
     # Calculate minimum FSG and assign as final ladder fuel contribution to overall FSG
-    return mask.min([fsg, fsg_live_ladder, fsg_dead_ladder], axis=0)
+    return mask.min(combined, axis=0)

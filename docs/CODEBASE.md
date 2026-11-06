@@ -837,3 +837,14 @@ workflow runs on pushed `v*` release tags or deliberate manual dispatch, not
 automatically on PRs. Files under `development` record design and implementation
 work. Their code snippets and planned filenames may describe an earlier state;
 this file, the README, tests, and production code define current behavior.
+
+
+### ConPyro upstream refresh (2026-11-06)
+
+ConPyro is pinned to `b5d98e873402b86037ef8a2229b76888fc1cfbb3`; upstream still reports package version `0.2.0`. The generated package matches upstream `src/conpyro` with tests/caches excluded. Real `run_conpyro()` regressions cover zero-CBD surface-only outputs for crown models 1 and 2; existing default-model, CFIS and other documented surface-model tests remain in use. All 19 default comparison CSVs, including 51,968 fire rows, were byte-identical to the previous pin. Optional FOFEM execution was disabled in that comparison.
+
+The engine's new O1 grass models require `gcf`, which the FuelAnalyst wrapper does not yet forward. Unknown nonempty stand labels can now follow the upstream inferred-non-fuel policy; missing classes still hit FuelAnalyst's existing skip gate. No automatic grass classification, new runner inputs, or changes to the existing `gfl` mapping are part of this refresh. See Technical Reference section 4.2 and the Unreleased notes.
+
+`_model_flame_components()` temporarily masks the consumed fire metrics on `fire_type=0` rows while deriving flame quantities, then restores the original ConPyro metrics and dtypes. This prevents the FLAME package's 1/2/3-only fire-type validator from aborting pure or mixed non-fuel runs. Inapplicable flame outputs remain missing; callers may request `nonfuel_mask` and `inferred_nonfuel_mask` through the existing output list.
+
+`_get_fofem_fire_csv()` filters explicit `fire_type=0` scenarios before either mortality or emissions backend is imported. Mixed runs write a filtered fire CSV in the stage output directory; the original results stay unchanged. Non-burning rows are kept out of effects merges, then restored, preventing same-plot/date scenarios from inheriting burning-row effects. Pure non-burning inputs skip the backend and add no effects columns. Fresh and reload-only runs are covered for both emissions backends; warnings identify each affected plot.

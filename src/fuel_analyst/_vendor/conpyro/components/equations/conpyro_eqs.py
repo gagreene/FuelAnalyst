@@ -11,6 +11,8 @@ __author__ = ["Gregory A. Greene"]
 import numpy as np
 from numpy import ma as mask
 
+from . import grass_eqs
+
 # ============================================================================
 # MODEL PARAMETER DICTIONARIES
 # ============================================================================
@@ -88,6 +90,8 @@ SROS_PARAMS_DICT = {
     18: (0.15, 0.07207, 2.28189, 2.69568, -0.76090),  # Paper/R 18c
     19: (0.11771, None, None, None, None),  # Stand-adjusted ISI
     21: (120, 0.02751, 1.7, None, None),  # Gray-stage MPB
+    30: (190, 0.0310, 1.4, None, None),  # FBP O1a, ST-X-3 Eq. 36 / Table 6
+    31: (250, 0.0350, 1.7, None, None),  # FBP O1b, ST-X-3 Eq. 36 / Table 6
 }
 
 # Crown Fire Rate of Spread parameters
@@ -364,7 +368,8 @@ def calc_wsv_raz(
 # SURFACE RATE OF SPREAD (SROS) CALCULATIONS
 # ============================================================================
 
-SROS_MODEL_IDS = frozenset((1, 2, 3, 4, 9, 11, 12, 13, 16, 17, 18, 19, 20, 21))
+GRASS_SROS_IDS = (30, 31)
+SROS_MODEL_IDS = frozenset((1, 2, 3, 4, 9, 11, 12, 13, 16, 17, 18, 19, 20, 21, 30, 31))
 SROS_ALIASES = {"9c": 9, "11c": 11, "18c": 18, "r20": 20}
 
 
@@ -382,23 +387,25 @@ def calc_sros(
     stand_type: np.ndarray | None = None,
     mc_sa: np.ndarray | None = None,
     mc_ffmc: np.ndarray | None = None,
+    gcf: np.ndarray | None = None,
 ) -> np.ndarray:
     """Surface ROS in m/min; model 16 needs mc_ffmc, model 17 needs mc_sa.
 
     Wind is in km/h and moisture is percent. Omitted d/e use the model 18c
     registry offsets for compatibility with existing six-argument callers.
     Unused coefficient slots can be supplied as None or NaN.
-    The caller supplies standard ISI for 12/18c and stand-adjusted ISI for
+    The caller supplies standard ISI for 12/18c/30/31 and stand-adjusted ISI for
     9c/11c/13/19; this function does not infer the basis of the supplied index.
 
     :param isi: Dimensionless head-fire Initial Spread Index. Use standard ISI
-        for models 12/18c and stand-adjusted ISI for 9c/11c/13/19. Required as a
+        for models 12/18c/30/31 and stand-adjusted ISI for 9c/11c/13/19. Required as a
         shape/mask input even for wind-based models that do not use its value.
     :param sfc: Surface fuel consumption in kg/m². Used numerically by models
-        4 and 9c; also participates in output broadcasting and input masking.
+        4 and 9c; also participates in output broadcasting and input masking
+        except for O1 (30/31), which does not consume its value or mask.
     :param sros_model: Model ID or label, scalar or array. Labels 9c, 11c and
         18c map to IDs 9, 11 and 18. Model 20 (alias r20) is the wind heuristic;
-        model 21 is the gray-stage MPB model.
+        model 21 is the gray-stage MPB model; 30/O1a and 31/O1b are FBP grass.
     :param sros_param_a: Model-specific coefficient: asymptote amplitude for
         1/2/3/21, squared-ISI coefficient for 4/9c, oblique-asymptote slope for
         11c/12/13/18c, wind scale for 16/17, or linear ISI coefficient for 19.
@@ -416,6 +423,8 @@ def calc_sros(
         2 Douglas-fir/PPDF, 3 mixedwood, 4 pine, 5 spruce. Broadcastable to output.
     :param mc_sa: Stand-adjusted fine fuel moisture content in percent,
         required by model 17. Broadcastable to output.
+    :param gcf: Percent curing, required only for O1a/O1b. Missing consumed
+        values remain masked; finite <=0 becomes 0.1 and >100 becomes 95.
     :param mc_ffmc: FFMC-derived fine fuel moisture content in percent,
         required by model 16. Broadcastable to output.
     :return: Masked array of head-fire surface ROS in m/min. Positional inputs
@@ -443,15 +452,18 @@ def calc_sros(
     values = np.broadcast_arrays(*[x.data for x in inputs])
     index, fuel, codes, a, b, c, d, e = values
     invalid = np.zeros(index.shape, dtype=bool)
-    for x in inputs[:3]:
-        invalid |= np.broadcast_to(mask.getmaskarray(x), index.shape)
+    for position, x in enumerate(inputs[:3]):
+        missing = np.broadcast_to(mask.getmaskarray(x), index.shape)
+        if position == 1:
+            missing = missing & ~np.isin(codes, GRASS_SROS_IDS)
+        invalid |= missing
     # A masked/nonfinite fitted parameter invalidates only cells that consume it.
     for parameter, used_by, stand_codes in zip(
         inputs[3:],
         (
-            (1, 2, 3, 4, 9, 11, 12, 13, 16, 17, 18, 19, 21),
-            (1, 2, 3, 4, 9, 11, 12, 13, 16, 17, 18, 21),
-            (1, 2, 3, 11, 12, 13, 16, 17, 18, 21),
+            (1, 2, 3, 4, 9, 11, 12, 13, 16, 17, 18, 19, 21, 30, 31),
+            (1, 2, 3, 4, 9, 11, 12, 13, 16, 17, 18, 21, 30, 31),
+            (1, 2, 3, 11, 12, 13, 16, 17, 18, 21, 30, 31),
             (18,),
             (18,),
         ),
@@ -527,6 +539,10 @@ def calc_sros(
             result[selected] = a[selected] * x
         elif code == 20:
             result[selected] = 0.2 * context(wsv, "wsv", selected)
+        elif code in GRASS_SROS_IDS:
+            curing = context(None if gcf is None else grass_eqs.calc_grass_curing_factor(gcf),
+                             "gcf", selected)
+            result[selected] = curing * a[selected] * (1 - np.exp(-b[selected] * x)) ** c[selected]
     return mask.masked_invalid(mask.array(result, mask=invalid))
 
 
@@ -541,6 +557,7 @@ def calc_bros(
     sros_param_e: np.ndarray | None = None,
     *,
     stand_type: np.ndarray | None = None,
+    gcf: np.ndarray | None = None,
 ) -> np.ndarray:
     """Calculate backing surface ROS in m/min using a backing spread index.
 
@@ -587,6 +604,7 @@ def calc_bros(
         sros_param_d,
         sros_param_e,
         stand_type=stand_type,
+        gcf=gcf,
     )
 
 
@@ -639,11 +657,11 @@ def calc_isf(
 
     # Wind-only models have no zero-wind slope-equivalent inverse.
     supported = np.isin(
-        mask.asarray(sros_model).compressed(), [1, 2, 3, 4, 9, 11, 12, 13, 18, 19, 21]
+        mask.asarray(sros_model).compressed(), [1, 2, 3, 4, 9, 11, 12, 13, 18, 19, 21, 30, 31]
     )
     if not np.all(supported):
         raise ValueError("Selected surface model has no terrain inversion")
-    selected = np.isin(model_codes, [1, 2, 3, 21]) & valid_model
+    selected = np.isin(model_codes, [1, 2, 3, 21, 30, 31]) & valid_model
     if np.any(selected):
         # Boolean indexing owns these arrays; masking cannot mutate caller inputs.
         a, b, c, baseline, slope_factor = (
@@ -841,6 +859,8 @@ def normalize_sros_model(value) -> mask.MaskedArray:
     def parse(item):
         if isinstance(item, (str, np.str_)):
             label = item.strip().lower()
+            if label in ('o1a', 'o1b'):
+                return 30 if label == 'o1a' else 31
             if label in SROS_ALIASES:
                 return SROS_ALIASES[label]
             if label.isdigit():

@@ -295,6 +295,38 @@ def _calc_flame_depth(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _get_fofem_fire_csv(fire_csv_path: str, out_dir: str, plot_id_col: str) -> Optional[str]:
+    """
+    Exclude explicitly non-burning scenarios from a FOFEM stage's fire inputs.
+
+    :param fire_csv_path: Original ConPyro results CSV; this file is never modified.
+    :param out_dir: Stage output directory for a filtered copy when needed.
+    :param plot_id_col: Column identifying plots in the fire results.
+    :return: Original or filtered CSV path, or None if no scenarios remain. Log skipped
+        scenarios by plot and write a filtered CSV only when burning scenarios remain.
+    """
+    fire_df = pd.read_csv(fire_csv_path, low_memory=False)
+    if 'fire_type' not in fire_df.columns:
+        return fire_csv_path
+    nonburning = fire_df['fire_type'].eq(0)
+    if not nonburning.any():
+        return fire_csv_path
+
+    stage = os.path.basename(out_dir).replace('_', ' ')
+    for plot_id, rows in fire_df.loc[nonburning].groupby(plot_id_col, dropna=False):
+        logger.warning(
+            f'Skipped {len(rows)} non-burning scenario(s) (fire_type=0) in {stage}. '
+            'ConPyro results are retained; fire effects are not modelled for these scenarios.',
+            extra={'unique_id': plot_id, 'issue_code': 'fofem_nonburning_scenario'},
+        )
+    burning_df = fire_df.loc[~nonburning]
+    if burning_df.empty:
+        return None
+    filtered_path = os.path.join(out_dir, 'conpyro_burning_scenarios.csv')
+    helper.export_csv(burning_df, filtered_path)
+    return filtered_path
+
+
 def _log_cfis_fuel_type_issues(df: pd.DataFrame, input_params: dict, plot_id_col: str = 'unique_id') -> None:
     """
     Log a warning for each plot whose CFIS surface fuel consumption is calculated without an FBP fuel type.
@@ -550,8 +582,20 @@ def _model_flame_components(
     :param df: DataFrame with ConPyro output parameters.
     :param flame_comp_out_list: List of flame component variables to calculate and add to the DataFrame.
     :param force_flame_res_time_limits: Passed through to :func:`_calc_flame_res_time`.
-    :return: DataFrame with additional flame component columns.
+    :return: DataFrame with additional flame component columns. Non-burning rows
+        retain their ConPyro metrics and have missing, inapplicable flame quantities.
     """
+    # FLAME models accept burning types 1-3, not ConPyro's non-burning type 0.
+    # Temporarily mask the consumed fire metrics, then restore the engine outputs.
+    nonburning = df['fire_type'].eq(0)
+    original_fire = None
+    if nonburning.any():
+        fire_columns = ['fire_type', 'hfi', 'hros', 'tfc']
+        original_fire = df[fire_columns].copy()
+        df = df.copy()
+        for column in fire_columns:
+            df[column] = df[column].where(~nonburning)
+
     # Calculate in-stand wind speed (km/h)
     print('\tCalculating in-stand wind speed...')
     df = _calc_instand_ws(df)
@@ -580,6 +624,8 @@ def _model_flame_components(
     print('\tCalculating flame depth...')
     df = _calc_flame_depth(df)
 
+    if original_fire is not None:
+        df[original_fire.columns] = original_fire
     return df
 
 
@@ -622,6 +668,17 @@ def _model_fofem_emissions(
     fofem_units.validate_consume_units(in_fofem_consume_csv_path, emissions_units)
 
     model_select = str(fofem_emissions_params.get('model_select', 'pyfofem')).strip().lower()
+    if model_select not in ('pyfofem', 'fof_gui'):
+        raise ValueError(
+            f'Invalid fofem_emissions model_select "{fofem_emissions_params.get("model_select")}". '
+            f'Valid options are: ["pyfofem", "fof_gui"]'
+        )
+    fire_csv_path = _get_fofem_fire_csv(
+        fire_csv_path, emissions_dir, conpyro_params['plot_id_col_name']
+    )
+    if fire_csv_path is None:
+        return df
+
     if model_select == 'pyfofem':
         from .components import fofem_emissions as fe
 
@@ -649,18 +706,17 @@ def _model_fofem_emissions(
             'num_workers': num_workers,
             'return_df': True,
         }
-    else:
-        raise ValueError(
-            f'Invalid fofem_emissions model_select "{fofem_emissions_params.get("model_select")}". '
-            f'Valid options are: ["pyfofem", "fof_gui"]'
-        )
 
     # Run FOFEM emissions modelling with the plot-level fire behavior results from ConPyro
     emiss_df = fe.process_emissions(**process_emissions_kwargs)
 
+    # Keep non-burning scenarios out of the merge, including those sharing a plot/date
+    # with a burning scenario. They must never inherit that scenario's fire effects.
+    nonburning = df.get('fire_type', pd.Series(index=df.index, dtype=float)).eq(0)
+    nonburning_df = df.loc[nonburning]
     # Merge emissions results back to original plot_fire_df to preserve all columns
     df = pd.merge(
-        df,
+        df.loc[~nonburning],
         emiss_df,
         left_on=[conpyro_params['plot_id_col_name'], 'wx_date'],
         right_on=['#PlotId', 'wx_date'],
@@ -670,6 +726,8 @@ def _model_fofem_emissions(
 
     # Drop columns with "_fofem_emissions" suffix
     df = df.drop(columns=['#PlotId'] + [col for col in df.columns if col.endswith('_fofem_emissions')])
+    if not nonburning_df.empty:
+        df = pd.concat([df, nonburning_df], ignore_index=True)
 
     return df
 
@@ -693,12 +751,18 @@ def _model_fofem_mortality(
     :param conpyro_params: Dictionary of ConPyro model parameters.
     :return: DataFrame with FOFEM mortality results merged.
     """
-    from .components import fofem_mortality as fm
-
     # Create FOFEM mortality output directory and remove any existing files if it already exists
     mortality_dir = os.path.join(out_dir, 'fofem_mortality')
     os.makedirs(mortality_dir, exist_ok=True)
     helper.delete_files(mortality_dir)
+
+    fire_csv_path = _get_fofem_fire_csv(
+        fire_csv_path, mortality_dir, conpyro_params['plot_id_col_name']
+    )
+    if fire_csv_path is None:
+        return df
+
+    from .components import fofem_mortality as fm
 
     # Run FOFEM mortality modelling with the plot-level fire behavior results from ConPyro
     tree_mort_df, severity_df = fm.process_mortality(
@@ -711,9 +775,13 @@ def _model_fofem_mortality(
     )
     del tree_mort_df
 
+    # Keep non-burning scenarios out of the merge, including those sharing a plot/date
+    # with a burning scenario. They must never inherit that scenario's fire effects.
+    nonburning = df.get('fire_type', pd.Series(index=df.index, dtype=float)).eq(0)
+    nonburning_df = df.loc[nonburning]
     # Merge severity results back to original plot_fire_df to preserve all columns
     df = pd.merge(
-        df,
+        df.loc[~nonburning],
         severity_df,
         left_on=[conpyro_params['plot_id_col_name'], 'wx_date'],
         right_on=[fofem_mortality_params['plot_id_col_name'], 'wx_date'],
@@ -723,6 +791,8 @@ def _model_fofem_mortality(
 
     # Drop columns with "_fofem_mortality" suffix
     df = df.drop(columns=[col for col in df.columns if col.endswith('_fofem_mortality')])
+    if not nonburning_df.empty:
+        df = pd.concat([df, nonburning_df], ignore_index=True)
 
     return df
 

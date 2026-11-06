@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The fire-behaviour wrapper now preserves non-burning (`fire_type=0`) rows without sending that unsupported fire type to FLAME. Core fire outputs stay zero and inapplicable flame quantities stay missing; mixed inputs continue modelling their burning rows. Optional FOFEM mortality and both emissions backends skip explicitly non-burning scenarios, including reloaded results, and log the skip by plot. Combined results retain those ConPyro rows without calculated fire effects.
+
+- Refreshed vendored ConPyro from `13c497e` to upstream `b5d98e873402b86037ef8a2229b76888fc1cfbb3` (the upstream package version remains `0.2.0`). Zero-canopy-bulk-density forest scenarios now produce surface-only fire metrics, including zero crown consumption/intensity under wind-only crown models. The upstream update also corrects mixed-grid precision, repeated CFIS runs and ladder-input broadcasting, and introduces O1 grass equations and explicit non-fuel handling.
+- Nonempty unknown stand labels reaching ConPyro now follow its inferred non-fuel policy and yield zero physical fire outputs; FuelAnalyst's earlier exclusion of missing stand classes is unchanged. Existing forest fuel-consumption floors remain in effect when FuelAnalyst passes `sfc=None`. The runner does not yet forward grass curing (`gcf`), so O1 surface models 30/31 require separate wrapper integration and are not advertised as supported runner options in this refresh.
+- The default example comparison retained all 19 CSVs byte-for-byte, including 51,968 ConPyro fire/flame result rows across 17 modelled plots. This comparison generated FOFEM input tables but did not execute FOFEM mortality or emissions models.
+
 - Trees Survey123 form version `2026.11.06` adds hidden `sampling_protocol` metadata defaulting to `CWC`, immediately before `tree_large_present`. Republish the form to collect the new field. FuelAnalyst still does not require a protocol column under its default configuration.
 
 - Tree sampling protocol labels now retain literal numeric-looking and NA-like text during CSV, Excel and other supported format reads. Registered labels such as `001` and `NA` no longer lose tree-derived results because of input inference; other columns retain their existing parsing behavior.
