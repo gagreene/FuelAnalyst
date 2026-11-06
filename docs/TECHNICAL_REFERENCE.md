@@ -211,6 +211,20 @@ The configured protocol column is preserved as literal text during input reading
 
 A plot with an invalid protocol has missing density, expansion and per-area tree quantities, missing stand summaries, and one Trees error with plot identity. Diagnostic tree rows are retained. The existing tree-exclusion marker keeps the plot out of FOFEM consumption and mortality inputs and leaves ConPyro tree inputs missing and ineligible. FBP preparation retains plot identity without a species ranking. Independently measured plant, canopy and woody values remain available. Existing non-protocol measurement-error handling is unchanged.
 
+### Missing canopy cover and ConPyro eligibility
+
+ConPyro `stand_density` is an L/M/H class derived from the configured canopy-cover field, not a trees-per-hectare value. Missing source cover leaves this class empty, even if live trees are present. FuelAnalyst records a plot-specific warning in the ConPyro Attributes column of `fuelanalyst_errors.csv`, identifying the source field. A measured 0% remains valid low-density cover and does not trigger this warning.
+
+The exporter still fills missing numeric `canopy_cover` with zero; that exported zero does not prove zero was observed. The ConPyro runner skips missing stand classes and explains the separate roles of canopy cover and live species composition. Recover or explicitly estimate the source measurement, then regenerate the ConPyro input CSV and weather merge. These diagnostic changes do not alter classifications, missing-value defaults or model eligibility.
+
+### Tree presence flags
+
+The Trees parent fields `tree_large_present`, `tree_small_present` and `sapling_present` explicitly mark sampling classes absent when set to `N` (case-insensitive, surrounding whitespace ignored). Missing, blank or unrecognized values preserve legacy processing and do not establish absence. Direct-tree classes use the configured, per-protocol DBH thresholds after the existing 0.1 cm rounding; aggregated saplings use their source-table flag regardless of DBH.
+
+Absent-class repeat records are skipped before species validation and modelling. Conflicts produce a plot-specific Trees warning naming the source table and record IDs. When both direct-tree flags are `N`, direct records are skipped even if DBH or protocol information is missing. Ambiguous parent identities cannot authorize skipping records. A repeat table may be omitted only when every retained parent unambiguously marks its corresponding classes absent; otherwise the existing missing-table error remains.
+
+With all three flags `N`, density, basal-area and biomass/canopy-load sums are zero, including requested size-class sums. Heights, CBH and other undefined means/extrema remain missing; no synthetic individual trees or mortality rows are created. Radius warnings are suppressed for explicitly absent classes. Blank flags with no records retain missing sums. Existing exclusion rules still leave results missing for invalid plots; downstream model-specific missing-value defaults are unchanged.
+
 ## 2.3 Woody Debris Dictionary
 
 The woody debris dictionary controls transect parameters and the three concurrent debris measurement protocols. Each protocol can be enabled or disabled independently. The dictionary has three top-level keys: protocol_transect_params, woody_debris_classes (one sub-dictionary per protocol, named canadian, us, and modified), and measure_vs_tally_qmd_comparison.

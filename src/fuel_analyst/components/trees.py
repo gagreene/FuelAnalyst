@@ -450,6 +450,7 @@ def _calc_stand_attributes(
 
     # Initialize a list of keep columns for the final master DataFrame
     keep_columns = []
+    confirmed_absence = _get_tree_absence(df).all(axis=1)
 
     for att_name, att_dict in stand_summary_params.items():
         att = att_dict.get('att_source', att_name)
@@ -509,6 +510,8 @@ def _calc_stand_attributes(
                     else:
                         colname = f'stand_{att_name}{units}_{summary}_{metric}'.replace('_total', '')
                     new_columns[colname] = df.GlobalID.map(value)
+                    if metric == 'sum' and att in ['dens', 'ba', 'cfl', 'foliage', 'branches', 'wood', 'bark']:
+                        new_columns[colname] = new_columns[colname].mask(confirmed_absence, 0.)
             else:
                 # Get sum of cfl values by plot
                 value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum()
@@ -566,6 +569,8 @@ def _calc_stand_attributes(
                             else:
                                 colname = f'stand_{att_name}{units}_{summary}_{class_label}_{metric}'.replace('_total', '')
                             new_columns[colname] = df.GlobalID.map(value)
+                            if metric == 'sum' and att in ['dens', 'ba', 'cfl', 'foliage', 'branches', 'wood', 'bark']:
+                                new_columns[colname] = new_columns[colname].mask(confirmed_absence, 0.)
                     else:
                         value = tree_df[mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum()
                         # Unweight values
@@ -1585,6 +1590,71 @@ def _exclude_unlisted_species(
     return _remaining(tree_df, unlisted_trees), _remaining(sapling_df, unlisted_saplings), sorted(affected)
 
 
+def _filter_tree_presence(
+        df: pd.DataFrame,
+        tree_df: pd.DataFrame,
+        sapling_df: pd.DataFrame,
+        tree_sampling_params: dict | None
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Skip records belonging to sampling classes explicitly marked absent.
+
+    :param df: Plot parents with optional Survey123 presence flags.
+    :param tree_df: Direct tree records before species or measurement validation.
+    :param sapling_df: Aggregated sapling records before validation.
+    :param tree_sampling_params: DBH thresholds and optional protocol overrides.
+    :return: Copies without absent-class records; logs conflicting records in Trees.
+    """
+    absence = _get_tree_absence(df)
+    if not absence.any(axis=None):
+        return tree_df.copy(), sapling_df.copy()
+    flags = absence.set_axis(df['GlobalID']).to_dict()
+    direct_flags = pd.DataFrame(
+        {name: tree_df['ParentGlobalID'].map(values).fillna(False).astype(bool)
+         for name, values in flags.items()}, index=tree_df.index,
+    )
+    # Both direct classes absent disables the repeat even when DBH or protocol is missing.
+    skip_tree = direct_flags['lgtree'] & direct_flags['smtree']
+    eligible = df.loc[
+        df['GlobalID'].notna() & ~df['GlobalID'].duplicated(keep=False)
+        & ~df.get('_parent_id_ambiguous', pd.Series(False, index=df.index)).fillna(False).astype(bool)
+        & df['GlobalID'].isin(tree_df.loc[~skip_tree, 'ParentGlobalID'])
+    ]
+    thresholds = tree_sampling.resolve_tree_sampling_thresholds(eligible, tree_sampling_params)
+    thresholds.index = eligible['GlobalID']
+    dbh = pd.to_numeric(tree_df['tree_dbh'], errors='coerce').round(1)
+    small = tree_df['ParentGlobalID'].map(thresholds['small_tree_min'])
+    large = tree_df['ParentGlobalID'].map(thresholds['large_tree_min'])
+    valid = dbh.gt(0) & np.isfinite(dbh) & small.notna() & large.notna()
+    skip_tree |= valid & (
+        (dbh.ge(large) & direct_flags['lgtree'])
+        | (dbh.ge(small) & dbh.lt(large) & direct_flags['smtree'])
+        | (dbh.lt(small) & direct_flags['sapling'])
+    )
+    skip_sapling = sapling_df['ParentGlobalID'].map(flags['sapling']).fillna(False).astype(bool)
+    for label, records, mask in (
+            ('tree_plot_2', tree_df, skip_tree), ('sapling_1', sapling_df, skip_sapling)
+    ):
+        skipped = records.loc[mask]
+        if label == 'sapling_1':
+            # A valid no-saplings placeholder agrees with absence; it is not a conflict.
+            placeholder = skipped['sapling_species'].eq('NO_SAPLINGS')
+            for field in ('sapling_live_count', 'sapling_dead_count'):
+                raw = skipped[field]
+                missing = raw.isna() | raw.astype('string').str.strip().eq('').fillna(False)
+                placeholder &= missing | pd.to_numeric(raw, errors='coerce').eq(0)
+            skipped = skipped.loc[~placeholder]
+        plot_ids = _resolve_parent_unique_ids(df, skipped['ParentGlobalID'])
+        for unique_id, group in skipped.assign(_plot=plot_ids.values).groupby('_plot', dropna=False):
+            ids = group.get('GlobalID', pd.Series(dtype='object')).dropna().astype(str).tolist()
+            logger.warning(
+                f'{len(group)} record(s) in {label} were skipped because their sampling class '
+                f'is marked absent (presence flag N); record IDs: {", ".join(ids)}.',
+                extra={'unique_id': unique_id, 'issue_code': 'tree_presence_conflict'},
+            )
+    return tree_df.loc[~skip_tree].copy(), sapling_df.loc[~skip_sapling].copy()
+
+
 def _gen_master_tree_df(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame:
     """
     Generate a master tree DataFrame with selected and renamed columns for export.
@@ -1697,6 +1767,26 @@ def _get_temesgen_tree_height(
     else:
         # If incorrect model number entered, return np.nan
         return np.nan
+
+
+def _get_tree_absence(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Identify explicit absence only for uniquely identified plot parents.
+
+    :param df: Plot parents, optionally carrying presence flags and ambiguity markers.
+    :return: Boolean lgtree, smtree and sapling columns aligned with the parent index.
+    """
+    valid = (
+        df['GlobalID'].notna() & df['GlobalID'].astype('string').str.strip().ne('').fillna(False)
+        & ~df['GlobalID'].duplicated(keep=False)
+        & ~df.get('_parent_id_ambiguous', pd.Series(False, index=df.index)).fillna(False).astype(bool)
+    )
+    return pd.DataFrame({
+        name: df.get(field, pd.Series('', index=df.index)).astype('string').str.strip().str.upper()
+        .eq('N').fillna(False) & valid
+        for name, field in [('lgtree', 'tree_large_present'), ('smtree', 'tree_small_present'),
+                            ('sapling', 'sapling_present')]
+    }, index=df.index)
 
 
 def _log_char_on_unburned_plots(df: pd.DataFrame, tree_df: pd.DataFrame, burned_plot_ids: set) -> None:
@@ -1835,9 +1925,13 @@ def _log_tree_density_issues(
         else:
             logger.warning(message, extra=extra)
 
+    # Explicitly absent classes do not require a sampling radius.
+    absence = _get_tree_absence(df).set_axis(df['GlobalID']).to_dict()
     # Parent-level radius issues are reported even when no tree used the radius.
     for _, plot in df.iterrows():
         for radius_class in _PLOT_RADIUS_FIELDS:
+            if pd.notna(plot.get('GlobalID')) and absence[radius_class].get(plot['GlobalID'], False):
+                continue
             issue_code = plot.get(f'_plot_{radius_class}_radius_issue', '')
             if not issue_code:
                 continue
@@ -2128,6 +2222,42 @@ def _print_tree_density_summary(partial_log: list[tuple]) -> None:
     print('\tSee the run-level error report (fuelanalyst_errors.csv) for full details.')
 
 
+def _read_tree_repeats(source: table_reader.FormSource, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Read tree repeats, allowing omitted tables only for explicitly absent classes.
+
+    :param source: Resolved Trees form source.
+    :param df: Retained plot parents with optional presence flags.
+    :return: Direct-tree and sapling frames, including typed empty repeat schemas
+        when absence permits an omitted table. Required missing tables still raise.
+    """
+    absence = _get_tree_absence(df)
+    # These are the fields consumed by the calculation pipeline for an empty repeat.
+    tree_columns = (
+        'ObjectID GlobalID tree_id tree_species tree_type tree_status tree_dbh tree_ht '
+        'tree_cbh tree_dcbh tree_dcy_class_cnfr tree_dcy_class_brdlf tree_ht_class '
+        'tree_crwn_broken_top tree_fuel_bed_ht tree_bark_char_high tree_bark_char_low '
+        'tree_bark_char_azim tree_crwn_discolor_prcnt tree_crwn_discolor tree_crwn_consumed '
+        'tree_basal_char tree_basal_depth_of_burn tree_note ParentGlobalID '
+        'CreationDate Creator EditDate Editor'
+    ).split()
+    sapling_columns = (
+        'ObjectID GlobalID sapling_species sapling_live_count sapling_live_dbh '
+        'sapling_live_ht sapling_live_cbh sapling_dead_count sapling_dead_dbh '
+        'sapling_dead_ht ParentGlobalID CreationDate Creator EditDate Editor'
+    ).split()
+    frames = []
+    for stem, allowed, columns in (
+            ('tree_plot_2', (absence['lgtree'] & absence['smtree']).all(), tree_columns),
+            ('sapling_1', absence['sapling'].all(), sapling_columns)
+    ):
+        frame = table_reader.read_table(source, stem, required=not bool(allowed))
+        if frame is None:
+            frame = pd.DataFrame({column: pd.Series(dtype='object') for column in columns})
+        frames.append(frame)
+    return frames[0], frames[1]
+
+
 def _resolve_parent_unique_ids(df: pd.DataFrame, parent_ids: pd.Series) -> pd.Series:
     """
     Map Survey123 parent record IDs to plot unique IDs, leaving ambiguous or unknown parents missing.
@@ -2238,8 +2368,8 @@ def process_trees(
 
     # Read the sapling and tree tables, and leave out the plots that record a species that is not in
     # tree_parameters.csv (each is logged), so that the other plots are still calculated
-    sapling_df = table_reader.read_table(in_folder, 'sapling_1')
-    tree_df = table_reader.read_table(in_folder, 'tree_plot_2')
+    tree_df, sapling_df = _read_tree_repeats(in_folder, df)
+    tree_df, sapling_df = _filter_tree_presence(df, tree_df, sapling_df, tree_sampling_params)
     tree_df, sapling_df, excluded_plot_ids = _exclude_unlisted_species(df, tree_df, sapling_df, tree_params_df)
 
     # ### PROCESS SAPLING ATTRIBUTES

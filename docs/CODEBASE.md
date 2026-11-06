@@ -629,6 +629,14 @@ Measured records use configured cutoffs (defaults 5/12.5 cm); `sapling_1.csv` so
 
 `helper.TREES_EXCLUDED_COLUMN` carries protocol exclusions through the existing downstream flow. ConPyro masks tree-derived inputs for excluded plots, FOFEM consumption excludes them, and positive-density filtering excludes their mortality rows. No sampling settings need to be duplicated in model dictionaries. Standard forms are unchanged: mixed-protocol users add the configured label column to their Trees parent data.
 
+### Tree presence flags
+
+The Trees parent fields `tree_large_present`, `tree_small_present` and `sapling_present` explicitly mark sampling classes absent when set to `N` (case-insensitive, surrounding whitespace ignored). Missing, blank or unrecognized values preserve legacy processing and do not establish absence. Direct-tree classes use the configured, per-protocol DBH thresholds after the existing 0.1 cm rounding; aggregated saplings use their source-table flag regardless of DBH.
+
+Absent-class repeat records are skipped before species validation and modelling. Conflicts produce a plot-specific Trees warning naming the source table and record IDs. When both direct-tree flags are `N`, direct records are skipped even if DBH or protocol information is missing. Ambiguous parent identities cannot authorize skipping records. A repeat table may be omitted only when every retained parent unambiguously marks its corresponding classes absent; otherwise the existing missing-table error remains.
+
+With all three flags `N`, density, basal-area and biomass/canopy-load sums are zero, including requested size-class sums. Heights, CBH and other undefined means/extrema remain missing; no synthetic individual trees or mortality rows are created. Radius warnings are suppressed for explicitly absent classes. Blank flags with no records retain missing sums. Existing exclusion rules still leave results missing for invalid plots; downstream model-specific missing-value defaults are unchanged.
+
 ### Stand-summary configuration
 
 `summary_permutation` supports `all`, `exact`, and `combined`. The `combined`
@@ -734,16 +742,22 @@ See the 0.1.1 [release notes](RELEASE_NOTES.md).
 
 ### Canopy cover
 
-Missing canopy cover (`cc`) is handled inconsistently and without any
-warning, and the two downstream paths default in opposite directions:
+Missing canopy cover (`cc`) still has inconsistent downstream defaults. Missing
+source cover is now reported during ConPyro attribute generation:
 
-- `conpyro_attributes.py` fills `canopy_cover` with `0` (`.fillna(0)`) before
-  building ConPyro/wind-speed inputs, so a plot with unmeasured cover is
-  modeled as fully open — cascading into `instand_ws_mps`, `flame_length_m`,
-  and `flame_ht_m` in `run_conpyro.py`. `_calc_stand_density()` in the same
-  file classifies density from the *raw*, still-NaN value first, so
-  `conpyro_density_class` ends up `None` while `canopy_cover` on the same row
-  is separately filled to `0` — the two derived fields disagree.
+- `_calc_stand_density()` logs `conpyro_missing_canopy_cover` once per plot in
+  the ConPyro Attributes error-report column, naming the configured source field.
+  It classifies raw cover, so missing cover leaves the density class empty even
+  when live trees and positive tree density are present. `gen_conpyro_df()` still
+  separately fills exported `canopy_cover` with zero. The normal ConPyro runner
+  skips these rows because their density class is missing. Manually supplying
+  a class without correcting cover can expose the zero-cover assumption to
+  ConPyro and the in-stand wind/flame calculations.
+- `_log_skipped_empty_stand_plots()` distinguishes `stand_density` (L/M/H from
+  cover) from `stand_type` (live species composition). It directs users to the
+  raw source cover in `master_fuel_df.csv` and the Trees / ConPyro Attributes
+  report columns, and to regenerate both ConPyro inputs and the weather merge.
+  It does not infer the original cause from potentially zero-filled cover.
 - `fbp_fuel_type.py` never fills `cc`; NaN comparisons (`cc < 10`, etc.) are
   always `False`, so a missing value falls through to the fuel-typing
   `else` branches (`BCLCS_LEVEL_2 = 'T'`, `BCLCS_LEVEL_5 = 'DE'`) —
@@ -751,8 +765,8 @@ warning, and the two downstream paths default in opposite directions:
   ConPyro path. The vendored `bcwft2018.py` engine's `CROWN_CLOSURE is None`
   fallback branches never trigger for a NaN float, so it also falls through
   to numeric-comparison branches silently.
-- `canopy_cover.py` never logs; `error_handling.py` already registers a
-  `'Canopy Cover'` report source, but nothing in that component uses it.
+- `canopy_cover.py` itself does not log missing observations; the new warning
+  is emitted by `conpyro_attributes.py` when ConPyro inputs are generated.
   `fofem_mortality.py`'s `_log_and_drop_incomplete_rows()` is the only place
   that checks, logs, and drops rows for NaN `canopy_cover`, but by the time
   data reaches it, `canopy_cover` has usually already been silently
