@@ -758,6 +758,15 @@ Every completed `run_conpyro()` call also writes `run_conpyro_errors.csv`, with 
 A CFIS run (`cfo_model` 10) on plots without an FBP fuel type, and each plot left out of the run because its
 `stand_density` or `stand_type` is empty, is logged per plot in its ConPyro Fire Behavior column; the run continues.
 
+The refreshed engine produces surface-only fire metrics for valid forest scenarios with zero canopy bulk density.
+Explicit non-burning scenarios (`fire_type=0`) retain zero fire metrics and missing flame quantities. FOFEM skips
+these scenarios, logs the skip, and leaves their fire effects unmodelled. An unrecognized, nonempty stand label can
+be interpreted as non-fuel by ConPyro, so check stand codes when interpreting zero results.
+
+The bundled engine includes O1a/O1b grass equations, but `run_conpyro()` does not yet forward their required grass
+curing input (`gcf`). Grass models 30/31 are not currently supported runner options. See the
+[ConPyro modelling reference](docs/TECHNICAL_REFERENCE.md#42-conpyro-fire-behaviour-modelling) for details.
+
 ### Configuration
 
 Default dictionaries are defined in:
