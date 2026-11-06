@@ -627,7 +627,7 @@ The configured protocol column is preserved as literal text during input reading
 
 Measured records use configured cutoffs (defaults 5/12.5 cm); `sapling_1.csv` source records always use their counted sapling area. This deliberately corrects out-of-class sapling results even with default settings. Source provenance is assigned during input normalization/merge. Missing source markers in legacy direct helper calls retain measured-tree behavior. DBH rounding to 0.1 cm and reporting/classification bins are unchanged.
 
-`helper.TREES_EXCLUDED_COLUMN` carries protocol exclusions through the existing downstream flow. ConPyro masks tree-derived inputs for excluded plots, FOFEM consumption excludes them, and positive-density filtering excludes their mortality rows. No sampling settings need to be duplicated in model dictionaries. Standard forms are unchanged: mixed-protocol users add the configured label column to their Trees parent data.
+`helper.TREES_EXCLUDED_COLUMN` carries protocol exclusions through the existing downstream flow. ConPyro masks tree-derived inputs for excluded plots, FOFEM consumption excludes them, and positive-density filtering excludes their mortality rows. No sampling settings need to be duplicated in model dictionaries. Trees form version `2026.11.06` adds hidden `sampling_protocol` metadata with default `CWC`, immediately before `tree_large_present`. Older exports remain valid with default settings; mixed-protocol adapters must populate the actual labels and explicitly enable protocol overrides.
 
 ### Tree presence flags
 
