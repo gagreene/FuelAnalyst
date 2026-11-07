@@ -1,0 +1,92 @@
+"""Real-engine coverage for CSV-selected forest and open-fuel scenarios."""
+import numpy as np
+import pandas as pd
+import pytest
+
+from real_conpyro_fixtures import ROW, make_params, run_conpyro_module  # noqa: F401
+
+
+def _open_row(category='grass_herbs', model=31, load=0.2):
+    return dict(ROW, unique_id=category, surface_fuel_type=category, stand_type=10, stand_density='L',
+                sros_model=model, slope=0., canopy_cover=0., ht_ovrstry_live=0., cbh_ovrstry=0., fsg=0.,
+                cbd_ovrstry=0., cfl_ovrstry=0., herbaceous_fuel_load=load, grass_fuel_load=0.05,
+                shrub_fuel_load=0.4 if category == 'shrubs' else 0.)
+
+
+def _run(module, tmp_path, rows, curing=60, sros='use_csv'):
+    source = tmp_path / 'inputs.csv'
+    pd.DataFrame(rows).to_csv(source, index=False)
+    settings = make_params(module, sros_model=sros, terrain_wind=False)
+    settings['conpyro']['input_params'].update(grass_curing=curing, model_terrain_effects_on_ffmc=False)
+    module.run_conpyro(str(tmp_path / 'out'), str(source), fire_modelling_params=settings)
+    return pd.read_csv(tmp_path / 'out/fire_behavior/conpyro_results.csv').set_index('unique_id')
+
+
+@pytest.mark.parametrize('curing', [True, None, -1, 101, float('nan'), 'bad'])
+def test_grass_curing_rejects_invalid_settings(run_conpyro_module, tmp_path, curing):
+    with pytest.raises(ValueError, match='grass_curing'):
+        _run(run_conpyro_module, tmp_path, [_open_row()], curing=curing)
+
+
+def test_legacy_dictionary_without_curing_uses_sixty_percent(run_conpyro_module, tmp_path):
+    expected = _run(run_conpyro_module, tmp_path, [_open_row()])
+    settings = make_params(run_conpyro_module, sros_model='use_csv', terrain_wind=False)
+    settings['conpyro']['input_params'].pop('grass_curing')
+    settings['conpyro']['input_params']['model_terrain_effects_on_ffmc'] = False
+    run_conpyro_module.run_conpyro(str(tmp_path / 'legacy'), str(tmp_path / 'inputs.csv'), fire_modelling_params=settings)
+    result = pd.read_csv(tmp_path / 'legacy/fire_behavior/conpyro_results.csv')
+    assert result.sros.iloc[0] == pytest.approx(expected.sros.iloc[0])
+
+
+@pytest.mark.parametrize('mixed', [False, True])
+@pytest.mark.parametrize('category', ['grass_herbs', 'shrubs'])
+def test_open_fuels_use_o1b_curing_and_correct_consumption(run_conpyro_module, tmp_path, mixed, category):
+    row = _open_row(category)
+    rows = [row]
+    if mixed:
+        rows.append(dict(ROW, unique_id='forest', surface_fuel_type='forest', sros_model=13))
+    result = _run(run_conpyro_module, tmp_path, rows)
+    actual = result.loc[category]
+    moisture = (250 * 59.5 / 101) * (101 - ROW['ffmc']) / (59.5 + ROW['ffmc'])
+    fine_fuel = 91.9 * np.exp(-0.1386 * moisture) * (1 + moisture ** 5.31 / 4.93e7)
+    isi = 0.208 * np.exp(0.05039 * ROW['ws']) * fine_fuel
+    expected_ros = 250 * (1 - np.exp(-0.035 * isi)) ** 1.7 * (0.176 + 0.02 * (60 - 58.8))
+    assert actual.sros == pytest.approx(expected_ros)
+    assert actual.sfc == pytest.approx(0.6 if category == 'shrubs' else 0.2)
+    assert actual.fire_type == 1
+    assert actual.cfc == actual.cfi == 0
+    assert np.isfinite(actual[['flame_length_m', 'flame_res_time_sec', 'flame_depth_m']].to_numpy(dtype=float)).all()
+    if mixed:
+        baseline = _run(run_conpyro_module, tmp_path, [rows[1]], sros=13)
+        fields = ['sros', 'hros', 'hfi', 'sfc', 'cfc', 'fire_type']
+        assert result.loc['forest', fields].to_numpy(dtype=float) == pytest.approx(baseline.loc['forest', fields].to_numpy(dtype=float))
+
+
+def test_open_zero_load_remains_nonburning(run_conpyro_module, tmp_path):
+    result = _run(run_conpyro_module, tmp_path, [_open_row(load=0.)])
+    assert result.loc['grass_herbs', ['sfc', 'hfi', 'fire_type']].eq(0).all()
+    assert pd.isna(result.loc['grass_herbs', 'flame_length_m'])
+
+
+def test_scalar_override_records_actual_model_and_applies_nondefault_curing(run_conpyro_module, tmp_path):
+    row = _open_row(model=30)
+    result = _run(run_conpyro_module, tmp_path, [row], curing=90, sros=31)
+    assert result.loc['grass_herbs', 'sros_model'] == 31
+    baseline = _run(run_conpyro_module, tmp_path, [row], curing=60, sros=31)
+    ratio = (0.176 + 0.02 * (90 - 58.8)) / (0.176 + 0.02 * (60 - 58.8))
+    assert result.loc['grass_herbs', 'sros'] == pytest.approx(baseline.loc['grass_herbs', 'sros'] * ratio)
+
+
+def test_surface_models_accept_csv_aliases(run_conpyro_module, tmp_path):
+    result = _run(run_conpyro_module, tmp_path, [_open_row(model='O1b'), dict(ROW, unique_id='forest', sros_model='9c')])
+    assert result.loc['grass_herbs', 'fire_type'] == 1
+    assert result.loc['forest', 'sros'] > 0
+
+
+@pytest.mark.parametrize('stand_type', [None, 'P'])
+def test_unassigned_surface_models_write_empty_results_and_report(run_conpyro_module, tmp_path, stand_type):
+    row = dict(ROW, unique_id='unclassified', stand_type=stand_type, sros_model=None)
+    result = _run(run_conpyro_module, tmp_path, [row])
+    assert result.empty
+    report = pd.read_csv(tmp_path / 'out/run_conpyro_errors.csv')
+    assert report.unique_id.tolist() == ['unclassified']

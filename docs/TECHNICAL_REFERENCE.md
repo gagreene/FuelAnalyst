@@ -336,6 +336,14 @@ The selected estimate supplies both the canopy_cover value and the stand density
 
 The woody_debris_classes sub-dictionary in the ConPyro dictionary defines a dedicated woody debris protocol for ConPyro input (extension "conpyro"), using Canadian diameter classes and producing only a single lt7cm output. This is separate from the stand woody debris protocols in the woody debris dictionary. The ConPyro input reads its woody fuel load from the column woody_kgpm2_conpyro_lt7cm_7 (missing values are set to 0), so the extension "conpyro", the "lt7cm" request, and its \[0, 7\] cutoffs must stay as they are, which is why this class cannot be changed without modifying the ConPyro input specification.
 
+### 2.4.5 Surface model selection
+
+The `sros_model` dictionary maps `forest` to 13, `grass_herbs` to 31, and `shrubs` to 31 by default.
+Live-tree presence takes priority over dominant substrate. Confirmed treeless grass/herb and shrub plots use their
+respective selections; unsupported substrates and incomplete tree observations remain unassigned. The shrub default
+is a temporary O1b grass-model proxy. Model IDs and supported aliases can be changed independently by category.
+See [Section 4.2](#42-conpyro-fire-behaviour-modelling) for classification, fuel-load and curing details.
+
 ## 2.5 FOFEM Consumption Dictionary
 
 The FOFEM consumption dictionary controls how canopy fuels, woody debris, and fire environment parameters are assembled into the FOFEM fuel consumption input file (fofem_consume_si_df.csv or fofem_consume_imperial_df.csv, depending on fofem_processing_units). Canopy fuel inputs use biomass estimates from the CNBE; debris inputs use US-protocol diameter classes. The top-level keys are canopy_fuels, woody_debris_classes, region, season, moisture_regime, soil_heating, and fofem_processing_units. The dictionary is used only when gen_fofem_consume_df is True, which requires the trees, plants and regeneration, and woody debris forms. The columns of the consumption file are described in [3.6.3](#363-fofem-fuel-consumption-variables).
@@ -994,7 +1002,8 @@ The settings of default_fire_modelling_dict are listed in Table 34. Entries that
 | conpyro.run_model | True | Toggle ConPyro fire-behaviour modelling |
 | conpyro.plot_id_col_name | "unique_id" | Column that identifies each plot |
 | conpyro.input_params.cfo_model | 5 | Crown fire initiation model: 1 to 5, 10 (CFIS), or "use_csv" to read it from a column of the input table |
-| conpyro.input_params.sros_model | 13 | Surface rate of spread model: 1 to 4, 9, 11, 12, 13, 16 to 21, the labels "9c", "11c", "18c", and "r20" (model 20), or "use_csv". Model 20 is the R wind heuristic (0.2 times the wind speed, m/min) and model 21 is the legacy gray-stage mountain pine beetle curve (it was model 20 before ConPyro 0.2.0). Models 16, 17, and 20 do not support terrain wind adjustment: set model_terrain_effects_on_wind to False to use them |
+| conpyro.input_params.sros_model | "use_csv" | Read the assigned model from each input row; a scalar overrides all rows. Surface rate of spread model: 1 to 4, 9, 11, 12, 13, 16 to 21, 30 (O1a), 31 (O1b), the labels "9c", "11c", "18c", and "r20" (model 20), or "use_csv". Model 20 is the R wind heuristic (0.2 times the wind speed, m/min) and model 21 is the legacy gray-stage mountain pine beetle curve (it was model 20 before ConPyro 0.2.0). Models 16, 17, and 20 do not support terrain wind adjustment: set model_terrain_effects_on_wind to False to use them |
+| conpyro.input_params.grass_curing | 60 | Finite curing percentage from 0 to 100, passed to ConPyro as gcf for O1 surface models. Applies to grass/herbs and the shrub proxy; forest models ignore it. Upstream normalizes zero curing to 0.1 percent |
 | conpyro.input_params.cros_model | 1 | Crown rate of spread model: 1, 2, or "use_csv" |
 | conpyro.input_params.wx_date | "use_csv" | Weather date, read from the wx_date column, or a YYYYMMDD integer |
 | conpyro.input_params.fmc | None | Foliar moisture content (float, integer, or None); overrides the value derived from wx_date |
@@ -1024,7 +1033,36 @@ When fofem_emissions.force_flame_res_time_limits is True (the default), flame re
 
 The bundled engine is pinned to ConPyro commit `b5d98e873402b86037ef8a2229b76888fc1cfbb3` (upstream version `0.2.0`). A valid forest scenario with zero canopy bulk density now has zero crown-fire occurrence probability, crown fraction burned, crown consumption and crown intensity; its head ROS and intensity equal their surface counterparts. Positive-CBD default example outputs remain unchanged.
 
-Upstream also treats zero, unknown and missing stands as non-fuel. In FuelAnalyst, missing `stand_type` rows are still excluded before the engine call, while a nonempty unrecognized label reaching the engine can produce zero physical fire outputs. Check stand codes when interpreting zeros. The current wrapper supplies forest labels as text and does not forward grass curing (`gcf`); although the vendored engine contains O1a/O1b models 30/31, those models are not yet integrated into the runner's supported options. This refresh does not automatically classify empty-tree plots as grass or non-fuel. Non-burning (`fire_type=0`) rows retain the engine's zero physical fire outputs; their inapplicable flame quantities remain missing instead of being passed as active fires to FLAME. FOFEM mortality and both emissions backends also skip explicit `fire_type=0` scenarios, including when loading existing results. Each affected plot receives a warning in `run_conpyro_errors.csv`. Combined results retain non-burning rows with missing fire-effect values; if no burning scenarios remain, no backend is imported or run and no fire-effect result columns are added. For audits, `nonfuel_mask` and `inferred_nonfuel_mask` can be requested through `conpyro.output_params.out_request`.
+Upstream also treats zero, unknown and missing stands as non-fuel. In FuelAnalyst, missing `stand_type` rows are still excluded before the engine call, while a nonempty unrecognized label reaching the engine can produce zero physical fire outputs. Check stand codes when interpreting zeros. The wrapper preserves forest labels and numeric stand codes, including code 10 for open fuels, and forwards `grass_curing` as `gcf` for O1a/O1b models 30/31. Grass/herb and shrub-proxy classification uses observed tree presence and dominant substrate as described below. Non-burning (`fire_type=0`) rows retain the engine's zero physical fire outputs; their inapplicable flame quantities remain missing instead of being passed as active fires to FLAME. FOFEM mortality and both emissions backends also skip explicit `fire_type=0` scenarios, including when loading existing results. Each affected plot receives a warning in `run_conpyro_errors.csv`. Combined results retain non-burning rows with missing fire-effect values; if no burning scenarios remain, no backend is imported or run and no fire-effect result columns are added. For audits, `nonfuel_mask` and `inferred_nonfuel_mask` can be requested through `conpyro.output_params.out_request`.
+
+### Surface-model assignment and grass inputs
+
+`default_conpyro_dict['sros_model']` contains `forest: 13`, `grass_herbs: 31`, and `shrubs: 31`.
+`conpyro_attributes.py` exports the selected `sros_model` and `surface_fuel_type` in `conpyro_df.csv`.
+Any observed live tree, including counted saplings and trees outside configurable stand-summary classes, selects
+`forest`. Fixed `conpyro_live_trees_present` and `conpyro_live_tree_density` fields in tree/plot outputs document this
+assessment. Presence is independent of density: a live tree with an invalid plot radius is still present.
+
+Without live trees, each sampling class must be observed or explicitly absent before surface classification can proceed.
+Existing `dom_substrate` codes `HG`, `HF`, and `HE` select `grass_herbs`; `SL` and `ST` select `shrubs`.
+Excluded plots, incomplete tree observations, bryoid-dominated plots and unclassified substrates receive no model,
+with plot-specific warnings. They are not silently converted to grass. Trees excluded for species or protocol errors
+remain excluded. The shrub default is an explicit, temporary O1b grass-model proxy until a shrub model is available.
+
+For confirmed treeless grass/herb and shrub-proxy rows, the engine receives stand code 10 and zero live-canopy geometry.
+Grass/herb fuel consumption uses `herbaceous_fuel_load` (grass plus herbs under the defaults); the shrub proxy uses
+`herbaceous_fuel_load + shrub_fuel_load`. Forest fuel-load mapping stays unchanged. Original separate fuel-load columns
+remain in the CSV. The existing FLAME wind routine handles zero canopy height using its documented 0.5 m fallback;
+this is a modelling fallback, not a measured tree height. Flame and optional FOFEM stages retain their existing
+validation and non-burning-row behavior.
+
+`run_conpyro()` defaults to `sros_model='use_csv'`; scalar overrides are still available and the result records the
+model actually selected. `grass_curing` defaults to 60 percent. A legacy custom settings dictionary omitting that key
+also uses 60. This parameter is a constant for the run. The upstream curing policy maps 0 to 0.1 percent.
+Older ConPyro/weather CSVs without `sros_model` must be regenerated through fuel processing and weather merging,
+or run with an explicit scalar SROS setting. The standalone demo refreshes all plot attributes against committed
+weather; the tutorial already rebuilds its weather merge. All-unclassified runs write empty fire results and a plot
+error report instead of failing during concatenation.
 
 ### 4.2.1 Surface fuel consumption and FBP fuel types
 
@@ -1040,9 +1078,17 @@ FOFEM mortality modelling (fofem_mortality\['run_model'\]) merges master_tree_df
 
 Both FOFEM stages exclude explicit non-burning (`fire_type=0`) scenarios before importing or running their backend, including when reloading existing ConPyro results. These rows remain in combined results without calculated fire effects. A burning scenario sharing the same plot and date does not supply effects to a non-burning row. These skips are reported by plot in the ConPyro Fire Behavior column of `run_conpyro_errors.csv`.
 
-Before emissions modelling, FuelAnalyst sets the 10-hour moisture content from the ConPyro mc_sa output, the duff moisture content from mc_dmc, and the 1000-hour moisture content from the drought code (dc) of each weather scenario. These replace the moisture regime values in the consumption file ([2.5.4](#254-moisture-regime)). Soil moisture is used only by the fof_gui engine when soil heating is enabled, and it stays at the regime value. The fire season is handled differently by the two engines. The pyfofem engine ignores the Season field of the consumption file and assigns a season to each scenario from its weather date: Spring from 15 April, Summer from 15 June, Fall from 15 September, and Winter from 15 November until 14 April. The fof_gui engine uses the Season value written to the consumption file ([2.5.3](#253-region-and-season-parameters)).
+Before emissions modelling, FuelAnalyst sets the 10-hour moisture content from the ConPyro mc_sa output, the duff moisture content from mc_dmc, and the 1000-hour moisture content from the drought code (dc) of each weather scenario. These normally replace the moisture regime values in the consumption file ([2.5.4](#254-moisture-regime)). Soil moisture is used only by the fof_gui engine when soil heating is enabled, and it stays at the regime value. The fire season is handled differently by the two engines. The pyfofem engine ignores the Season field of the consumption file and assigns a season to each scenario from its weather date: Spring from 15 April, Summer from 15 June, Fall from 15 September, and Winter from 15 November until 14 April. The fof_gui engine uses the Season value written to the consumption file ([2.5.3](#253-region-and-season-parameters)).
 
 Mortality modelling uses the FOFEM crown scorch equation (CRNSCH) through pyfofem. Each live tree is modelled once per eligible weather scenario from its DBH, height, crown depth, and bark thickness and the fireline intensity (hfi), air temperature (temp), and in-stand wind speed (instand_ws_mps) of the scenario. A tree counts as dead when its mortality probability is above 0.5, and its basal area per hectare is added to the basal area killed (tree_dead_ba_crnsch_m2pha). The proportion of the live basal area of the stand that is killed (prop_dead_ba_crnsch) sets the fire severity class: low for 0 to 0.2, mod for above 0.2 to below 0.7, and high for 0.7 or more. The stand-level columns (basal area killed, proportion killed, and fire_severity) are merged into the combined results file, and the tree-level results stay in fofem_tree_mortality_results.csv. A plot-date row with a missing value in any of the required inputs (instand_ws_mps, canopy_cover, ht_ovrstry_live, fsg, ws, hfi, fire_type, or temp) is dropped from mortality modelling and listed in the error report.
+
+Grass-model scenarios do not supply `mc_dmc`. For grass/herb and shrub-proxy rows with missing modelled duff moisture,
+both emissions backends retain `DuffMoisture` from the consumption file's configured moisture regime and log the
+fallback by plot. Rows with neither modelled nor usable configured duff moisture are skipped with a warning; the
+combined ConPyro row remains without calculated emissions. This does not change forest moisture handling. Existing
+Burnup limits still apply: low-intensity scenarios may return `BurnupError=10` (igniting intensity below the backend
+minimum), even when ConPyro successfully models them. FuelAnalyst does not raise their predicted intensity to force
+acceptance by Burnup.
 
 ## 4.4 Outputs and Error Reporting
 

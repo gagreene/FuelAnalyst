@@ -208,6 +208,7 @@ default_woody_debris_dict = {
 }
 
 default_conpyro_dict = {
+    'sros_model': {'forest': 13, 'grass_herbs': 31, 'shrubs': 31},  # Shrubs use O1b as a temporary proxy
     'stand_attributes': {  # All attributes must output a single column
         'conpyro_cfl_ovrstry': {  # This name is fixed for ConPyro
             'att_source': 'cfl',  # This is fixed (no user options)
@@ -448,7 +449,8 @@ default_fire_modelling_dict = {
         'plot_id_col_name': 'unique_id',
         'input_params': {
             'cfo_model': 5,    # Options: 1, 2, 3, 4, 5, 10, or string "use_csv" (assumes cfo_model column in csv)
-            'sros_model': 13,  # Options: 1-4, 9, 11, 12, 13, 16-21, labels "9c", "11c", "18c", "r20", or "use_csv"
+            'grass_curing': 60,  # Grass curing percentage passed to ConPyro as gcf
+            'sros_model': 'use_csv',  # Options: 1-4, 9, 11, 12, 13, 16-21, 30/31 (O1a/O1b), labels "9c", "11c", "18c", "r20", or "use_csv"
                                # (assumes sros_model column in csv). 16, 17, and 20 need model_terrain_effects_on_wind
                                # False; 21 is the legacy mountain pine beetle curve (it was 20 before ConPyro 0.2.0)
             'cros_model': 1,   # Options: 1, 2, or string "use_csv" (assumes cros_model column in csv)

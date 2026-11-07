@@ -13,9 +13,9 @@ import pandas as pd
 from typing import Union
 
 from . import fofem_units
+from . import fofem_moisture
 from . import helper
 from ._default_configs import default_season_start_dict
-from . import fwis_moisture_content as mc
 from pyfofem import pyfofem as fofem
 
 logger = logging.getLogger(__name__)
@@ -31,11 +31,7 @@ def _calc_fuel_moisture_content(df: pd.DataFrame) -> pd.DataFrame:
     :param df: DataFrame with 'mc_sa', 'mc_dmc', and 'dc' columns.
     :return: DataFrame with FOFEM moisture columns added/updated.
     """
-    df['wfl10HourMoisture'] = df['mc_sa']
-    df['DuffMoisture'] = df['mc_dmc']
-    df['wfl1000HourMoisture'] = mc.dc_mc(dc=df['dc'].to_numpy())
-
-    return df
+    return fofem_moisture.calc_fuel_moisture_content(df, logger)
 
 
 def _gen_plot_id(df: pd.DataFrame):
@@ -95,7 +91,8 @@ def _get_merged_consumption_df(
     if '#PlotId' not in fofem_consume_df.columns:
         raise ValueError('Missing required column "#PlotId" in FOFEM consumption CSV.')
 
-    plot_fire_df = plot_fire_df[required_fire_cols]
+    optional_cols = [column for column in ('surface_fuel_type', 'stand_type') if column in plot_fire_df]
+    plot_fire_df = plot_fire_df[required_fire_cols + optional_cols]
 
     merged_df = pd.merge(
         left=fofem_consume_df,
@@ -256,10 +253,14 @@ def process_emissions(
         fofem_consume_csv_path=fofem_consume_csv_path,
     )
 
+    merged_df = _calc_fuel_moisture_content(merged_df)
+    if merged_df.empty:
+        helper.export_csv(merged_df, os.path.join(out_dir, 'fofem_emissions_results.csv'))
+        return merged_df if return_df else None
+
     merged_df, plotid_map = _gen_plot_id(merged_df)
     merged_df = _get_pct_crown_burned(merged_df)
     merged_df = _get_season(merged_df)
-    merged_df = _calc_fuel_moisture_content(merged_df)
 
     model_df = merged_df.drop(columns=[plot_id_col_name, 'cfb'], errors='ignore').copy()
 

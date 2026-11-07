@@ -123,6 +123,49 @@ def _calc_stand_type(df: pd.DataFrame, tree_params_df: pd.DataFrame) -> pd.DataF
     return helper.attach_columns(df, stand_columns)
 
 
+def _calc_surface_models(df: pd.DataFrame, model_settings: dict) -> pd.DataFrame:
+    """
+    Assign surface models from live-tree presence and observed dominant substrate.
+
+    :param df: Plot attributes with live-tree presence/density and dom_substrate.
+    :param model_settings: Forest, grass_herbs and shrubs surface-model selections.
+    :return: Copy with surface_fuel_type and sros_model; log unclassified plots.
+    """
+    from .._vendor.conpyro.components.equations.conpyro_eqs import normalize_sros_model
+
+    models = {}
+    for category in ('forest', 'grass_herbs', 'shrubs'):
+        value = model_settings.get(category) if isinstance(model_settings, dict) else None
+        if isinstance(value, (bool, np.bool_)) or value is None or not np.isscalar(value):
+            raise ValueError(f'sros_model.{category} must be a valid ConPyro surface model.')
+        try:
+            normalized = normalize_sros_model(value)
+            if np.ma.getmaskarray(normalized).any():
+                raise ValueError('Surface model cannot be missing')
+            models[category] = int(normalized.item())
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ValueError(f'Invalid sros_model.{category}: {value!r}') from error
+
+    result = df.copy()
+    density = result.get('conpyro_live_tree_density', pd.Series(np.nan, index=result.index))
+    present = result.get('conpyro_live_trees_present', density.gt(0).astype('boolean').mask(density.isna()))
+    substrate = result.get('dom_substrate', pd.Series('', index=result.index))
+    excluded = helper.get_tree_excluded_plots(result)
+    category = pd.Series('', index=result.index, dtype=object)
+    category.loc[present.eq(True) & ~excluded] = 'forest'
+    category.loc[present.eq(False) & substrate.isin(['HG', 'HF', 'HE']) & ~excluded] = 'grass_herbs'
+    category.loc[present.eq(False) & substrate.isin(['SL', 'ST']) & ~excluded] = 'shrubs'
+    result['surface_fuel_type'] = category
+    result['sros_model'] = category.map(models)
+    for plot_id in result.loc[category.eq(''), 'unique_id'].drop_duplicates():
+        logger.warning(
+            'Surface model not assigned: live-tree observations are missing/excluded or the '
+            'treeless plot has no supported grass/herb or shrub dominant substrate.',
+            extra={'unique_id': plot_id, 'issue_code': 'conpyro_surface_model_unassigned'},
+        )
+    return result
+
+
 def _calc_veg_fuel_loads(df: pd.DataFrame, veg_fuel_dict: dict) -> pd.DataFrame:
     """
     Calculate surface vegetation fuel loads based on ConPyro parameters.
@@ -215,8 +258,14 @@ def gen_conpyro_df(df: pd.DataFrame, conpyro_params: dict) -> tuple[pd.DataFrame
         os.path.join(os.path.dirname(__file__), '..', 'supporting_data', 'tree_parameters.csv')
     ).set_index('Species')
 
+    from ._default_configs import default_conpyro_dict
+
+    df = _calc_surface_models(df, conpyro_params.get('sros_model', default_conpyro_dict['sros_model']))
+    open_fuel = df['surface_fuel_type'].isin(['grass_herbs', 'shrubs'])
     df = _calc_stand_type(df, tree_params_df)
-    df = _calc_stand_density(df, conpyro_params['canopy_cover_attribute'])
+    cover_column = conpyro_params['canopy_cover_attribute']
+    df[cover_column] = df[cover_column].mask(open_fuel, 0.)
+    df = _calc_stand_density(df, cover_column)
     df = _calc_veg_fuel_loads(df, conpyro_params['vegetative_fuel_loads'])
     fbp_prep_df = _prep_fbp_df(df)
 
@@ -234,8 +283,10 @@ def gen_conpyro_df(df: pd.DataFrame, conpyro_params: dict) -> tuple[pd.DataFrame
         'elevation': df['plot_elevation'],
         'slope': df['plot_slope_pct'],
         'aspect': df['plot_aspect'],  # slope==0 -> 270 already forced upstream in plot_attributes.py
-        'stand_density': df['conpyro_density_class'].mask(tree_excluded),
-        'stand_type': df['conpyro_stand_type'].mask(tree_excluded, ''),
+        'stand_density': df['conpyro_density_class'].mask(open_fuel, 'L').mask(tree_excluded),
+        'stand_type': df['conpyro_stand_type'].astype(object).mask(open_fuel, 10).mask(tree_excluded, ''),
+        'surface_fuel_type': df['surface_fuel_type'],
+        'sros_model': df['sros_model'],
         'fbp_fuel_type': '',
         'pct_cnfr': df['stand_pct_cnfr_live'].fillna(0),
         'canopy_cover': df[conpyro_params['canopy_cover_attribute']].fillna(0),
@@ -257,6 +308,9 @@ def gen_conpyro_df(df: pd.DataFrame, conpyro_params: dict) -> tuple[pd.DataFrame
         'grass_fuel_load': df['conpyro_grass_fuel_load'].fillna(0),
         'shrub_fuel_load': df['conpyro_shrub_fuel_load'].fillna(0),
     })
+
+    # Confirmed treeless surface fuels have no live canopy geometry.
+    conpyro_df.loc[open_fuel, ['canopy_cover', 'ht_ovrstry_live', 'cbh_ovrstry', 'fsg']] = 0.
 
     # Excluded tree inputs are unknown, not measured zero canopy fuel.
     tree_columns = [
