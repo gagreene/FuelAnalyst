@@ -1,12 +1,5 @@
 # Release notes
 
-## Unreleased
-
-### Changes
-
-- Direct saplings recorded in `tree_plot_2` are no longer discarded when large and small trees are marked absent but sapling presence is recorded or unknown. Direct records follow the configured DBH thresholds and their own class's presence flag; unresolved measurements remain available for validation. All three explicitly absent classes still discard conflicting direct records with a warning.
-- An empty Trees parent table (`survey_0`) now raises a clear error before identity generation or repeat omission, rather than failing later with a pandas error or authorizing absent repeats.
-
 ## 0.5.0
 
 This is a minor release: protocol-aware tree sampling, automatic surface-model selection, the ConPyro update, and Trees form metadata change inputs, results, and documented behaviour. Review the migration steps and model assumptions before reusing existing inputs or comparing results with earlier releases.
@@ -28,6 +21,8 @@ This is a minor release: protocol-aware tree sampling, automatic surface-model s
 - **Sapling expansion corrected:** sapling-table records use the recorded sapling-plot radius regardless of measured or imputed DBH. Measured-tree defaults are unchanged.
 - Protocol labels retain literal numeric-looking and NA-like text during CSV, Excel, and other supported-format reads. Registered labels such as `001` and `NA` no longer lose tree-derived results through input inference; other columns keep their existing parsing behaviour.
 - Trees processing honours explicit absence in `tree_large_present`, `tree_small_present`, and `sapling_present`. Conflicting records are skipped with a warning. Absent repeats may be omitted when all parents agree, and confirmed empty plots receive zero additive totals without synthetic trees. Blank or missing flags retain legacy behaviour.
+- Direct saplings recorded in `tree_plot_2` are no longer discarded when large and small trees are marked absent but sapling presence is recorded or unknown. Direct records follow the configured DBH thresholds and their own class's presence flag; unresolved measurements remain available for validation. All three explicitly absent classes still discard conflicting direct records with a warning.
+- An empty Trees parent table (`survey_0`) now raises a clear error before identity generation or repeat omission, rather than failing later with a pandas error or authorizing absent repeats.
 - Trees form version `2026.11.06` adds hidden protocol metadata immediately before `tree_large_present`.
 
 #### ConPyro surface models and diagnostics
