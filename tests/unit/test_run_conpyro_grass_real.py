@@ -52,6 +52,25 @@ def test_legacy_dictionary_without_curing_uses_sixty_percent(run_conpyro_module,
     assert result.sros.iloc[0] == pytest.approx(expected.sros.iloc[0])
 
 
+@pytest.mark.parametrize('missing_column', ['herbaceous_fuel_load', 'shrub_fuel_load'])
+def test_missing_shrub_proxy_load_is_reported_without_zero_fill(run_conpyro_module, tmp_path, missing_column):
+    row = dict(_open_row('shrubs'), **{missing_column: np.nan})
+    rows = [row, dict(row, wx_date=20240610), _open_row(), dict(ROW, unique_id='forest', sros_model=13)]
+    result = _run(run_conpyro_module, tmp_path, rows)
+
+    # An unknown component leaves combined consumption unknown, not 0 or the known component alone.
+    assert result.loc['shrubs', 'sfc'].isna().all()
+    assert result.loc['grass_herbs', 'sfc'] == pytest.approx(0.2)
+    assert result.loc['forest', 'sfc'] > 0
+    report = pd.read_csv(tmp_path / 'out/run_conpyro_errors.csv').set_index('unique_id')
+    assert report.index.tolist() == ['shrubs']
+    message = report.loc['shrubs', 'ConPyro Fire Behavior']
+    assert missing_column in message
+    assert message.count('[WARNING]') == 1
+    original = pd.read_csv(tmp_path / 'inputs.csv')
+    assert original.loc[original.unique_id.eq('shrubs'), missing_column].isna().all()
+
+
 @pytest.mark.parametrize('mixed', [False, True])
 @pytest.mark.parametrize('category', ['grass_herbs', 'shrubs'])
 def test_open_fuels_use_o1b_curing_and_correct_consumption(run_conpyro_module, tmp_path, mixed, category):

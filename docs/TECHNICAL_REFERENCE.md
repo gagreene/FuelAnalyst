@@ -1052,7 +1052,7 @@ remain excluded. The shrub default is an explicit, temporary O1b grass-model pro
 For confirmed treeless grass/herb and shrub-proxy rows, the engine receives stand code 10 and zero live-canopy geometry.
 Grass/herb fuel consumption uses `herbaceous_fuel_load` (grass plus herbs under the defaults); the shrub proxy uses
 `herbaceous_fuel_load + shrub_fuel_load`. Forest fuel-load mapping stays unchanged. Original separate fuel-load columns
-remain in the CSV. The existing FLAME wind routine handles zero canopy height using its documented 0.5 m fallback;
+remain in the CSV. If either shrub-proxy component is missing in a supplied CSV, consumption remains unknown and the runner records one warning per plot in `run_conpyro_errors.csv`; it does not substitute zero. Generated FuelAnalyst inputs retain their existing zero defaults for missing source fuel loads. The existing FLAME wind routine handles zero canopy height using its documented 0.5 m fallback;
 this is a modelling fallback, not a measured tree height. Flame and optional FOFEM stages retain their existing
 validation and non-burning-row behavior.
 
