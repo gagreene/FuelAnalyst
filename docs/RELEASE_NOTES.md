@@ -1,6 +1,19 @@
 # Release notes
 
-## Unreleased
+## 0.4.1
+
+This release adds protocol-aware tree sampling and automatic forest, grass/herb, and shrub-proxy surface-model selection. It also updates ConPyro and the Trees form. Review the changed defaults and model assumptions before reusing existing inputs or comparing results with earlier releases.
+
+### Breaking changes and action needed
+
+- **Rebuild ConPyro inputs and weather merges.** The runner now defaults to `sros_model='use_csv'`; generated inputs include `sros_model` and `surface_fuel_type`. Regenerate older merged files, or explicitly select a scalar model appropriate to the data. The standalone demo refreshes plot attributes against committed weather.
+- **Review open-fuel assumptions.** The default mapping is forest 13, grass/herbs 31, shrubs 31. Any observed live trees select forest; confirmed treeless plots use dominant substrate. Model 31 is a temporary O1b grass proxy for shrubs. Set the surface-model mapping and run-wide `grass_curing` (default 60 percent) for the intended scenarios. Missing tree data do not establish absence.
+- **Recheck results affected by sapling sampling areas.** Sapling-table records now always use their sapling-plot radius. Recalculate densities, biomass, and model inputs where the old DBH-based choice selected a different plot radius. Configure protocol thresholds for datasets that do not use the CWC defaults.
+- **Update downstream readers for missing and non-burning results.** Tree-excluded canopy inputs remain missing. ConPyro can emit `fire_type=0`; those rows retain zero fire metrics, missing flame quantities, and no calculated FOFEM effects. Check stand codes when interpreting inferred non-fuel results from unknown labels.
+- **Supply weather-derived duff moisture for open fuels.** Grass/herb and shrub `mc_dmc` is completed from weather DMC with the existing forest bounds of 10-200; both FOFEM emissions backends use it as `DuffMoisture`. Invalid or missing weather/moisture causes a logged emissions skip, without substitution of a fixed moisture regime. Existing Burnup limits still apply to low-intensity scenarios.
+- **Republish the updated Trees form to collect protocol metadata.** Form version `2026.11.06` includes hidden `sampling_protocol='CWC'`. The default `protocol_column=None` still supports older exports without that field; mixed-protocol imports using overrides must provide and register their actual labels. Labels are case-sensitive and are not trimmed.
+
+### Changes
 
 - Grass/herb and shrub-proxy results now complete missing `mc_dmc` from weather DMC using the existing conversion and forest DMC bounds (10-200). Both FOFEM emissions backends use this `mc_dmc` as `DuffMoisture`; no fixed moisture-regime value is substituted. Missing or invalid weather DMC leaves duff moisture unresolved and skips those emissions scenarios with a warning. Existing forest moisture values are unchanged.
 
