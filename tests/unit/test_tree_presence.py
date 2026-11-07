@@ -105,6 +105,59 @@ def test_confirmed_empty_plot_has_zero_sums_but_missing_heights(tmp_path):
     assert result['stand_ht_m_live_mean'].isna().all()
 
 
+@pytest.mark.parametrize('sapling_flag', ['Y', '', None])
+@pytest.mark.parametrize('small_min, expected', [(5., ['sapling', 'invalid']), (2., ['invalid'])])
+def test_direct_saplings_follow_presence_flags_and_protocol_thresholds(
+        caplog,
+        sapling_flag,
+        small_min,
+        expected
+):
+    parents, direct, saplings = _raw(('N', 'N', sapling_flag))
+    parents['protocol'] = 'custom'
+    direct = pd.concat([direct, direct.iloc[[2]]], ignore_index=True)
+    direct['GlobalID'] = ['large', 'small', 'sapling', 'invalid']
+    direct['tree_dbh'] = [15., 10., 2.5, np.nan]
+    settings = {'protocol_column': 'protocol',
+                'protocol_overrides': {'custom': {'small_tree_min': small_min}}}
+    before = direct.copy(deep=True)
+    with caplog.at_level(logging.WARNING, logger='fuel_analyst.components.trees'):
+        kept, kept_saplings = trees._filter_tree_presence(parents, direct, saplings, settings)
+    assert kept.GlobalID.tolist() == expected
+    pd.testing.assert_frame_equal(direct, before)
+    pd.testing.assert_frame_equal(kept_saplings, saplings)
+    conflicts = [r for r in caplog.records if getattr(r, 'issue_code', '') == 'tree_presence_conflict']
+    assert len(conflicts) == 1 and conflicts[0].unique_id == 'P1'
+    assert 'invalid' not in conflicts[0].getMessage()
+    if small_min == 5.:
+        assert 'sapling' not in conflicts[0].getMessage()
+
+
+def test_direct_saplings_reach_density_and_live_presence(tmp_path):
+    source, parents = _form(tmp_path, ('N', 'N', 'Y'))
+    parents['sapling_plot_radius'] = 3.99
+    parents.to_csv(source / 'survey_0.csv', index=False)
+    original = pd.read_csv(Path(__file__).resolve().parents[2] /
+                           'examples/data/Survey123_Data/3_Trees/tree_plot_2.csv')
+    row = original.loc[original.tree_status.eq('L') & original.tree_dbh.notna()].iloc[[0]].copy()
+    row['GlobalID'] = 'direct-sapling'
+    row['ParentGlobalID'] = parents.GlobalID.iloc[0]
+    row['tree_species'] = 'FDI'
+    row['tree_dbh'] = 2.5
+    row['tree_ht'] = 3.
+    row['tree_cbh'] = 1.
+    row['tree_dcbh'] = 0.5
+    row['tree_dcy_class_cnfr'] = 1
+    row.to_csv(source / 'tree_plot_2.csv', index=False)
+    result, _, master = _run(source, tmp_path / 'out')
+    # A 3.99 m radius is the rounded 50 m2 plot: one live stem expands to 200 stems/ha.
+    assert len(master) == 1
+    assert master.dens_ha.iloc[0] == pytest.approx(200.)
+    assert result.stand_dens_tpha_live_sum.iloc[0] == pytest.approx(200.)
+    assert result.conpyro_live_tree_density.iloc[0] == pytest.approx(200.)
+    assert bool(result.conpyro_live_trees_present.iloc[0])
+
+
 def test_duplicate_ids_and_orphaned_records_are_not_silently_removed():
     parents, direct, saplings = _raw()
     parents = pd.concat([parents, parents], ignore_index=True)
@@ -121,6 +174,24 @@ def test_duplicate_parent_cannot_authorize_discarding_records():
     kept_trees, kept_saplings = trees._filter_tree_presence(parents, direct, saplings, None)
     pd.testing.assert_frame_equal(kept_trees, direct)
     pd.testing.assert_frame_equal(kept_saplings, saplings)
+
+
+@pytest.mark.parametrize('missing_repeat', ['tree_plot_2.csv', 'sapling_1.csv'])
+def test_empty_parent_table_cannot_authorize_omitted_repeats(tmp_path, missing_repeat):
+    source, parents = _form(tmp_path)
+    (source / missing_repeat).unlink()
+    resolved = trees.table_reader.ensure_form_source(str(source))
+    with pytest.raises(ValueError, match='survey_0.*no plot records'):
+        trees._read_tree_repeats(resolved, parents.iloc[:0])
+
+
+def test_empty_parent_table_has_clear_error(tmp_path):
+    source, parents = _form(tmp_path)
+    parents.iloc[:0].to_csv(source / 'survey_0.csv', index=False)
+    output = tmp_path / 'out'
+    with pytest.raises(ValueError, match='survey_0.*no plot records'):
+        _run(source, output)
+    assert not output.exists()
 
 
 def test_empty_unconfirmed_plot_does_not_become_zero(tmp_path):

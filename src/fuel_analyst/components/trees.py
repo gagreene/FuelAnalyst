@@ -1661,8 +1661,8 @@ def _filter_tree_presence(
         {name: tree_df['ParentGlobalID'].map(values).fillna(False).astype(bool)
          for name, values in flags.items()}, index=tree_df.index,
     )
-    # Both direct classes absent disables the repeat even when DBH or protocol is missing.
-    skip_tree = direct_flags['lgtree'] & direct_flags['smtree']
+    # All three classes must be absent to skip direct records without usable DBH or protocol.
+    skip_tree = direct_flags.all(axis=1)
     eligible = df.loc[
         df['GlobalID'].notna() & ~df['GlobalID'].duplicated(keep=False)
         & ~df.get('_parent_id_ambiguous', pd.Series(False, index=df.index)).fillna(False).astype(bool)
@@ -2277,8 +2277,10 @@ def _read_tree_repeats(source: table_reader.FormSource, df: pd.DataFrame) -> tup
     :param source: Resolved Trees form source.
     :param df: Retained plot parents with optional presence flags.
     :return: Direct-tree and sapling frames, including typed empty repeat schemas
-        when absence permits an omitted table. Required missing tables still raise.
+        when absence permits an omitted table. Empty parents and required missing tables raise.
     """
+    if df.empty:
+        raise ValueError("Trees parent table 'survey_0' has no plot records.")
     absence = _get_tree_absence(df)
     # These are the fields consumed by the calculation pipeline for an empty repeat.
     tree_columns = (
@@ -2404,6 +2406,8 @@ def process_trees(
     protocol_column = tree_sampling_params['protocol_column']
     literal_columns = (protocol_column,) if protocol_column is not None else ()
     df = table_reader.read_table(in_folder, 'survey_0', literal_text_columns=literal_columns)
+    if df.empty:
+        raise ValueError("Trees parent table 'survey_0' has no plot records.")
     ambiguous_parent_ids = set(
         df.loc[df['GlobalID'].notna() & df['GlobalID'].duplicated(keep=False), 'GlobalID']
     )
