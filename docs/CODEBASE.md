@@ -864,4 +864,9 @@ consumption adds shrub to herbaceous load. Model 31 is explicitly a temporary gr
 remain available. No vendor equations were edited. The standalone example refreshes plot attributes against existing
 weather; never add a guessed model 13 to stale weather merges as an automatic migration.
 
-`fofem_moisture.calc_fuel_moisture_content()` is shared by both emissions backends. Optional surface-type/stand-code metadata survives the fire/consumption join. Grass rows with missing mc_dmc retain configured DuffMoisture and log a fallback; unusable fallback rows are removed before backend execution. Moisture preparation runs before plot-ID normalization so warnings keep original IDs. Empty filtered subsets produce empty stage output without calling the model.
+`fofem_moisture.derive_grass_duff_moisture()` completes missing grass/herb and shrub-proxy mc_dmc from weather DMC,
+using the existing FWIS conversion and ConPyro's forest bounds of 10-200. The runner applies it to new and reloaded
+results. Both emissions readers retain optional dmc and surface metadata; the shared moisture helper repairs older
+results before assigning DuffMoisture = mc_dmc. Existing finite values are preserved. There is no configured-regime
+fallback for missing grass/shrub moisture. Unresolved rows are skipped before backend execution and logged using
+original plot IDs; empty subsets produce empty stage output without invoking the model.

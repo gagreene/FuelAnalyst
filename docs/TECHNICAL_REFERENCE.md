@@ -1082,10 +1082,13 @@ Before emissions modelling, FuelAnalyst sets the 10-hour moisture content from t
 
 Mortality modelling uses the FOFEM crown scorch equation (CRNSCH) through pyfofem. Each live tree is modelled once per eligible weather scenario from its DBH, height, crown depth, and bark thickness and the fireline intensity (hfi), air temperature (temp), and in-stand wind speed (instand_ws_mps) of the scenario. A tree counts as dead when its mortality probability is above 0.5, and its basal area per hectare is added to the basal area killed (tree_dead_ba_crnsch_m2pha). The proportion of the live basal area of the stand that is killed (prop_dead_ba_crnsch) sets the fire severity class: low for 0 to 0.2, mod for above 0.2 to below 0.7, and high for 0.7 or more. The stand-level columns (basal area killed, proportion killed, and fire_severity) are merged into the combined results file, and the tree-level results stay in fofem_tree_mortality_results.csv. A plot-date row with a missing value in any of the required inputs (instand_ws_mps, canopy_cover, ht_ovrstry_live, fsg, ws, hfi, fire_type, or temp) is dropped from mortality modelling and listed in the error report.
 
-Grass-model scenarios do not supply `mc_dmc`. For grass/herb and shrub-proxy rows with missing modelled duff moisture,
-both emissions backends retain `DuffMoisture` from the consumption file's configured moisture regime and log the
-fallback by plot. Rows with neither modelled nor usable configured duff moisture are skipped with a warning; the
-combined ConPyro row remains without calculated emissions. This does not change forest moisture handling. Existing
+ConPyro's grass path does not supply `mc_dmc`, so FuelAnalyst completes it from each grass/herb or shrub plot's weather
+DMC using the existing conversion `20 + exp(-(DMC - 244.72) / 43.43)`. DMC is bounded to 10-200, matching ConPyro's
+existing forest moisture path. The completed `mc_dmc` is written to fire results and used as `DuffMoisture` by both
+emissions backends. Reloaded results with missing `mc_dmc` are repaired from their weather DMC as well. Existing
+finite moisture values are preserved. There is no fallback to the consumption file's fixed moisture regime: rows
+without usable `mc_dmc` or finite nonnegative weather DMC are skipped for grass/shrub emissions, with a plot warning;
+the combined ConPyro row remains without calculated emissions. Forest moisture handling remains unchanged. Existing
 Burnup limits still apply: low-intensity scenarios may return `BurnupError=10` (igniting intensity below the backend
 minimum), even when ConPyro successfully models them. FuelAnalyst does not raise their predicted intensity to force
 acceptance by Burnup.

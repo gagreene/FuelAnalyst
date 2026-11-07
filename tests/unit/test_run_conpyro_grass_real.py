@@ -28,6 +28,20 @@ def test_grass_curing_rejects_invalid_settings(run_conpyro_module, tmp_path, cur
         _run(run_conpyro_module, tmp_path, [_open_row()], curing=curing)
 
 
+@pytest.mark.parametrize('category', ['grass_herbs', 'shrubs'])
+@pytest.mark.parametrize('mixed', [False, True])
+def test_grass_mc_dmc_is_derived_from_weather(run_conpyro_module, tmp_path, mixed, category):
+    rows = [dict(_open_row(category), unique_id=f'g{i}', dmc=dmc) for i, dmc in enumerate([0., 40., 250.])]
+    if mixed:
+        rows.append(dict(ROW, unique_id='forest', sros_model=13, dmc=40.))
+    result = _run(run_conpyro_module, tmp_path, rows)
+    # Match the existing forest conversion and its DMC bounds of 10-200.
+    expected = 20 + np.exp((244.72 - np.array([10., 40., 200.])) / 43.43)
+    assert result.loc[['g0', 'g1', 'g2'], 'mc_dmc'].tolist() == pytest.approx(expected)
+    if mixed:
+        assert result.loc['forest', 'mc_dmc'] == pytest.approx(expected[1])
+
+
 def test_legacy_dictionary_without_curing_uses_sixty_percent(run_conpyro_module, tmp_path):
     expected = _run(run_conpyro_module, tmp_path, [_open_row()])
     settings = make_params(run_conpyro_module, sros_model='use_csv', terrain_wind=False)
@@ -66,6 +80,27 @@ def test_open_zero_load_remains_nonburning(run_conpyro_module, tmp_path):
     result = _run(run_conpyro_module, tmp_path, [_open_row(load=0.)])
     assert result.loc['grass_herbs', ['sfc', 'hfi', 'fire_type']].eq(0).all()
     assert pd.isna(result.loc['grass_herbs', 'flame_length_m'])
+
+
+def test_reloaded_grass_results_export_weather_derived_mc_dmc(run_conpyro_module, tmp_path, monkeypatch):
+    source = tmp_path / 'previous_results.csv'
+    pd.DataFrame({'unique_id': ['grass', 'shrub'], 'wx_date': [20240601, 20240602],
+                  'stand_type': [10, 10], 'surface_fuel_type': ['grass_herbs', 'shrubs'],
+                  'dmc': [40., 70.], 'mc_dmc': [np.nan, np.nan]}).to_csv(source, index=False)
+    original = source.read_bytes()
+    settings = make_params(run_conpyro_module)
+    settings['conpyro']['run_model'] = False
+    settings['fofem_emissions']['run_model'] = True
+
+    def capture_emissions(df, **kwargs):
+        return df.assign(emissions_test=1.)
+
+    monkeypatch.setattr(run_conpyro_module, '_model_fofem_emissions', capture_emissions)
+    run_conpyro_module.run_conpyro(str(tmp_path / 'out'), str(source),
+                                   in_fofem_consume_csv_path='unused.csv', fire_modelling_params=settings)
+    result = pd.read_csv(tmp_path / 'out/conpyro_emissions_results.csv')
+    assert result.mc_dmc.tolist() == pytest.approx((20 + np.exp((244.72 - np.array([40., 70.])) / 43.43)).tolist())
+    assert source.read_bytes() == original
 
 
 def test_scalar_override_records_actual_model_and_applies_nondefault_curing(run_conpyro_module, tmp_path):

@@ -79,26 +79,29 @@ def _write_inputs(tmp_path, units, monkeypatch):
     return str(consume_csv_path), str(fire_csv_path), str(out_dir), recorded_kwargs
 
 
-@pytest.mark.parametrize('configured', [80., None])
-def test_grass_emissions_retains_configured_moisture_and_reports_original_plot_id(tmp_path, monkeypatch, caplog, configured):
+@pytest.mark.parametrize('dmc', [40., None])
+def test_grass_emissions_uses_weather_moisture_and_reports_missing_dmc(tmp_path, monkeypatch, caplog, dmc):
     consume_csv, fire_csv, out_dir, recorded = _write_inputs(tmp_path, 'SI', monkeypatch)
     consume = pd.read_csv(consume_csv)
     consume['#PlotId'] = 'plot with space'
-    consume['DuffMoisture'] = configured
+    consume['DuffMoisture'] = 80.
     consume.to_csv(consume_csv, index=False)
     fire = pd.read_csv(fire_csv)
     fire['unique_id'] = 'plot with space'
     fire['surface_fuel_type'] = 'grass_herbs'
     fire['stand_type'] = 10
     fire['mc_dmc'] = None
+    fire['dmc'] = dmc
     fire.to_csv(fire_csv, index=False)
     result = fofem_emissions.process_emissions(fire_csv, 'unique_id', consume_csv, out_dir, return_df=True)
-    if configured is None:
+    if dmc is None:
         assert result.empty
         assert not recorded
+        assert {r.unique_id for r in caplog.records if r.issue_code.startswith('fofem_grass')} == {'plot with space'}
     else:
-        assert recorded['duff_moist'].tolist() == [80.]
-    assert {r.unique_id for r in caplog.records if r.issue_code.startswith('fofem_grass')} == {'plot with space'}
+        import math
+        assert recorded['duff_moist'].tolist() == pytest.approx([20 + math.exp((244.72 - 40) / 43.43)])
+        assert not [r for r in caplog.records if getattr(r, 'issue_code', '').startswith('fofem_grass')]
 
 
 def test_process_emissions_si_writes_suffixed_columns_and_passes_si_units(tmp_path, monkeypatch):

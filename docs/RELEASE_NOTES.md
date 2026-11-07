@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Grass-model FOFEM emissions retain configured consumption-file duff moisture when ConPyro does not supply it, with a plot-specific warning. Both backends skip rows lacking a usable fallback instead of treating missing duff moisture as zero; forest moisture handling is unchanged.
+- Grass/herb and shrub-proxy results now complete missing `mc_dmc` from weather DMC using the existing conversion and forest DMC bounds (10-200). Both FOFEM emissions backends use this `mc_dmc` as `DuffMoisture`; no fixed moisture-regime value is substituted. Missing or invalid weather DMC leaves duff moisture unresolved and skips those emissions scenarios with a warning. Existing forest moisture values are unchanged.
 
 - Surface models are now assigned during ConPyro input preparation using `default_conpyro_dict.sros_model`: forest 13, grass/herbs 31, shrubs 31. Any observed live trees select forest; confirmed treeless plots use the existing dominant-substrate classification. Shrubs use O1b as an explicitly chosen temporary proxy. Missing or excluded tree observations never establish treelessness.
 - `run_conpyro()` now defaults to CSV-driven SROS selection and forwards `grass_curing` (default 60 percent) as `gcf`. New inputs contain `surface_fuel_type` and `sros_model`; older weather merges must be regenerated or run with an explicit scalar model. Scalar overrides remain supported and outputs record the selected model. The standalone demo refreshes current plot inputs against committed weather.

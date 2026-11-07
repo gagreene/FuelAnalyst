@@ -16,6 +16,7 @@ from typing import Optional
 
 from .components import error_handling
 from .components import fofem_units
+from .components import fofem_moisture
 from .components import helper
 
 # Re-export the public fire-modelling defaults.
@@ -537,6 +538,7 @@ def _single_run_fire_behavior(args):
     subset_df = subset_df.drop(columns=[col for col in subset_df.columns if col in temp_df.columns], errors='ignore')
     subset_df = subset_df.reset_index(drop=True)
     subset_df = pd.concat([subset_df, temp_df], axis=1)
+    subset_df = fofem_moisture.derive_grass_duff_moisture(subset_df)
     del cp, temp_df
     return subset_df
 
@@ -950,6 +952,7 @@ def run_conpyro(
             print(f'\nLoading existing ConPyro results from {in_conpyro_csv_path}...')
             df = pd.read_csv(in_conpyro_csv_path, low_memory=False)
             fire_csv_path = in_conpyro_csv_path
+            df = fofem_moisture.derive_grass_duff_moisture(df)
         else:
             raise FileNotFoundError(f'ConPyro results CSV not found at {in_conpyro_csv_path}.'
                                     f'Please run ConPyro model first or provide existing results CSV.')
