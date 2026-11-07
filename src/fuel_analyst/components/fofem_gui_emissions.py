@@ -228,8 +228,10 @@ def _calc_fuel_moisture_content(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate fuel moisture content columns and add them to the DataFrame.
 
-    :param df: DataFrame with 'mc_sa', 'dmc', and 'dc' columns.
-    :return: DataFrame with 'wfl10HourMoisture', 'DuffMoisture', and 'wfl1000HourMoisture' columns added.
+    :param df: DataFrame with 'mc_sa', 'mc_dmc', and 'dc' columns; optional weather 'dmc'
+        and surface-type fields allow missing grass/shrub duff moisture to be derived.
+    :return: Copy with FOFEM moisture columns; grass/shrub rows without usable duff moisture
+        or weather DMC are omitted and logged by plot.
     """
     return fofem_moisture.calc_fuel_moisture_content(df, logger)
 

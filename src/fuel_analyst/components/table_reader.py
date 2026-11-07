@@ -404,7 +404,6 @@ def _parse_date_text(frame: pd.DataFrame, literal_text_columns: tuple = ()) -> p
     return frame
 
 
-
 @contextlib.contextmanager
 def _quiet_openpyxl():
     """
