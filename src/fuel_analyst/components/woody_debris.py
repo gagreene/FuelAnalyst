@@ -985,13 +985,14 @@ def _get_van_wagner_qmd(
     dc_df['slopeX'] = dc_df.apply(lambda x: x[[f'lnMidClass{dc}' for dc in diam_classes]].values.tolist(), axis=1)
     dc_df['slopeY'] = dc_df.apply(lambda x: x[[f'lnAdjFreq{dc}' for dc in diam_classes]].values.tolist(), axis=1)
 
-    # Remove infinite or null values from slopeX and slopeY for regression
-    dc_df['slopeX'], dc_df['slopeY'] = zip(*dc_df.apply(
-        lambda x: zip(*[(xi, yi) for xi, yi in zip(x.slopeX, x.slopeY) if np.isfinite(xi) and np.isfinite(yi)]),
-        axis=1
-    ))
-    dc_df['slopeX'] = dc_df['slopeX'].apply(list)
-    dc_df['slopeY'] = dc_df['slopeY'].apply(list)
+    # Remove infinite or null values from slopeX and slopeY for regression. A plot with no usable point keeps empty
+    # lists (it falls back to the Delisle and Woodard values below) instead of failing the whole run.
+    finite_pairs = [
+        [(xi, yi) for xi, yi in zip(xs, ys) if np.isfinite(xi) and np.isfinite(yi)]
+        for xs, ys in zip(dc_df['slopeX'], dc_df['slopeY'])
+    ]
+    dc_df['slopeX'] = pd.Series([[xi for xi, _ in pairs] for pairs in finite_pairs], index=dc_df.index, dtype=object)
+    dc_df['slopeY'] = pd.Series([[yi for _, yi in pairs] for pairs in finite_pairs], index=dc_df.index, dtype=object)
 
     def getSlope(inX, inY):
         """
