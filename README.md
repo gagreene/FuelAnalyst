@@ -758,6 +758,24 @@ Every completed `run_conpyro()` call also writes `run_conpyro_errors.csv`, with 
 A CFIS run (`cfo_model` 10) on plots without an FBP fuel type, and each plot left out of the run because its
 `stand_density` or `stand_type` is empty, is logged per plot in its ConPyro Fire Behavior column; the run continues.
 
+The refreshed engine produces surface-only fire metrics for valid forest scenarios with zero canopy bulk density.
+Explicit non-burning scenarios (`fire_type=0`) retain zero fire metrics and missing flame quantities. FOFEM skips
+these scenarios, logs the skip, and leaves their fire effects unmodelled. An unrecognized, nonempty stand label can
+be interpreted as non-fuel by ConPyro, so check stand codes when interpreting zero results.
+
+Surface models are assigned while preparing `conpyro_df.csv`, using
+`default_conpyro_dict['sros_model'] = {'forest': 13, 'grass_herbs': 31, 'shrubs': 31}`.
+Any observed live trees, including counted saplings, select `forest`. Confirmed treeless plots use the existing
+dominant-substrate classification: grass/herbs select `grass_herbs`, and low/tall shrubs select `shrubs`.
+Model 31 (O1b) is a temporary grass-model proxy for shrubs. Missing tree observations are not treated as absence.
+
+`run_conpyro()` now defaults to `sros_model='use_csv'` and
+`default_fire_modelling_dict['conpyro']['input_params']['grass_curing']=60` (percent, passed as `gcf`).
+An explicit scalar SROS setting still overrides all rows. Older weather-merged inputs without `sros_model`
+must be regenerated, or used with an explicit model selection. The standalone demo refreshes its plot inputs
+against committed weather automatically. See the
+[ConPyro modelling reference](docs/TECHNICAL_REFERENCE.md#42-conpyro-fire-behaviour-modelling) for fuel-load mappings and limitations.
+
 ### Configuration
 
 Default dictionaries are defined in:
@@ -853,6 +871,7 @@ Every setting, option, and effect is in the [technical reference](docs/TECHNICAL
 | --- | --- | --- |
 | `stand_attributes` | 11 entries with fixed ConPyro column names (canopy fuel load, bulk density, dead branch fuel load, heights, canopy base height, and fuel strata gap, by overstory and midstory) | The source attribute, summary, and metric of each ConPyro stand column. The height, canopy base height, and fuel strata gap entries accept one metric (`min`, `max`, or `mean`, default `mean`). `conpyro_fsg` reads `cbh` of live conifers unless `att_source` is `fsg` |
 | `vegetative_fuel_loads` | `herbaceous`: grass and herb/forb, `grass`: grass, `shrub`: shrubs | Which plant fuel fields are summed into each load. An empty list sets the load to 0. Only the herbaceous load is passed to ConPyro |
+| `sros_model` | `forest: 13`, `grass_herbs: 31`, `shrubs: 31` | Surface model by observed live-tree presence and dominant substrate; shrubs currently use the O1b grass proxy |
 | `canopy_cover_attribute` | `"cc"` | Canopy cover estimate passed to ConPyro: `"cc"` (total), `"cc_cnfr"` (conifer), or `"cc_brdlf"` (broadleaf); it also sets the stand density class |
 | `woody_debris_classes` | One `conpyro` protocol with a single `lt7cm` output | Woody fuel load of pieces up to 7 cm. Fixed: the ConPyro input reads `woody_kgpm2_conpyro_lt7cm_7` |
 

@@ -837,3 +837,36 @@ workflow runs on pushed `v*` release tags or deliberate manual dispatch, not
 automatically on PRs. Files under `development` record design and implementation
 work. Their code snippets and planned filenames may describe an earlier state;
 this file, the README, tests, and production code define current behavior.
+
+
+### ConPyro upstream refresh (2026-11-06)
+
+ConPyro is pinned to `b5d98e873402b86037ef8a2229b76888fc1cfbb3`; upstream still reports package version `0.2.0`. The generated package matches upstream `src/conpyro` with tests/caches excluded. Real `run_conpyro()` regressions cover zero-CBD surface-only outputs for crown models 1 and 2; existing default-model, CFIS and other documented surface-model tests remain in use. All 19 default comparison CSVs, including 51,968 fire rows, were byte-identical to the previous pin. Optional FOFEM execution was disabled in that comparison.
+
+The engine's O1 grass models require `gcf`, now supplied by `grass_curing` (default 60 percent). Unknown nonempty stand labels can now follow the upstream inferred-non-fuel policy; missing classes still hit FuelAnalyst's existing skip gate. The subsequent grass integration adds automatic surface-model assignment from live-tree presence and dominant substrate, described below; the original forest `gfl` mapping is preserved. See Technical Reference section 4.2 and the Unreleased notes.
+
+`_model_flame_components()` temporarily masks the consumed fire metrics on `fire_type=0` rows while deriving flame quantities, then restores the original ConPyro metrics and dtypes. This prevents the FLAME package's 1/2/3-only fire-type validator from aborting pure or mixed non-fuel runs. Inapplicable flame outputs remain missing; callers may request `nonfuel_mask` and `inferred_nonfuel_mask` through the existing output list.
+
+`_get_fofem_fire_csv()` filters explicit `fire_type=0` scenarios before either mortality or emissions backend is imported. Mixed runs write a filtered fire CSV in the stage output directory; the original results stay unchanged. Non-burning rows are kept out of effects merges, then restored, preventing same-plot/date scenarios from inheriting burning-row effects. Pure non-burning inputs skip the backend and add no effects columns. Fresh and reload-only runs are covered for both emissions backends; warnings identify each affected plot.
+
+### Automatic surface-model assignment
+
+`trees._calc_conpyro_live_density()` derives fixed density and nullable live presence independently of stand-summary
+configuration. Live status/count observations, not a zero-filled density, establish presence. Zero live presence
+requires coverage or explicit absence for all three sampling classes; invalid counts and missing repeats cannot prove
+absence. Excluded plots mask both fields. `conpyro_attributes._calc_surface_models()` selects configured forest,
+grass/herb or shrub models and exports `surface_fuel_type` plus `sros_model`. `HG/HF/HE` map to grass/herbs and `SL/ST`
+to shrubs only when absence of live trees is established. Other substrates remain unassigned with warnings.
+
+The runner defaults to `sros_model='use_csv'`, accepts numeric and alias model values, preserves numeric stand code 10
+in mixed CSVs, and supplies constant `grass_curing=60` as `gcf`. Open-fuel rows use zero live-canopy geometry; shrub-proxy
+consumption adds shrub to herbaceous load. Model 31 is explicitly a temporary grass proxy for shrubs. Scalar overrides
+remain available. No vendor equations were edited. The standalone example refreshes plot attributes against existing
+weather; never add a guessed model 13 to stale weather merges as an automatic migration.
+
+`fofem_moisture.derive_grass_duff_moisture()` completes missing grass/herb and shrub-proxy mc_dmc from weather DMC,
+using the existing FWIS conversion and ConPyro's forest bounds of 10-200. The runner applies it to new and reloaded
+results. Both emissions readers retain optional dmc and surface metadata; the shared moisture helper repairs older
+results before assigning DuffMoisture = mc_dmc. Existing finite values are preserved. There is no configured-regime
+fallback for missing grass/shrub moisture. Unresolved rows are skipped before backend execution and logged using
+original plot IDs; empty subsets produce empty stage output without invoking the model.

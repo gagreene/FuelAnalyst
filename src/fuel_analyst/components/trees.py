@@ -74,6 +74,54 @@ _PLOT_RADIUS_FIELDS = {
 logger = logging.getLogger(__name__)
 
 
+def _calc_conpyro_live_density(
+        df: pd.DataFrame,
+        tree_df: pd.DataFrame,
+        sapling_df: pd.DataFrame | None = None
+) -> pd.DataFrame:
+    """
+    Summarize live-tree density and presence without treating invalid density as absence.
+
+    :param df: Tree parent records, including presence flags and GlobalID.
+    :param tree_df: Processed trees and counted saplings with status, counts and density.
+    :param sapling_df: Normalized saplings, including counts that could not form tree rows.
+    :return: Parent table with fixed live density and nullable live-tree presence for ConPyro.
+    """
+    density = tree_df.groupby('ParentGlobalID')['tree_dens_live_ha'].sum(min_count=1)
+    values = df['GlobalID'].map(density)
+    count = tree_df['tree_count']
+    live = tree_df['tree_status'].eq('L') & count.gt(0)
+    known_live = set(tree_df.loc[live, 'ParentGlobalID'])
+    invalid = count.isna() | ~tree_df['tree_status'].isin(['L', 'D'])
+    uncertain = set(tree_df.loc[invalid, 'ParentGlobalID'])
+    density_invalid = tree_df.get('tree_density_affected', pd.Series(False, index=tree_df.index)).fillna(True)
+    invalid_density = set(tree_df.loc[density_invalid, 'ParentGlobalID'])
+    absence = _get_tree_absence(df)
+    covered = absence.copy()
+    radius_class = tree_df.get('tree_density_radius_class', pd.Series('', index=tree_df.index))
+    for name in ('lgtree', 'smtree', 'sapling'):
+        recorded = set(tree_df.loc[radius_class.eq(name), 'ParentGlobalID'])
+        covered[name] |= df['GlobalID'].isin(recorded)
+    if sapling_df is not None:
+        covered['sapling'] |= df['GlobalID'].isin(sapling_df['ParentGlobalID'])
+        known_live.update(sapling_df.loc[sapling_df['sapling_live_count'].gt(0), 'ParentGlobalID'])
+        uncertain.update(sapling_df.loc[sapling_df['sapling_live_count'].isna(), 'ParentGlobalID'])
+    present = pd.Series(pd.NA, index=df.index, dtype='boolean')
+    present.loc[covered.all(axis=1) & ~df['GlobalID'].isin(uncertain)] = False
+    present.loc[df['GlobalID'].isin(known_live)] = True
+    absent = absence.all(axis=1)
+    present.loc[absent] = False
+    values = values.mask(df['GlobalID'].isin(invalid_density | uncertain)).mask(absent, 0.)
+    ambiguous = df.get('_parent_id_ambiguous', pd.Series(False, index=df.index)).fillna(False)
+    ambiguous = ambiguous | df['GlobalID'].isna() | df['GlobalID'].duplicated(keep=False)
+    present = present.mask(ambiguous)
+    values = values.mask(ambiguous | present.isna()).mask(present.eq(False).fillna(False), 0.)
+    return helper.attach_columns(df, {
+        'conpyro_live_tree_density': values,
+        'conpyro_live_trees_present': present,
+    })
+
+
 def _calc_plot_multipliers(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate per-hectare expansion factors from circular plot radii.
@@ -2425,6 +2473,9 @@ def process_trees(
     ] = np.nan
 
     # ### PROCESS STAND_LEVEL (PER HA) ATTRIBUTES
+    if gen_conpyro_df:
+        df = _calc_conpyro_live_density(df, tree_df, sapling_df)
+        keep_columns.extend(['conpyro_live_tree_density', 'conpyro_live_trees_present'])
     df, add_columns = _calc_stand_composition(df, tree_df, gen_conpyro_df)
     keep_columns.extend(add_columns)
     df, add_columns = _calc_stand_attributes(df, tree_df, stand_summary_params)
