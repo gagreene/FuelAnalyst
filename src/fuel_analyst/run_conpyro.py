@@ -404,6 +404,32 @@ def _log_cfis_fuel_type_issues(df: pd.DataFrame, input_params: dict, plot_id_col
         )
 
 
+def _log_missing_shrub_proxy_loads(df, plot_id_col):
+    """
+    Report missing components of shrub-proxy consumption once per plot.
+
+    :param df: ConPyro inputs after stand and surface-model filtering.
+    :param plot_id_col: Column identifying plots in the input dataframe.
+    :return: None. Logs plot warnings without changing input values.
+    """
+    surface_type = df.get('surface_fuel_type', pd.Series('', index=df.index))
+    shrub_rows = df.loc[surface_type.eq('shrubs')]
+    if shrub_rows.empty:
+        return
+    load_columns = ['herbaceous_fuel_load', 'shrub_fuel_load']
+    missing = shrub_rows[load_columns].isna()
+    affected = shrub_rows.loc[missing.any(axis=1)]
+    for plot_id in affected[plot_id_col].drop_duplicates():
+        plot_rows = affected[plot_id_col].eq(plot_id)
+        fields = [column for column in load_columns if affected.loc[plot_rows, column].isna().any()]
+        logger.warning(
+            f'Shrub-proxy consumption is unknown for scenarios with missing {", ".join(fields)}. '
+            'The combined herbaceous and shrub load remains missing; no zero is substituted. '
+            'Check the source fuel loads and regenerate the ConPyro/weather inputs.',
+            extra={'unique_id': plot_id, 'issue_code': 'conpyro_missing_shrub_proxy_load'},
+        )
+
+
 def _log_skipped_empty_stand_plots(
         skipped_df: pd.DataFrame,
         empty_cols: list,
@@ -924,6 +950,7 @@ def run_conpyro(
             df = df.loc[~missing_model]
 
         _log_cfis_fuel_type_issues(df, input_params, conpyro_params['plot_id_col_name'])
+        _log_missing_shrub_proxy_loads(df, conpyro_params['plot_id_col_name'])
 
         # ### MODEL FIRE BEHAVIOR WITH CONPYRO ###
         print('\n>>>> Running ConPyro...')
