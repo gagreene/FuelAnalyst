@@ -4,7 +4,7 @@
 
 ### Changes
 
-- Fixed the Van Wagner quadratic mean diameter calculation crashing when a plot has no finite tally-regression points. Such plots now complete using the existing insufficient-point handling: classes without tallies retain missing QMD values, and a single counted class uses the existing Delisle and Woodard fallback. Regression results for plots with usable points are unchanged.
+- Fixed the Van Wagner quadratic mean diameter calculation crashing when a plot has no finite tally-regression points. Such plots now complete using the existing insufficient-point handling: classes without tallies retain missing QMD values, and a single counted class uses the existing Delisle and Woodard fallback. Zero-row QMD inputs return an empty result with the expected columns. Regression results for plots with usable points are unchanged.
 
 ## 0.5.0
 

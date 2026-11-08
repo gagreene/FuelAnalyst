@@ -926,8 +926,12 @@ def _get_van_wagner_qmd(
     :param extension: String extension for column names (e.g., 'can', 'mod').
     :param diam_classes: List of diameter class upper bounds (in cm).
     :param trans_lengths: List of transect lengths (in meters) for each class.
-    :return: DataFrame with QMD columns for each diameter class.
+    :return: DataFrame with QMD columns for each diameter class; zero plot rows return
+        an empty floating-point frame with the input index preserved.
     """
+    if df.index.empty:
+        return pd.DataFrame(index=df.index, columns=[f'qmd{dc}' for dc in diam_classes], dtype=float)
+
     # Replace missing values and zeros with np.nan for proper calculations
     dc_df = df.copy().replace(r'^\s+$', np.nan, regex=True).replace(0, np.nan)
 
