@@ -8,6 +8,7 @@ __author__ = ['Gregory A. Greene']
 
 import logging
 import os
+import warnings
 import pandas as pd
 import numpy as np
 import fnmatch
@@ -555,7 +556,8 @@ def _calc_tallied_woody_biomass(
             df = helper.attach_columns(
                 df,
                 _get_van_wagner_qmd(
-                    df[[f'tsct_length_max_{woody_class_ext}'] +
+                    df[[col for col in ['unique_id'] if col in df] +
+                       [f'tsct_length_max_{woody_class_ext}'] +
                        [f'tsct_length_total_{woody_class_ext}_{lngth}'
                         for lngth in sorted(np.unique(transect_lengths))] +
                        [f'woody_count_{woody_class_ext}_{str(dc).replace(".", "_")}'
@@ -923,11 +925,14 @@ def _get_van_wagner_qmd(
     default QMD values from Delisle and Woodard (1988).
 
     :param df: DataFrame containing tally counts and transect length columns for each plot.
+        An optional unique_id column identifies plots in regression-failure warnings; absent count
+        columns are excluded from fitting and retain missing QMD.
     :param extension: String extension for column names (e.g., 'can', 'mod').
     :param diam_classes: List of diameter class upper bounds (in cm).
     :param trans_lengths: List of transect lengths (in meters) for each class.
     :return: DataFrame with QMD columns for each diameter class; zero plot rows return
-        an empty floating-point frame with the input index preserved.
+        an empty floating-point frame with the input index preserved. Failed regressions use the
+        existing fallback values and log a warning; zero or missing tallies produce no warning.
     """
     if df.index.empty:
         return pd.DataFrame(index=df.index, columns=[f'qmd{dc}' for dc in diam_classes], dtype=float)
@@ -953,9 +958,6 @@ def _get_van_wagner_qmd(
         '7.5': 0.0537 * (7.5 ** 2) + 0.4583 * 7.5 + 0.0977,
         '7.62': 0.0537 * (7.62 ** 2) + 0.4583 * 7.62 + 0.0977
     }
-
-    # Count the number of diameter classes with empty tallies (null or nan)
-    dc_df['countEmpty'] = dc_df[[col for col in dc_df.columns if 'count' in col]].isnull().sum(axis=1)
 
     # Replace np.nan values with 0 for further calculations
     dc_df = dc_df.replace(np.nan, 0)
@@ -986,40 +988,45 @@ def _get_van_wagner_qmd(
         dc_df[f'lnMidClass{dc}'] = np.log(dc_df[f'midClass{dc}'])
 
     # Prepare X (lnMidClass) and Y (lnAdjFreq) for regression
-    dc_df['slopeX'] = dc_df.apply(lambda x: x[[f'lnMidClass{dc}' for dc in diam_classes]].values.tolist(), axis=1)
-    dc_df['slopeY'] = dc_df.apply(lambda x: x[[f'lnAdjFreq{dc}' for dc in diam_classes]].values.tolist(), axis=1)
+    slope_x = dc_df[[f'lnMidClass{dc}' for dc in diam_classes]].to_numpy(dtype=float)
+    slope_y = dc_df[[f'lnAdjFreq{dc}' for dc in diam_classes]].to_numpy(dtype=float)
 
-    # Remove infinite or null values from slopeX and slopeY for regression. A plot with no usable point keeps empty
-    # lists (it falls back to the Delisle and Woodard values below) instead of failing the whole run.
-    finite_pairs = [
-        [(xi, yi) for xi, yi in zip(xs, ys) if np.isfinite(xi) and np.isfinite(yi)]
-        for xs, ys in zip(dc_df['slopeX'], dc_df['slopeY'])
-    ]
-    dc_df['slopeX'] = pd.Series([[xi for xi, _ in pairs] for pairs in finite_pairs], index=dc_df.index, dtype=object)
-    dc_df['slopeY'] = pd.Series([[yi for _, yi in pairs] for pairs in finite_pairs], index=dc_df.index, dtype=object)
+    # Remove infinite or null values from slope_x and slope_y for regression. A plot with no usable point keeps empty
+    # arrays (it falls back to the Delisle and Woodard values below) instead of failing the whole run.
+    finite_mask = np.isfinite(slope_x) & np.isfinite(slope_y)
+    plot_ids = df['unique_id'] if 'unique_id' in df else [None] * len(df)
 
-    def getSlope(inX, inY):
+    def getSlope(inX, inY, plot_id):
         """
         Calculate the slope (b) of the linear regression line for the given X and Y values.
 
         Uses scipy.stats.linregress to compute the slope (first return value).
-        If a RuntimeWarning occurs (e.g., due to insufficient or invalid data), returns np.nan.
+        Runtime warnings and ValueError failures return np.nan for the existing QMD fallback.
 
-        :param inX: List or array-like of X values (e.g., lnMidClass for diameter classes).
-        :param inY: List or array-like of Y values (e.g., lnAdjFreq for diameter classes).
-        :return: Slope of the regression line, or np.nan if regression fails.
+        :param inX: Array of finite X values (lnMidClass for diameter classes).
+        :param inY: Array of finite Y values (lnAdjFreq for diameter classes).
+        :param plot_id: Plot unique_id for error reporting, or None when unavailable.
+        :return: Slope of the regression line, or np.nan after logging a failed regression.
         """
         try:
             # linregress returns (slope, intercept, rvalue, pvalue, stderr)
-            return linregress(inX, inY)[0]
-        except RuntimeWarning:
+            with warnings.catch_warnings():
+                warnings.simplefilter('error', RuntimeWarning)
+                return linregress(inX, inY)[0]
+        except (RuntimeWarning, ValueError) as error:
+            logger.warning(
+                'Van Wagner QMD regression failed for %s classes: %s. Using Delisle and Woodard fallback values.',
+                extension,
+                error,
+                extra={'unique_id': plot_id, 'issue_code': 'woody_qmd_regression_failed'},
+            )
             # Return NaN if regression cannot be performed
             return np.nan
 
-    dc_df['slopeB'] = dc_df.apply(
-        lambda x: getSlope(x.slopeX, x.slopeY) if len(list(x.slopeY)) > 1 else np.nan,
-        axis=1
-    )
+    dc_df['slopeB'] = [
+        getSlope(xs[valid], ys[valid], plot_id) if np.count_nonzero(valid) > 1 else np.nan
+        for plot_id, xs, ys, valid in zip(plot_ids, slope_x, slope_y, finite_mask)
+    ]
 
     # Adjust slope if it is exactly -1 or -3 to avoid division by zero in QMD formula
     dc_df['slopeB'] = np.where((dc_df.slopeB == -1) | (dc_df.slopeB == -3),
@@ -1035,8 +1042,7 @@ def _get_van_wagner_qmd(
                 dc_df[f'qmd{dc}'] = dc_df.apply(
                     lambda x: np.sqrt(((x.slopeB + 1) * (np.power(dc, x.slopeB + 3) - np.power(0.1, x.slopeB + 3))) /
                                       ((x.slopeB + 3) * (np.power(dc, x.slopeB + 1) - np.power(0.1, x.slopeB + 1))))
-                    if (len(x.slopeY) > 1) &
-                       (np.isfinite(x.slopeB))
+                    if np.isfinite(x.slopeB)
                     else delisle_dict.get(f'{dc}', np.nan), axis=1)
             else:
                 # Subsequent classes: lower bound is previous class upper bound
@@ -1046,14 +1052,15 @@ def _get_van_wagner_qmd(
                                            np.power(diam_classes[i - 1], x.slopeB + 3))) /
                         ((x.slopeB + 3) * (np.power(dc, x.slopeB + 1) -
                                            np.power(diam_classes[i - 1], x.slopeB + 1))))
-                    if ((len(x.slopeY) > 1) & np.isfinite(x.slopeB) & np.isfinite(x[f'adjFreq{dc}']))
+                    if np.isfinite(x.slopeB) & np.isfinite(x[f'adjFreq{dc}'])
                     else delisle_dict.get(f'{dc}', np.nan), axis=1)
         except RuntimeWarning:
             dc_df[f'qmd{dc}'] = delisle_dict.get(f'{dc}', np.nan)
             pass
 
         # Set QMD to np.nan if no tally count exists for the class
-        dc_df[f'qmd{dc}'] = np.where(dc_df[f'woody_count_{extension}_{dc_str}'] == 0, np.nan, dc_df[f'qmd{dc}'])
+        dc_df[f'qmd{dc}'] = np.where(dc_df.get(f'woody_count_{extension}_{dc_str}', 0) == 0,
+                                   np.nan, dc_df[f'qmd{dc}'])
 
     # Return DataFrame with QMD columns for each diameter class
     return dc_df[[f'qmd{dc}' for dc in diam_classes]]
