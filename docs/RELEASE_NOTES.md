@@ -4,7 +4,8 @@
 
 ### Changes
 
-- Fixed the Van Wagner quadratic mean diameter calculation crashing when a plot has no finite tally-regression points. Such plots now complete using the existing insufficient-point handling: classes without tallies retain missing QMD values, and a single counted class uses the existing Delisle and Woodard fallback. Zero-row QMD inputs return an empty result with the expected columns. Missing count columns also retain missing QMD instead of raising a KeyError. A regression ValueError or RuntimeWarning now uses the existing fallback for that plot and records a Woody Debris warning with its plot ID; valid zero tallies do not produce warnings. Finite-point filtering uses one NumPy mask rather than rebuilding lists and object Series. Successful regression results are unchanged.
+- Fixed the Van Wagner quadratic mean diameter (QMD) calculation crashing the whole run when a plot has no usable tally-regression points. Such plots now complete: classes without tallies keep a missing QMD, and a single counted class uses the Delisle and Woodard fallback. Results for plots that already completed are unchanged.
+- A QMD regression that fails (a SciPy ValueError or RuntimeWarning) now uses the same fallback for that plot and adds a warning with its plot ID to the Woody Debris column of `fuelanalyst_errors.csv`. A missing tally count column keeps a missing QMD instead of raising a KeyError. Valid plots with no woody counts produce no warning.
 
 ## 0.5.0
 

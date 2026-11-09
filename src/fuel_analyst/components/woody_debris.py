@@ -1001,7 +1001,8 @@ def _get_van_wagner_qmd(
         Calculate the slope (b) of the linear regression line for the given X and Y values.
 
         Uses scipy.stats.linregress to compute the slope (first return value).
-        Runtime warnings and ValueError failures return np.nan for the existing QMD fallback.
+        Runtime warnings (escalated to errors by the caller) and ValueError failures return np.nan for the
+        existing QMD fallback.
 
         :param inX: Array of finite X values (lnMidClass for diameter classes).
         :param inY: Array of finite Y values (lnAdjFreq for diameter classes).
@@ -1010,9 +1011,7 @@ def _get_van_wagner_qmd(
         """
         try:
             # linregress returns (slope, intercept, rvalue, pvalue, stderr)
-            with warnings.catch_warnings():
-                warnings.simplefilter('error', RuntimeWarning)
-                return linregress(inX, inY)[0]
+            return linregress(inX, inY)[0]
         except (RuntimeWarning, ValueError) as error:
             logger.warning(
                 'Van Wagner QMD regression failed for %s classes: %s. Using Delisle and Woodard fallback values.',
@@ -1023,10 +1022,14 @@ def _get_van_wagner_qmd(
             # Return NaN if regression cannot be performed
             return np.nan
 
-    dc_df['slopeB'] = [
-        getSlope(xs[valid], ys[valid], plot_id) if np.count_nonzero(valid) > 1 else np.nan
-        for plot_id, xs, ys, valid in zip(plot_ids, slope_x, slope_y, finite_mask)
-    ]
+    # Escalate RuntimeWarning once for the whole loop (not once per plot) so getSlope can fall back for that plot;
+    # the previous filters are restored when the block ends.
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', RuntimeWarning)
+        dc_df['slopeB'] = [
+            getSlope(xs[valid], ys[valid], plot_id) if np.count_nonzero(valid) > 1 else np.nan
+            for plot_id, xs, ys, valid in zip(plot_ids, slope_x, slope_y, finite_mask)
+        ]
 
     # Adjust slope if it is exactly -1 or -3 to avoid division by zero in QMD formula
     dc_df['slopeB'] = np.where((dc_df.slopeB == -1) | (dc_df.slopeB == -3),
