@@ -76,6 +76,7 @@ def test_results_for_other_plots_do_not_depend_on_a_plot_without_counts():
 
     np.testing.assert_allclose(together.loc['a'].to_numpy(float), alone.loc['a'].to_numpy(float))
 
+
 def test_zero_row_input_returns_empty_qmd_schema():
     counts = _counts().iloc[:0].copy()
     counts.index.name = 'plot'
