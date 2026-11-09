@@ -1,12 +1,5 @@
 # Release notes
 
-## Unreleased
-
-### Changes
-
-- Fixed the Van Wagner quadratic mean diameter (QMD) calculation crashing the whole run when a plot has no usable tally-regression points. Such plots now complete: classes without tallies keep a missing QMD, and a single counted class uses the Delisle and Woodard fallback. Results for plots that already completed are unchanged.
-- A QMD regression that fails (a SciPy ValueError or RuntimeWarning) now uses the same fallback for that plot and adds a warning with its plot ID to the Woody Debris column of `fuelanalyst_errors.csv`. A missing tally count column keeps a missing QMD instead of raising a KeyError. Valid plots with no woody counts produce no warning.
-
 ## 0.5.0
 
 This is a minor release: protocol-aware tree sampling, automatic surface-model selection, the ConPyro update, and Trees form metadata change inputs, results, and documented behaviour. Review the migration steps and model assumptions before reusing existing inputs or comparing results with earlier releases.
@@ -53,6 +46,8 @@ This is a minor release: protocol-aware tree sampling, automatic surface-model s
 - Tree-derived ConPyro fields, including canopy fuel load, canopy bulk density, and conifer percentage, remain missing for every tree-excluded plot, including unsupported-species exclusions. Previously these fields filled with zero; excluded plots remain ineligible for simulation.
 - Fixed pandas 3 dtype handling for empty sapling repeats and blank tree-note columns during crown-base-height cleanup. Fractional DBH normalization and explanatory notes no longer fail on inferred numeric dtypes.
 - Default dictionaries are centralized internally; documented public import paths remain unchanged. The default fire-modelling worker count falls back to one when the system cannot report its CPU count.
+- Fixed the Van Wagner quadratic mean diameter (QMD) calculation crashing the whole run when a plot has no usable tally-regression points. Such plots now complete: classes without tallies keep a missing QMD, and a single counted class uses the Delisle and Woodard fallback. Results for plots that already completed are unchanged.
+- A QMD regression that fails (a SciPy ValueError or RuntimeWarning) now uses the same fallback for that plot and adds a warning with its plot ID to the Woody Debris column of `fuelanalyst_errors.csv`. A missing tally count column keeps a missing QMD instead of raising a KeyError. Valid plots with no woody counts produce no warning.
 
 ## 0.4.0
 
