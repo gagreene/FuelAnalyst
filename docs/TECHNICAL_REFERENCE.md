@@ -1011,7 +1011,7 @@ The settings of default_fire_modelling_dict are listed in Table 34. Entries that
 | conpyro.input_params.fmc | None | Foliar moisture content (float, integer, or None); overrides the value derived from wx_date |
 | conpyro.input_params.season | None | Season: None, "Sp", "Sp-Su", "T", "Su", "F", or "use_csv" |
 | conpyro.input_params.time | None | Time of the weather observations as an HHMM integer, None, or "use_csv"; needed only for CFIS (cfo_model 10) |
-| conpyro.input_params (other switches) | process_ladder False; smooth_ros True; model_terrain_effects_on_wind True; model_terrain_effects_on_ffmc True; suppress_messages True | ConPyro model switches passed through unchanged |
+| conpyro.input_params (other switches) | process_ladder False; smooth_ros True; model_terrain_effects_on_wind True; model_terrain_effects_on_ffmc False; suppress_messages True | ConPyro model switches passed through unchanged |
 | conpyro.output_params.out_request | mc_sa, mc_dmc, fsg, cac, cfo_prob, sros, cros, hros, bros, sfc, cfc, tfc, sfi, cfi, hfi, cfb, fire_type | ConPyro outputs that are written; mc_sa and mc_dmc are needed for emissions modelling |
 | fofem_mortality.run_model | True | Toggle FOFEM mortality modelling |
 | fofem_mortality.plot_id_col_name, fofem_tree_id_col_name | "unique_id", "unique_id" | Plot and tree identifier columns for the mortality stage |

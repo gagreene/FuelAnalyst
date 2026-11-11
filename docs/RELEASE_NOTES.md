@@ -1,5 +1,12 @@
 # Release notes
 
+## Unreleased
+
+### Changes
+
+- Woody species-source reporting now occurs only after source resolution. A successful replacement logs the declared and replacement sources at INFO. With no available source, positive tallies or duff/litter depths produce a per-plot ERROR identifying the biomass that cannot be calculated; affected values remain missing and other plots continue. Valid empty plots do not receive a missing-composition error.
+- Changed the ConPyro default `model_terrain_effects_on_ffmc` to `False`. Terrain effects on wind remain enabled; callers can explicitly enable the FFMC terrain adjustment.
+
 ## 0.5.0
 
 This is a minor release: protocol-aware tree sampling, automatic surface-model selection, the ConPyro update, and Trees form metadata change inputs, results, and documented behaviour. Review the migration steps and model assumptions before reusing existing inputs or comparing results with earlier releases.

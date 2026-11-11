@@ -34,6 +34,10 @@ def test_defaults_import_does_not_load_numeric_or_model_dependencies():
     )
 
 
+def test_ffmc_terrain_effects_default_to_false():
+    assert defaults.default_fire_modelling_dict['conpyro']['input_params']['model_terrain_effects_on_ffmc'] is False
+
+
 def test_public_default_names_reexport_the_shared_objects():
     api = importlib.import_module('fuel_analyst.fuel_analyst')
     for name in ['default_stand_summary_dict', 'default_woody_debris_dict',

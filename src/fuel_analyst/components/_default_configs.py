@@ -457,7 +457,7 @@ default_fire_modelling_dict = {
             'process_ladder': False,     # Toggle ladder fuel processing on/off
             'smooth_ros': True,          # Toggle ROS smoothing function on/off
             'model_terrain_effects_on_wind': True,  # Toggle terrain (slope/aspect) effects on wind speed and direction
-            'model_terrain_effects_on_ffmc': True,  # Toggle terrain (slope/aspect) effects on FFMC
+            'model_terrain_effects_on_ffmc': False,  # Toggle terrain (slope/aspect) effects on FFMC
             'suppress_messages': True,              # Toggle ConPyro processing messages on/off
             'wx_date': 'use_csv',   # Options: Integer in format YYYYMMDD, or string "use_csv" (default)
                                     #    wx_date used for fine dead fuel and ladder foliar MC calculations
