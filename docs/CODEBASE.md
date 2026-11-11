@@ -856,7 +856,25 @@ configuration. Live status/count observations, not a zero-filled density, establ
 requires coverage or explicit absence for all three sampling classes; invalid counts and missing repeats cannot prove
 absence. Excluded plots mask both fields. `conpyro_attributes._calc_surface_models()` selects configured forest,
 grass/herb or shrub models and exports `surface_fuel_type` plus `sros_model`. `HG/HF/HE` map to grass/herbs and `SL/ST`
-to shrubs only when absence of live trees is established. Other substrates remain unassigned with warnings.
+to shrubs only when absence of live trees is established. BY handling is described below; other substrates remain unassigned with warnings.
+
+For confirmed treeless BY plots, positive `pc_flammable` selects `surface_fuel_type='forest_floor'`,
+`stand_type=10`, and SROS model 1 independently of the configured forest mapping. Canopy geometry,
+canopy fuel, and grass/herb/shrub model loads are zero; measured duff, litter, and woody loads remain.
+This uses the grass stand domain as a surface-only calculation domain, not as an observation of grass.
+The runner calculates duff/litter/woody consumption with the vendored SFC component and explicitly
+supplies its total to ConPyro, avoiding the grass domain's default of using grass load as SFC.
+The calculation uses measured duff plus litter, woody load, and weather BUI, without an FBP fuel-type
+surrogate. Existing SFC input limits (forest floor 0-5 kg/m2, wood 0-2 kg/m2, BUI 5-200) and total
+consumption bounds (0.1-6 kg/m2) apply. Model 1 spread uses FFMC-derived moisture in stand domain 10;
+weather DMC still supplies `mc_dmc` for FOFEM duff moisture. Crown consumption/intensity are zero.
+Mixed batches process BY separately so forest and grass/shrub consumption paths are preserved.
+ConPyro emits its informational stand/model mismatch warning for the deliberate 10/1 pairing.
+
+For treeless BY with zero flammability, inputs use `stand_type=0` and a missing SROS model and log INFO.
+Missing, nonnumeric, nonfinite, or out-of-range flammability, or unresolved/excluded tree presence on
+BY plots, logs a specific ERROR and uses the same processing fallback. Zero fire outputs from that
+fallback do not establish nonfuel observations. FBP preparation and both substrate fields are unchanged.
 
 The runner defaults to `sros_model='use_csv'`, accepts numeric and alias model values, preserves numeric stand code 10
 in mixed CSVs, and supplies constant `grass_curing=60` as `gcf`. Open-fuel rows use zero live-canopy geometry; shrub-proxy
@@ -864,7 +882,7 @@ consumption adds shrub to herbaceous load. Model 31 is explicitly a temporary gr
 remain available. No vendor equations were edited. The standalone example refreshes plot attributes against existing
 weather; never add a guessed model 13 to stale weather merges as an automatic migration.
 
-`fofem_moisture.derive_grass_duff_moisture()` completes missing grass/herb and shrub-proxy mc_dmc from weather DMC,
+`fofem_moisture.derive_grass_duff_moisture()` completes missing grass/herb, shrub-proxy, and stand-code-10 BY mc_dmc from weather DMC,
 using the existing FWIS conversion and ConPyro's forest bounds of 10-200. The runner applies it to new and reloaded
 results. Both emissions readers retain optional dmc and surface metadata; the shared moisture helper repairs older
 results before assigning DuffMoisture = mc_dmc. Existing finite values are preserved. There is no configured-regime

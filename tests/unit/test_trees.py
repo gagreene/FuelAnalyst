@@ -689,7 +689,15 @@ def test_plot_with_an_unlisted_tree_species_is_left_out_of_the_model_inputs(tmp_
     errors = pd.read_csv(out_dir / 'fuelanalyst_errors.csv', low_memory=False)
     excluded = errors.loc[errors['Trees'].astype(str).str.contains("Species 'ZZ'"), 'unique_id'].iloc[0]
     conpyro = pd.read_csv(out_dir / 'conpyro_df.csv', low_memory=False).set_index('unique_id')
-    assert pd.isna(conpyro.loc[excluded, 'stand_density']) and pd.isna(conpyro.loc[excluded, 'stand_type'])
+    # The example plot has BY substrate. Excluded tree inputs now receive an explicit
+    # non-burning processing fallback, while their unknown canopy fuels remain missing.
+    assert conpyro.loc[excluded, 'surface_fuel_type'] == 'nonfuel_error'
+    assert conpyro.loc[excluded, 'stand_density'] == 'L'
+    assert float(conpyro.loc[excluded, 'stand_type']) == 0
+    assert pd.isna(conpyro.loc[excluded, 'sros_model'])
+    assert conpyro.loc[excluded, ['cfl_ovrstry', 'cbd_ovrstry']].isna().all()
+    messages = ' '.join(errors.loc[errors['unique_id'] == excluded].astype(str).iloc[0])
+    assert '[ERROR]' in messages and 'tree inputs were excluded' in messages
     others = conpyro.drop(index=excluded)
     assert others['stand_density'].notna().sum() > 0 and others['stand_type'].notna().sum() > 0
     assert '_trees_excluded' not in conpyro.columns

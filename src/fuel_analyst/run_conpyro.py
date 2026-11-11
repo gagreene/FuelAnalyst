@@ -22,6 +22,7 @@ from .components import helper
 # Re-export the public fire-modelling defaults.
 from .components._default_configs import default_fire_modelling_dict
 from ._vendor.conpyro import conpyro
+from ._vendor.conpyro.components.surface_fuel_consumption import SFC
 import flame_components as fc
 import tqdm
 import concurrent.futures
@@ -40,6 +41,30 @@ except ImportError:
 # internally. Re-verify these against pyfofem if it's updated.
 _FOFEM_MIN_FLAME_RES_TIME_S = 10.0
 _FOFEM_MAX_FLAME_RES_TIME_S = 200.0
+
+
+def _calc_by_surface_consumption(subset_df: pd.DataFrame):
+    """
+    Calculate duff/litter/woody consumption for the treeless BY surface domain.
+
+    :param subset_df: BY plot/weather rows with measured surface loads and weather.
+    :return: Masked consumption array in kg/m2 from the existing ConPyro SFC
+        component, including its input limits and consumption bounds.
+    """
+    consumption = SFC()
+    consumption.initialize_sfc(
+        fuel_type=None,
+        ffmc=subset_df['ffmc'].to_numpy(dtype=float),
+        bui=subset_df['bui'].to_numpy(dtype=float),
+        ffl=subset_df[['duff_fuel_load', 'litter_fuel_load']].sum(axis=1, min_count=2).to_numpy(dtype=float),
+        wfl=subset_df['woody_fuel_load'].to_numpy(dtype=float),
+        gfl=full(len(subset_df), 0.),
+        pct_cnfr=full(len(subset_df), 0.),
+    )
+    # BY uses measured surface loads and BUI, not an FBP forest-type surrogate.
+    consumption.cfo_model = full(len(subset_df), 5)
+    consumption.run_sfc(consumption.cfo_model)
+    return consumption.sfc
 
 
 def _calc_instand_ws(df: pd.DataFrame) -> pd.DataFrame:
@@ -488,6 +513,17 @@ def _single_run_fire_behavior(args):
     :return: ConPyro results for the supplied date and time.
     """
     wx_date, time, subset_df, input_params, conpyro_out_list = args
+    by_surface = subset_df.get('surface_fuel_type', pd.Series('', index=subset_df.index)).eq('forest_floor')
+    if by_surface.any() and not by_surface.all():
+        # Explicit SFC applies only to BY rows; other domains keep ConPyro's normal SFC path.
+        parts = []
+        for selected in (by_surface, ~by_surface):
+            part = _single_run_fire_behavior(
+                (wx_date, time, subset_df.loc[selected], input_params, conpyro_out_list))
+            part.index = subset_df.index[selected]
+            parts.append(part)
+        return pd.concat(parts).reindex(subset_df.index).reset_index(drop=True)
+    supplied_sfc = _calc_by_surface_consumption(subset_df) if by_surface.any() else None
     if input_params['sros_model'] != 'use_csv':
         subset_df = subset_df.copy()
         subset_df['sros_model'] = input_params['sros_model']
@@ -553,7 +589,7 @@ def _single_run_fire_behavior(args):
         long=subset_df['long'].values,
         d0=None,
         dj=None,
-        sfc=None,
+        sfc=supplied_sfc,
         suppress_messages=input_params['suppress_messages'],
     )
     cp.run_conpyro()
@@ -912,6 +948,9 @@ def run_conpyro(
 
         # Drop rows with empty values in required columns, and report each skipped plot
         drop_empty_rows_in_cols = ['stand_density', 'stand_type']
+        nonfuel = pd.to_numeric(df['stand_type'], errors='coerce').eq(0)
+        df['stand_density'] = df['stand_density'].astype(object)
+        df.loc[nonfuel & df['stand_density'].isna(), 'stand_density'] = 'L'
         skipped_df = df[df[drop_empty_rows_in_cols].isna().any(axis=1)]
         df = df.drop(index=skipped_df.index)
         _log_skipped_empty_stand_plots(skipped_df, drop_empty_rows_in_cols, conpyro_params['plot_id_col_name'])
@@ -939,7 +978,8 @@ def run_conpyro(
             )
 
         if input_params.get('sros_model') == 'use_csv':
-            missing_model = df['sros_model'].isna()
+            nonfuel = pd.to_numeric(df['stand_type'], errors='coerce').eq(0)
+            missing_model = df['sros_model'].isna() & ~nonfuel
             for plot_id in df.loc[missing_model, conpyro_params['plot_id_col_name']].drop_duplicates():
                 logger.warning(
                     'ConPyro scenario skipped: sros_model is unassigned. Check live-tree observations '

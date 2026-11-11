@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Behaviour changes
+
+- Confirmed treeless BY plots with positive `pc_flammable` now export `surface_fuel_type='forest_floor'`, `stand_type=10`, and `sros_model=1`. Canopy and surface-vegetation model inputs are zero. The runner explicitly supplies duff/litter/woody consumption from ConPyro's existing SFC component, retaining BUI dependence for consumption and intensity; spread uses FFMC-derived moisture without forest stand adjustment. This is a modelling assumption for bare surface fuels, not evidence of grass cover. FBP substrate and fuel typing are unchanged. Regenerate ConPyro inputs and weather merges.
+- Treeless BY plots with `pc_flammable=0` export `stand_type=0` and a missing SROS model, with INFO. Missing/invalid flammability or unresolved/excluded tree presence on BY plots uses the same non-burning processing fallback but logs a specific per-plot ERROR; this does not establish observed nonfuel conditions. Explicit stand-zero rows remain in the runner's results even when their SROS model or density class is missing.
+
 ### Changes
 
 - Woody species-source reporting now occurs only after source resolution. A successful replacement logs the declared and replacement sources at INFO. With no available source, positive tallies or duff/litter depths produce a per-plot ERROR identifying the biomass that cannot be calculated; affected values remain missing and other plots continue. Valid empty plots do not receive a missing-composition error.

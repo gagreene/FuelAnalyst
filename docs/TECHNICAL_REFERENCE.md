@@ -340,8 +340,11 @@ The woody_debris_classes sub-dictionary in the ConPyro dictionary defines a dedi
 
 The `sros_model` dictionary maps `forest` to 13, `grass_herbs` to 31, and `shrubs` to 31 by default.
 Live-tree presence takes priority over dominant substrate. Confirmed treeless grass/herb and shrub plots use their
-respective selections; unsupported substrates and incomplete tree observations remain unassigned. The shrub default
-is a temporary O1b grass-model proxy. Model IDs and supported aliases can be changed independently by category.
+respective selections. The shrub default is a temporary O1b grass-model proxy. Model IDs and supported aliases can
+be changed independently by category. Confirmed treeless BY plots with positive `pc_flammable` use fixed model 1
+and stand code 10 outside this mapping, with explicitly calculated duff/litter/woody consumption. BY nonfuel and
+missing-input fallbacks use stand code 0 with no SROS model and distinct INFO/ERROR messages. Other unsupported
+substrates and incomplete tree observations remain unassigned.
 See [Section 4.2](#42-conpyro-fire-behaviour-modelling) for classification, fuel-load and curing details.
 
 ## 2.5 FOFEM Consumption Dictionary
@@ -1047,9 +1050,22 @@ assessment. Presence is independent of density: a live tree with an invalid plot
 
 Without live trees, each sampling class must be observed or explicitly absent before surface classification can proceed.
 Existing `dom_substrate` codes `HG`, `HF`, and `HE` select `grass_herbs`; `SL` and `ST` select `shrubs`.
-Excluded plots, incomplete tree observations, bryoid-dominated plots and unclassified substrates receive no model,
-with plot-specific warnings. They are not silently converted to grass. Trees excluded for species or protocol errors
-remain excluded. The shrub default is an explicit, temporary O1b grass-model proxy until a shrub model is available.
+Other unclassified substrates receive no model, with plot-specific warnings. They are not silently converted to grass.
+Trees excluded for species or protocol errors remain excluded from tree-derived calculations.
+
+Confirmed treeless BY plots with `pc_flammable > 0` export `surface_fuel_type='forest_floor'`, `stand_type=10`,
+and `sros_model=1`. This deliberately uses the grass stand domain for surface-only behaviour without forest moisture
+adjustment; it does not assert grass cover. Canopy and vegetation model inputs are zero. Duff/litter/woody consumption
+is calculated using the existing ConPyro SFC component and supplied explicitly, rather than using grass load.
+The calculation retains BUI dependence, input limits (forest floor 0-5 kg/m2, wood 0-2 kg/m2, BUI 5-200), and total
+consumption bounds (0.1-6 kg/m2). Model 1 uses FFMC-derived moisture for spread. Weather DMC supplies duff moisture
+for FOFEM. ConPyro reports its stand/model mismatch warning for the deliberate 10/1 pairing. Existing grass/herb
+and shrub consumption paths are unchanged. FBP substrate and typing are unchanged.
+
+Treeless BY plots with `pc_flammable=0` receive `stand_type=0` and no SROS model, with INFO. BY plots with missing,
+invalid, or out-of-range flammability or unresolved/excluded tree presence receive the same processing fallback with
+a specific ERROR. Their zero fire outputs do not establish measured nonfuel conditions. Explicit stand-zero rows
+are retained even with a missing SROS model or density class. The shrub default is an explicit, temporary O1b grass-model proxy until a shrub model is available.
 
 For confirmed treeless grass/herb and shrub-proxy rows, the engine receives stand code 10 and zero live-canopy geometry.
 Grass/herb fuel consumption uses `herbaceous_fuel_load` (grass plus herbs under the defaults); the shrub proxy uses

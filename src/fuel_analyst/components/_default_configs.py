@@ -208,6 +208,7 @@ default_woody_debris_dict = {
 }
 
 default_conpyro_dict = {
+    # Flammable treeless BY plots use fixed SROS model 1 and stand code 10 outside this mapping.
     'sros_model': {'forest': 13, 'grass_herbs': 31, 'shrubs': 31},  # Shrubs use O1b as a temporary proxy
     'stand_attributes': {  # All attributes must output a single column
         'conpyro_cfl_ovrstry': {  # This name is fixed for ConPyro

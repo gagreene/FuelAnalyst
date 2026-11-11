@@ -756,7 +756,7 @@ error on a mismatch rather than silently misinterpreting the file.
 
 Every completed `run_conpyro()` call also writes `run_conpyro_errors.csv`, with one column per reporting source.
 A CFIS run (`cfo_model` 10) on plots without an FBP fuel type, and each plot left out of the run because its
-`stand_density` or `stand_type` is empty, is logged per plot in its ConPyro Fire Behavior column; the run continues.
+`stand_density` or `stand_type` is empty, is logged per plot in its ConPyro Fire Behavior column; the run continues. Explicit numeric stand-zero rows are retained even with a missing density class or SROS model.
 
 The refreshed engine produces surface-only fire metrics for valid forest scenarios with zero canopy bulk density.
 Explicit non-burning scenarios (`fire_type=0`) retain zero fire metrics and missing flame quantities. FOFEM skips
@@ -768,6 +768,14 @@ Surface models are assigned while preparing `conpyro_df.csv`, using
 Any observed live trees, including counted saplings, select `forest`. Confirmed treeless plots use the existing
 dominant-substrate classification: grass/herbs select `grass_herbs`, and low/tall shrubs select `shrubs`.
 Model 31 (O1b) is a temporary grass-model proxy for shrubs. Missing tree observations are not treated as absence.
+Confirmed treeless `BY` plots with positive `pc_flammable` instead use fixed `sros_model=1`, `stand_type=10`,
+and `surface_fuel_type='forest_floor'`. This is a surface-only modelling domain, not recorded grass cover.
+The runner explicitly supplies calculated duff/litter/woody consumption; BUI affects consumption and intensity,
+while spread uses FFMC-derived moisture. Actual grass/herb and shrub consumption handling is unchanged.
+BY plots with zero flammability use `stand_type=0` and no SROS model, with INFO. Missing/invalid flammability
+or unresolved/excluded tree presence on BY plots uses the same non-burning processing fallback with a specific
+ERROR; these fallback outputs do not establish measured nonfuel conditions. FBP substrate and typing are unchanged.
+Regenerate ConPyro inputs and weather merges to apply this classification.
 
 `run_conpyro()` now defaults to `sros_model='use_csv'` and
 `default_fire_modelling_dict['conpyro']['input_params']['grass_curing']=60` (percent, passed as `gcf`).
@@ -871,7 +879,7 @@ Every setting, option, and effect is in the [technical reference](docs/TECHNICAL
 | --- | --- | --- |
 | `stand_attributes` | 11 entries with fixed ConPyro column names (canopy fuel load, bulk density, dead branch fuel load, heights, canopy base height, and fuel strata gap, by overstory and midstory) | The source attribute, summary, and metric of each ConPyro stand column. The height, canopy base height, and fuel strata gap entries accept one metric (`min`, `max`, or `mean`, default `mean`). `conpyro_fsg` reads `cbh` of live conifers unless `att_source` is `fsg` |
 | `vegetative_fuel_loads` | `herbaceous`: grass and herb/forb, `grass`: grass, `shrub`: shrubs | Which plant fuel fields are summed into each load. An empty list sets the load to 0. Only the herbaceous load is passed to ConPyro |
-| `sros_model` | `forest: 13`, `grass_herbs: 31`, `shrubs: 31` | Surface model by observed live-tree presence and dominant substrate; shrubs currently use the O1b grass proxy |
+| `sros_model` | `forest: 13`, `grass_herbs: 31`, `shrubs: 31` | Surface model by observed live-tree presence and dominant substrate; shrubs use the O1b proxy. Flammable treeless BY uses fixed model 1 outside this mapping |
 | `canopy_cover_attribute` | `"cc"` | Canopy cover estimate passed to ConPyro: `"cc"` (total), `"cc_cnfr"` (conifer), or `"cc_brdlf"` (broadleaf); it also sets the stand density class |
 | `woody_debris_classes` | One `conpyro` protocol with a single `lt7cm` output | Woody fuel load of pieces up to 7 cm. Fixed: the ConPyro input reads `woody_kgpm2_conpyro_lt7cm_7` |
 
