@@ -27,7 +27,11 @@ def _input_frame():
                       'grass_kgpm2', 'herb_forb_kgpm2', 'shrubs_kgpm2']:
             row[field] = 0.2
         rows.append(row)
-    return pd.DataFrame(rows)
+    result = pd.DataFrame(rows)
+    result['form_select'] = 'trees'
+    result['_tree_parent_present'] = True
+    result['_trees_confirmed_absent'] = [True, True, False, False]
+    return result
 
 
 @pytest.mark.parametrize(('present', 'flammable', 'excluded', 'reason'), [
@@ -46,6 +50,11 @@ def test_by_bad_inputs_report_error_and_preserve_missing_model(caplog, present, 
                            'dom_substrate': ['BY'], 'pc_flammable': [flammable], '_trees_excluded': [excluded]})
     with caplog.at_level(logging.INFO, logger=ca.__name__):
         result = ca._calc_surface_models(source, default_conpyro_dict['sros_model'])
+    if present is None or excluded:
+        assert result.loc[0, 'surface_fuel_type'] == ''
+        assert pd.isna(result.loc[0, 'sros_model'])
+        assert len(caplog.records) == 1 and caplog.records[0].levelno == logging.WARNING
+        return
     assert result.loc[0, 'surface_fuel_type'] == 'nonfuel_error'
     assert pd.isna(result.loc[0, 'sros_model'])
     assert len(caplog.records) == 1
@@ -81,15 +90,27 @@ def test_by_generated_inputs_supply_surface_only_and_explicit_nonfuel_codes():
     result = result.set_index('unique_id')
     assert result.loc['fuel', 'stand_type'] == 10
     assert result.loc['fuel', 'sros_model'] == 1
-    assert result.loc[['fuel', 'none', 'unknown', 'excluded'], 'stand_density'].eq('L').all()
-    assert result.loc[['none', 'unknown', 'excluded'], 'stand_type'].eq(0).all()
-    assert result.loc[['none', 'unknown', 'excluded'], 'sros_model'].isna().all()
+    assert result.index.tolist() == ['fuel', 'none']
+    assert result['stand_density'].eq('L').all()
+    assert result.loc[['none'], 'stand_type'].eq(0).all()
+    assert result.loc[['none'], 'sros_model'].isna().all()
     zero = ['canopy_cover', 'cfl_ovrstry', 'cbd_ovrstry', 'cfl_midstry', 'cbd_midstry', 'dead_branch_fl_midstry',
             'ht_ovrstry_live', 'ht_midstry_live', 'ht_midstry_dead', 'cbh_ovrstry', 'cbh_midstry', 'fsg',
             'herbaceous_fuel_load', 'grass_fuel_load', 'shrub_fuel_load']
     assert result.loc['fuel', zero].eq(0).all()
     assert result.loc['fuel', ['duff_fuel_load', 'litter_fuel_load', 'woody_fuel_load']].eq(0.2).all()
     pd.testing.assert_frame_equal(source, before)
+
+
+@pytest.mark.parametrize('index', [[20, 4, 18, 6], [3, 3, 8, 8]])
+def test_by_masks_preserve_nondefault_input_index(index):
+    source = _input_frame()
+    source.index = index
+    result, _ = ca.gen_conpyro_df(source, copy.deepcopy(default_conpyro_dict))
+    assert result.index.tolist() == index[:2]
+    assert result['unique_id'].tolist() == source['unique_id'].iloc[:2].tolist()
+    assert result['surface_fuel_type'].tolist() == ['forest_floor', 'nonfuel']
+    assert result['stand_type'].tolist() == [10, 0]
 
 
 def test_by_no_flammable_substrate_is_informational_nonfuel(caplog):
@@ -101,6 +122,16 @@ def test_by_no_flammable_substrate_is_informational_nonfuel(caplog):
     assert len(caplog.records) == 1
     assert caplog.records[0].levelno == logging.INFO
     assert 'No flammable substrate recorded (pc_flammable=0)' in caplog.records[0].message
+
+
+def test_confirmed_absence_with_sampling_exclusion_reaches_by_model():
+    source = _input_frame().iloc[[0]].copy()
+    source['_trees_excluded'] = True
+    source['_trees_species_excluded'] = False
+    result, _ = ca.gen_conpyro_df(source, copy.deepcopy(default_conpyro_dict))
+    assert len(result) == 1
+    assert result.iloc[0].stand_type == 10
+    assert result.iloc[0].sros_model == 1
 
 
 def test_live_tree_priority_is_preserved_for_by():

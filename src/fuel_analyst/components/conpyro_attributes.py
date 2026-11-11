@@ -15,6 +15,40 @@ from . import helper
 
 logger = logging.getLogger(__name__)
 
+_CONPYRO_COLUMNS = [
+    'unique_id',
+    'plot_id',
+    'lat',
+    'long',
+    'elevation',
+    'slope',
+    'aspect',
+    'stand_density',
+    'stand_type',
+    'surface_fuel_type',
+    'sros_model',
+    'fbp_fuel_type',
+    'pct_cnfr',
+    'canopy_cover',
+    'cfl_ovrstry',
+    'cbd_ovrstry',
+    'cfl_midstry',
+    'cbd_midstry',
+    'dead_branch_fl_midstry',
+    'ht_ovrstry_live',
+    'ht_midstry_live',
+    'ht_midstry_dead',
+    'cbh_ovrstry',
+    'cbh_midstry',
+    'fsg',
+    'duff_fuel_load',
+    'litter_fuel_load',
+    'woody_fuel_load',
+    'herbaceous_fuel_load',
+    'grass_fuel_load',
+    'shrub_fuel_load',
+]
+
 
 def _calc_stand_density(df: pd.DataFrame, cc_field: str) -> pd.DataFrame:
     """
@@ -157,12 +191,8 @@ def _calc_surface_models(df: pd.DataFrame, model_settings: dict) -> pd.DataFrame
     category.loc[present.eq(False) & substrate.isin(['SL', 'ST']) & ~excluded] = 'shrubs'
     flammable = pd.to_numeric(
         result.get('pc_flammable', pd.Series(np.nan, index=result.index)), errors='coerce')
-    for idx in result.index[substrate.eq('BY') & category.eq('')]:
+    for idx in result.index[substrate.eq('BY') & category.eq('') & present.eq(False).fillna(False) & ~excluded]:
         reasons = []
-        if excluded.loc[idx]:
-            reasons.append('tree inputs were excluded')
-        elif pd.isna(present.loc[idx]):
-            reasons.append('live-tree presence is unresolved')
         value = flammable.loc[idx]
         if pd.isna(value):
             reasons.append('pc_flammable is missing or nonnumeric')
@@ -279,12 +309,22 @@ def _prep_fbp_df(df: pd.DataFrame) -> pd.DataFrame:
 
 def gen_conpyro_df(df: pd.DataFrame, conpyro_params: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Read ConPyro attributes from a CSV file into a pandas DataFrame.
+    Generate model inputs using the Trees switch and resolved sampled-tree observations.
 
-    :param df: DataFrame containing plot-level data.
+    :param df: Plot data carrying collected Trees-parent, explicit-absence, and presence markers.
     :param conpyro_params: Dictionary of ConPyro parameters.
     :return: DataFrame containing the ConPyro attributes.
     """
+    # Work with row positions so duplicate caller index labels cannot select multiple plots.
+    df = helper.prepare_tree_model_inputs(df)
+    input_index = df.index.copy()
+    df = df.reset_index(drop=True)
+    if df.empty:
+        base = ['unique_id', '_date', 'treatment_area', 'treatment_unit', 'treatment_type', 'plot_id', 'SPECIES_CD_1']
+        empty = pd.DataFrame(columns=_CONPYRO_COLUMNS, index=input_index)
+        prep = _prep_fbp_df(df.reindex(columns=base))
+        prep.index = input_index
+        return empty, prep
     # Load tree parameters and set index
     tree_params_df = helper.get_df(
         os.path.join(os.path.dirname(__file__), '..', 'supporting_data', 'tree_parameters.csv')
@@ -297,17 +337,14 @@ def gen_conpyro_df(df: pd.DataFrame, conpyro_params: dict) -> tuple[pd.DataFrame
     open_fuel = df['surface_fuel_type'].isin(['grass_herbs', 'shrubs'])
     by_surface = df['surface_fuel_type'].eq('forest_floor')
     nonfuel = df['surface_fuel_type'].isin(['nonfuel', 'nonfuel_error'])
-    no_canopy = open_fuel | by_surface | nonfuel
+    no_canopy = open_fuel | by_surface | nonfuel | df['conpyro_live_trees_present'].eq(False).fillna(False)
     cover_column = conpyro_params['canopy_cover_attribute']
+    if cover_column not in df:
+        df[cover_column] = np.nan
     df[cover_column] = df[cover_column].mask(no_canopy, 0.)
     df = _calc_stand_density(df, cover_column)
     df = _calc_veg_fuel_loads(df, conpyro_params['vegetative_fuel_loads'])
     fbp_prep_df = _prep_fbp_df(df)
-
-    # A plot left out of the tree calculations has no canopy fuel values, and the fill with 0 below would model it with
-    # canopy fuels that were never calculated. Its stand type and density stay empty instead, so run_conpyro() leaves
-    # it out. BY error fallbacks below instead retain the plot with explicit stand code zero.
-    tree_excluded = helper.get_tree_excluded_plots(df)
 
     # Build DataFrame
     conpyro_df = pd.DataFrame({
@@ -318,8 +355,8 @@ def gen_conpyro_df(df: pd.DataFrame, conpyro_params: dict) -> tuple[pd.DataFrame
         'elevation': df['plot_elevation'],
         'slope': df['plot_slope_pct'],
         'aspect': df['plot_aspect'],  # slope==0 -> 270 already forced upstream in plot_attributes.py
-        'stand_density': df['conpyro_density_class'].mask(open_fuel, 'L').mask(tree_excluded),
-        'stand_type': df['conpyro_stand_type'].astype(object).mask(open_fuel, 10).mask(tree_excluded, ''),
+        'stand_density': df['conpyro_density_class'].mask(open_fuel, 'L'),
+        'stand_type': df['conpyro_stand_type'].astype(object).mask(open_fuel, 10),
         'surface_fuel_type': df['surface_fuel_type'],
         'sros_model': df['sros_model'],
         'fbp_fuel_type': '',
@@ -361,6 +398,7 @@ def gen_conpyro_df(df: pd.DataFrame, conpyro_params: dict) -> tuple[pd.DataFrame
     conpyro_df.loc[nonfuel, 'stand_type'] = 0
     conpyro_df.loc[by_surface | nonfuel,
                    ['herbaceous_fuel_load', 'grass_fuel_load', 'shrub_fuel_load']] = 0.
-    conpyro_df.loc[tree_excluded, tree_columns] = np.nan
 
+    conpyro_df.index = input_index
+    fbp_prep_df.index = input_index
     return conpyro_df, fbp_prep_df

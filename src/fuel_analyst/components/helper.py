@@ -164,18 +164,43 @@ def get_repo_root(start_dir: str) -> str:
 
 def get_tree_excluded_plots(df: pd.DataFrame) -> pd.Series:
     """
-    Flag the plots that were left out of the tree calculations because they record an unlisted tree species.
+    Flag unknown tree inputs, allowing explicit absence to override sampling-only exclusions.
 
-    trees.process_trees() marks those plots in a column that never reaches an output file. Their tree results are
-    missing, so a model input that would turn a missing tree value into 0 must leave them out instead of inventing a
-    value.
+    Trees marks exclusions internally. Confirmed absence can bypass a sampling exclusion,
+    but never an unlisted-species exclusion. Unknown inputs must not become zero stand fuels.
 
     :param df: Plot-level DataFrame, which may carry the marker column from process_trees().
     :return: Boolean Series aligned with df, True for a plot that was left out of the tree calculations.
     """
     if TREES_EXCLUDED_COLUMN not in df.columns:
         return pd.Series(False, index=df.index, dtype=bool)
-    return df[TREES_EXCLUDED_COLUMN].fillna(False).astype(bool)
+    excluded = df[TREES_EXCLUDED_COLUMN].fillna(False).astype(bool)
+    absent = df.get('_trees_confirmed_absent', pd.Series(False, index=df.index)).fillna(False).astype(bool)
+    species = df.get('_trees_species_excluded', pd.Series(False, index=df.index)).fillna(False).astype(bool)
+    return species | (excluded & ~absent)
+
+
+def get_tree_model_eligibility(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+    """
+    Distinguish collected, known tree observations from missing or excluded inputs.
+
+    :param df: Merged plot data carrying Trees parent, explicit-absence, and presence markers.
+    :return: Eligible mask and unknown reasons. Unchecked Trees uses surface inputs;
+        sampled Trees requires resolved live presence or covered zero-live absence.
+    """
+    selected = df.get('form_select', pd.Series('', index=df.index)).fillna('').str.contains(r'\btrees\b', regex=True)
+    parent = df.get('_tree_parent_present', pd.Series(False, index=df.index)).fillna(False).astype(bool)
+    absent = df.get('_trees_confirmed_absent', pd.Series(False, index=df.index)).fillna(False).astype(bool)
+    present = df.get('conpyro_live_trees_present', pd.Series(pd.NA, index=df.index))
+    known = (present.eq(True) | present.eq(False)).fillna(False)
+    excluded = get_tree_excluded_plots(df)
+    eligible = ~selected | (parent & (known | absent) & ~excluded)
+    reason = pd.Series('', index=df.index, dtype=object)
+    reason.loc[~eligible] = 'sampled tree observations do not establish live presence or covered zero-live absence'
+    reason.loc[excluded & selected] = 'tree inputs were excluded for a species or sampling issue'
+    reason.loc[~parent & selected] = 'Trees parent row is missing'
+    reason.loc[eligible] = ''
+    return eligible, reason
 
 
 def get_unique_id(df: pd.DataFrame) -> pd.DataFrame:
@@ -211,6 +236,50 @@ def get_unique_id(df: pd.DataFrame) -> pd.DataFrame:
     df = df.drop(columns=['_date_parsed'])
 
     return df
+
+
+def prepare_tree_model_inputs(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Select model-eligible rows and clear ignored or inapplicable live-tree inputs.
+
+    :param df: Merged plot data; the original inventory is never modified.
+    :return: Model copy with unknown sampled Trees omitted and surface-only tree
+        attributes set to zero. Unticked Trees ignores all stale tree values.
+    """
+    eligible, _ = get_tree_model_eligibility(df)
+    result = df.loc[eligible].copy()
+    selected = result.get('form_select', pd.Series('', index=result.index)).fillna('').str.contains(r'\btrees\b')
+    present = result.get('conpyro_live_trees_present', pd.Series(pd.NA, index=result.index))
+    surface = ~selected | present.eq(False).fillna(False)
+    if not surface.any():
+        return result
+    ignored = ~selected
+    for column in ['_trees_excluded', '_trees_species_excluded']:
+        if column in result:
+            result.loc[ignored, column] = False
+    result['conpyro_live_trees_present'] = present.mask(ignored, False)
+    fields = [
+        'conpyro_live_tree_density', 'stand_pct_cnfr_live', 'conpyro_cfl_ovrstry', 'conpyro_cbd_ovrstry',
+        'conpyro_cfl_midstry', 'conpyro_cbd_midstry', 'conpyro_dead_branch_fl_midstry',
+        'conpyro_ht_ovrstry_live', 'conpyro_ht_midstry_live', 'conpyro_ht_midstry_dead',
+        'conpyro_cbh_ovrstry', 'conpyro_cbh_midstry', 'conpyro_fsg',
+        'stand_foliage_fofem_kgpm2_sum', 'stand_branches_fofem_kgpm2_sum',
+    ]
+    for column in fields:
+        if column not in result:
+            result[column] = pd.Series(float('nan'), index=result.index)
+        result.loc[surface, column] = 0.
+    for index in range(1, 7):
+        code, percent = f'SPECIES_CD_{index}', f'SPECIES_PCT_{index}'
+        if code not in result:
+            result[code] = pd.Series(None, index=result.index, dtype=object)
+        else:
+            result[code] = result[code].astype(object)
+        result.loc[surface, code] = None
+        if percent not in result:
+            result[percent] = pd.Series(float('nan'), index=result.index)
+        result.loc[surface, percent] = 0.
+    return result
 
 
 def sort_list(lst: list) -> list:

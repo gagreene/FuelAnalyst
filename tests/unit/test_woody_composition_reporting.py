@@ -49,6 +49,9 @@ def test_missing_source_reports_error_preserves_missing_biomass_and_continues(ca
     assert 'transect_data' in record.message
     assert 'no usable species composition' in record.message.lower()
     assert 'biomass' in record.message
+    if measurement.startswith(('t1_', 't2_')):
+        assert 'woody_tally_count' not in plots.columns
+        assert 'tallied woody biomass' in record.message
     result, _ = wd._calc_plot_duff_litter_biomass(pd.DataFrame(), selected, composition)
     assert result.loc[0, ['ffl_duff_kgpm2', 'ffl_litter_kgpm2']].isna().all()
     assert result.loc[1, 'ffl_duff_kgpm2'] == pytest.approx(1.0)

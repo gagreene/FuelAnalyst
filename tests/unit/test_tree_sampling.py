@@ -103,8 +103,11 @@ def test_public_rebinding_reaches_pipeline_but_not_direct_component(monkeypatch,
     configured['dbh_thresholds_cm']['large_tree_min'] = 9.0
     monkeypatch.setattr(api, 'default_tree_sampling_dict', configured)
     assert sampling.normalize_tree_sampling_params(None)['dbh_thresholds_cm']['large_tree_min'] == 12.5
+    source = Path(__file__).resolve().parents[2] / 'examples/data/Survey123_Data'
+    parents = api.helper.get_unique_id(pd.read_csv(source / '3_Trees/survey_0.csv'))
+    selected_id = parents['unique_id'].iloc[0]
     monkeypatch.setattr(api.pa, 'process_plot_attributes', lambda *args: (
-        pd.DataFrame({'unique_id': ['plot'], 'form_select': ['trees']}), []
+        pd.DataFrame({'unique_id': [selected_id], 'form_select': ['trees']}), []
     ))
 
     def capture(*args, **kwargs):
@@ -113,7 +116,6 @@ def test_public_rebinding_reaches_pipeline_but_not_direct_component(monkeypatch,
         raise RuntimeError('captured resolved pipeline settings')
 
     monkeypatch.setattr(api.trees, 'process_trees', capture)
-    source = Path(__file__).resolve().parents[2] / 'examples/data/Survey123_Data'
     with pytest.raises(RuntimeError, match='captured resolved pipeline settings'):
         api.fuel_analyst(str(source), str(tmp_path/'out'), 'Byram')
     assert configured['dbh_thresholds_cm']['large_tree_min'] == 9.0

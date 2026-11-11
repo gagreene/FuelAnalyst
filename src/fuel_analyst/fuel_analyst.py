@@ -137,6 +137,54 @@ def _find_id_mismatches(plot_ids, form_ids) -> tuple[list, list]:
     return missing_from_form, extra_in_form
 
 
+def _log_missing_tree_mortality_inputs(plot_ids: list, reason: str) -> None:
+    """
+    Report requested GUI mortality inputs that lack a matching Trees parent.
+
+    :param plot_ids: Canonical plot identities that selected Trees.
+    :param reason: Missing, empty, or unmatched parent-table explanation.
+    :return: None. Logs one warning per affected plot before skipping GUI input generation.
+    """
+    for unique_id in dict.fromkeys(plot_ids):
+        error_handling.get_logger('trees').warning(
+            'FOFEM GUI tree-mortality input was not generated: %s.', reason,
+            extra={'unique_id': unique_id, 'issue_code': 'fofem_gui_missing_tree_parent'},
+        )
+
+
+def _prepare_tree_model_inputs(df: pd.DataFrame, tree_columns: list, log_drops: bool = True) -> pd.DataFrame:
+    """
+    Select model inputs without changing the master inventory or plain stand summaries.
+
+    :param df: Plot data after the selected form tables have been merged.
+    :param tree_columns: Tree-derived fields to ignore in the model copy when Trees is unticked.
+    :param log_drops: Whether ConPyro or FOFEM consumption output was requested.
+    :return: Eligible model copy; logs one reason per dropped plot and an all-dropped
+        summary when applicable. The master inventory remains unchanged.
+    """
+    eligible, reasons = helper.get_tree_model_eligibility(df)
+    result = df.copy()
+    if log_drops:
+        # Species/protocol exclusions already have a plot-specific Trees error.
+        report = ~eligible & ~helper.get_tree_excluded_plots(result)
+        for unique_id in result.loc[report, 'unique_id'].drop_duplicates():
+            reason = reasons.loc[result['unique_id'].eq(unique_id)].iloc[0]
+            error_handling.get_logger('trees').error(
+                'Plot omitted from ConPyro and FOFEM consumption: %s; no model stand inputs are generated.',
+                reason, extra={'unique_id': unique_id, 'issue_code': 'tree_model_inputs_unknown'},
+            )
+        if not eligible.any():
+            error_handling.get_logger('trees').error(
+                'No plots are eligible for ConPyro or FOFEM consumption; requested model-input files will be empty.',
+                extra={'issue_code': 'tree_model_inputs_all_dropped'},
+            )
+    model = result.loc[eligible].copy()
+    selected = model.get('form_select', pd.Series('', index=model.index)).fillna('').str.contains(r'\btrees\b')
+    columns = [column for column in tree_columns if column in model]
+    model[columns] = model[columns].mask(~selected, axis=0)
+    return model
+
+
 def _report_tree_sampling_error(error: tree_sampling.TreeSamplingError, out_dir: str) -> None:
     """
     Report an invalid sampling dictionary before aborting the run.
@@ -275,14 +323,14 @@ def fuel_analyst(
         fofem_consume_params = default_fofem_consume_dict
 
     if gen_conpyro_df:
-        # Verify all forms are present for ConPyro generation
+        # Other source forms remain required; missing Trees is handled per plot as unknown.
         missing_forms = [
             form for form in form_select_list
-            if get_form_source(form) is None
+            if form != 'trees' and get_form_source(form) is None
         ]
         if missing_forms:
             raise FileNotFoundError(
-                f'All Survey123 forms are required to generate the ConPyro DataFrame. '
+                f'Plot, Plants and Regeneration, Canopy Cover, and Woody Debris forms are required to generate the ConPyro DataFrame. '
                 f'The following forms are missing:\n{missing_forms}.'
             )
 
@@ -291,31 +339,16 @@ def fuel_analyst(
         )
         woody_debris_params['woody_debris_classes'].update(conpyro_params['woody_debris_classes'])
 
-    if gen_fofem_gui_app_tree_df:
-        # Verify Trees is present: gen_fofem_gui_app_tree_df() is built entirely from
-        # master_tree_df, which is only produced when the Trees form is processed.
-        missing_forms = [
-            form for form in ['trees']
-            if get_form_source(form) is None
-        ]
-        if missing_forms:
-            raise FileNotFoundError(
-                f'The Trees form is required to generate the FOFEM GUI app tree mortality '
-                f'DataFrame. The following forms are missing:\n{missing_forms}.'
-            )
-
     if gen_fofem_consume_df:
-        # Verify Trees, Plants and Regeneration, and Woody Debris are present: crown foliage/
-        # branches come from Trees, herb/shrub loads and dom_substrate/fofem_shrub_group come
-        # from Plants and Regeneration, and litter/duff/coarse woody loads come from Woody
-        # Debris. Canopy Cover is not required by gen_fofem_consumption_df().
+        # Plants and Woody Debris provide required surface inputs. Trees eligibility is
+        # resolved per plot; absent Trees data never supplies fabricated zero canopy fuels.
         missing_forms = [
-            form for form in ['trees', 'plants', 'woody']
+            form for form in ['plants', 'woody']
             if get_form_source(form) is None
         ]
         if missing_forms:
             raise FileNotFoundError(
-                f'Trees, Plants and Regeneration, and Woody Debris are all required to generate '
+                f'Plants and Regeneration and Woody Debris are required to generate '
                 f'the FOFEM consumption DataFrame. The following forms are missing:\n{missing_forms}.'
             )
 
@@ -329,6 +362,7 @@ def fuel_analyst(
 
     # Generate a list of columns to keep, using all columns in plot_df to begin with
     keep_columns = ['unique_id']
+    tree_output_columns = []
     form_df = None
     master_tree_df = None
     conpyro_df = None
@@ -341,6 +375,8 @@ def fuel_analyst(
     plot_df, add_columns = pa.process_plot_attributes(get_form_source('plot') or os.path.join(in_dir, dir_dict.get('plot')),
                                                       os.path.join(out_dir, dir_dict.get('plot')))
     keep_columns.extend(add_columns)
+
+    report_gui_parent_issues = gen_fofem_gui_app_tree_df and not (gen_conpyro_df or gen_fofem_consume_df)
 
     # Process selected forms
     for form in form_select_list:
@@ -360,6 +396,11 @@ def fuel_analyst(
         # Resolve the form's tables (CSV folder, Excel workbook, or file geodatabase); a missing folder is reported per plot
         form_source = get_form_source(form)
         if form_source is None:
+            if form == 'trees' and report_gui_parent_issues:
+                _log_missing_tree_mortality_inputs(id_list, 'Trees parent folder is missing')
+                continue
+            if form == 'trees' and (gen_conpyro_df or gen_fofem_consume_df):
+                continue  # The shared model-eligibility check reports missing Trees once per plot.
             for missing_id in id_list:
                 error_handling.get_logger(form).warning(
                     f'Input folder for {form_dict[form]} is missing but this plot '
@@ -373,17 +414,37 @@ def fuel_analyst(
             if form == 'plants':
                 form_df, add_columns = pr.process_plants_regen(form_source, out_path)
             elif form == 'trees':
+                if not table_reader.has_table(form_source, 'survey_0'):
+                    if report_gui_parent_issues:
+                        _log_missing_tree_mortality_inputs(id_list, 'Trees parent table is missing')
+                    continue
+                tree_parents = table_reader.read_table(form_source, 'survey_0')
+                if tree_parents.empty:
+                    if report_gui_parent_issues:
+                        _log_missing_tree_mortality_inputs(id_list, 'Trees parent table is empty')
+                    continue
+                parent_ids = helper.get_unique_id(tree_parents)['unique_id']
+                if not parent_ids.isin(id_list).any():
+                    if report_gui_parent_issues:
+                        _log_missing_tree_mortality_inputs(id_list, 'Trees parent identifiers do not match the selected plots')
+                    continue
                 (form_df, add_columns,
                  master_tree_df) = trees.process_trees(form_source,
                                                        out_path,
                                                        surface_fire_intensity_model,
                                                        stand_summary_params,
                                                        gen_conpyro_df,
-                                                       tree_sampling_params=tree_sampling_params)
+                                                       tree_sampling_params=tree_sampling_params,
+                                                       selected_plot_ids=set(id_list))
             elif form == 'cover':
                 form_df, add_columns = cc.process_canopy_cover(form_source, out_path)
             elif form == 'woody':
                 form_df, add_columns = wd.process_woody_debris(form_source, out_path, plot_df[mask], woody_debris_params)
+
+            if form == 'trees':
+                tree_output_columns = list(add_columns)
+                # A Trees record cannot establish observations for a plot that did not select Trees.
+                form_df = form_df.loc[form_df['unique_id'].isin(id_list)]
 
             # Add the new columns to the keep_columns list
             keep_columns.extend(add_columns)
@@ -395,6 +456,8 @@ def fuel_analyst(
             if missing_from_form or extra_in_form:
                 print(f'\tWarning:')
                 for missing_id in missing_from_form:
+                    if form == 'trees' and (gen_conpyro_df or gen_fofem_consume_df):
+                        continue
                     error_handling.get_logger(form).warning(
                         f'Plot is in the Plot Attributes dataset but not in {form_dict[form]}.',
                         extra={'unique_id': missing_id, 'issue_code': 'id_missing_from_form'},
@@ -415,18 +478,22 @@ def fuel_analyst(
             # Merge the form_df with plot_df based on unique_id
             plot_df = pd.merge(plot_df, form_df, on='unique_id', how='left')
 
+    model_plot_df = None
+    if gen_conpyro_df or gen_fofem_consume_df:
+        model_plot_df = _prepare_tree_model_inputs(plot_df, tree_output_columns)
+
     # ### PROCESS ConPyro DATA
     if gen_conpyro_df:
-        conpyro_df, fbp_prep_df = conpyro_attributes.gen_conpyro_df(plot_df, conpyro_params)
+        conpyro_df, fbp_prep_df = conpyro_attributes.gen_conpyro_df(model_plot_df, conpyro_params)
 
     # ### PROCESS FOFEM DATA
-    if gen_fofem_gui_app_tree_df:
+    if gen_fofem_gui_app_tree_df and master_tree_df is not None:
         fofem_tree_df = fofem_attributes.gen_fofem_gui_app_tree_df(plot_df, master_tree_df)
     if gen_fofem_consume_df:
         fofem_processing_units = fofem_units.validate_fofem_units(
             fofem_consume_params.get('fofem_processing_units', 'SI')
         )
-        fofem_consume_df = fofem_attributes.gen_fofem_consumption_df(plot_df, fofem_consume_params)
+        fofem_consume_df = fofem_attributes.gen_fofem_consumption_df(model_plot_df, fofem_consume_params)
 
     # ### PROCESS OUTPUTS
     # Make the out_dir if it does not exist

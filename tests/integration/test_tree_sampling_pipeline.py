@@ -96,12 +96,10 @@ def test_bad_labels_blank_only_affected_plot_and_preserve_other_form_results(tmp
     tree_stand_fields = [column for column in exported if column.startswith('stand_')]
     assert master.loc[bad_id, tree_stand_fields].isna().all()
     conpyro = result['conpyro_df'].set_index('unique_id')
-    assert pd.isna(conpyro.loc[bad_id, 'stand_type'])
-    assert pd.isna(conpyro.loc[bad_id, 'stand_density'])
-    assert conpyro.loc[bad_id, ['cfl_ovrstry', 'cbd_ovrstry', 'pct_cnfr', 'fsg']].isna().all()
+    assert bad_id not in conpyro.index
     assert bad_id not in set(result['fofem_gui_app_tree_mortality_df'].PlotId)
     assert result['fofem_consume_si_df'].iloc[:, 0].astype(str).str.contains(bad_id, regex=False).sum() == 0
-    assert pd.isna(result['fbp_prep_df'].set_index('unique_id').loc[bad_id, 'SPECIES_CD_1'])
+    assert bad_id not in set(result['fbp_prep_df']['unique_id'])
     report = result['fuelanalyst_errors'].set_index('unique_id')
     assert report.loc[bad_id, 'Trees'].count('sampling protocol') == 1
     assert 'assigned zero' not in report.loc[bad_id, 'Trees']
@@ -133,13 +131,11 @@ def test_excluded_species_parent_does_not_also_require_protocol(tmp_path):
     excluded_id = exported.loc[parents.GlobalID.iloc[0], 'unique_id']
     valid_id = exported.loc[parents.GlobalID.iloc[1], 'unique_id']
     conpyro = result['conpyro_df'].set_index('unique_id')
-    tree_columns = [
-        'pct_cnfr', 'cfl_ovrstry', 'cbd_ovrstry', 'cfl_midstry', 'cbd_midstry',
-        'dead_branch_fl_midstry', 'ht_ovrstry_live', 'ht_midstry_live',
-        'ht_midstry_dead', 'cbh_ovrstry', 'cbh_midstry', 'fsg',
-    ]
-    assert conpyro.loc[excluded_id, tree_columns].isna().all()
-    assert conpyro.loc[excluded_id, ['stand_type', 'stand_density']].isna().all()
+    assert excluded_id not in conpyro.index
+    master = result['master_fuel_df'].set_index('unique_id')
+    stand = [c for c in master if c.startswith(('stand_', 'conpyro_'))
+             and 'duff' not in c and 'litter' not in c]
+    assert master.loc[excluded_id, stand].isna().all()
     assert conpyro.loc[valid_id, 'cfl_ovrstry'] > 0
 
 
@@ -171,7 +167,7 @@ def test_missing_or_unknown_protocol_for_all_eligible_plots_completes(tmp_path, 
     errors = result['fuelanalyst_errors']['Trees'].fillna('')
     assert errors.str.contains('sampling protocol').sum() == 2
     ids = set(result['master_tree_df'].unique_id)
-    assert result['conpyro_df'].set_index('unique_id').loc[list(ids), 'cfl_ovrstry'].isna().all()
+    assert ids.isdisjoint(set(result['conpyro_df']['unique_id']))
 
 
 @pytest.mark.integration

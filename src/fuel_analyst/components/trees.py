@@ -74,13 +74,27 @@ _PLOT_RADIUS_FIELDS = {
 logger = logging.getLogger(__name__)
 
 
+def _attach_tree_observation_markers(export_df: pd.DataFrame, markers: pd.DataFrame) -> pd.DataFrame:
+    """
+    Attach tree evidence by canonical identity, independently of export row order.
+
+    :param export_df: Exported parent attributes, potentially reordered or reindexed.
+    :param markers: Original unique_id and internal observation/exclusion columns.
+    :return: Parent attributes with correctly aligned internal model-eligibility evidence.
+    """
+    lookup = markers.set_index('unique_id')
+    return helper.attach_columns(export_df, {
+        column: export_df['unique_id'].map(lookup[column]) for column in lookup.columns
+    })
+
+
 def _calc_conpyro_live_density(
         df: pd.DataFrame,
         tree_df: pd.DataFrame,
         sapling_df: pd.DataFrame | None = None
 ) -> pd.DataFrame:
     """
-    Summarize live-tree density and presence without treating invalid density as absence.
+    Summarize live trees and establish absence only with covered, valid observations.
 
     :param df: Tree parent records, including presence flags and GlobalID.
     :param tree_df: Processed trees and counted saplings with status, counts and density.
@@ -89,10 +103,11 @@ def _calc_conpyro_live_density(
     """
     density = tree_df.groupby('ParentGlobalID')['tree_dens_live_ha'].sum(min_count=1)
     values = df['GlobalID'].map(density)
-    count = tree_df['tree_count']
-    live = tree_df['tree_status'].eq('L') & count.gt(0)
+    count = pd.to_numeric(tree_df['tree_count'], errors='coerce')
+    valid_count = count.notna() & np.isfinite(count) & count.ge(0) & count.eq(count.round())
+    live = tree_df['tree_status'].eq('L') & count.gt(0) & valid_count
     known_live = set(tree_df.loc[live, 'ParentGlobalID'])
-    invalid = count.isna() | ~tree_df['tree_status'].isin(['L', 'D'])
+    invalid = ~valid_count | ~tree_df['tree_status'].isin(['L', 'D'])
     uncertain = set(tree_df.loc[invalid, 'ParentGlobalID'])
     density_invalid = tree_df.get('tree_density_affected', pd.Series(False, index=tree_df.index)).fillna(True)
     invalid_density = set(tree_df.loc[density_invalid, 'ParentGlobalID'])
@@ -104,8 +119,10 @@ def _calc_conpyro_live_density(
         covered[name] |= df['GlobalID'].isin(recorded)
     if sapling_df is not None:
         covered['sapling'] |= df['GlobalID'].isin(sapling_df['ParentGlobalID'])
-        known_live.update(sapling_df.loc[sapling_df['sapling_live_count'].gt(0), 'ParentGlobalID'])
-        uncertain.update(sapling_df.loc[sapling_df['sapling_live_count'].isna(), 'ParentGlobalID'])
+        live_count = pd.to_numeric(sapling_df['sapling_live_count'], errors='coerce')
+        valid_live_count = live_count.notna() & np.isfinite(live_count) & live_count.ge(0) & live_count.eq(live_count.round())
+        known_live.update(sapling_df.loc[valid_live_count & live_count.gt(0), 'ParentGlobalID'])
+        uncertain.update(sapling_df.loc[~valid_live_count, 'ParentGlobalID'])
     present = pd.Series(pd.NA, index=df.index, dtype='boolean')
     present.loc[covered.all(axis=1) & ~df['GlobalID'].isin(uncertain)] = False
     present.loc[df['GlobalID'].isin(known_live)] = True
@@ -113,7 +130,8 @@ def _calc_conpyro_live_density(
     present.loc[absent] = False
     values = values.mask(df['GlobalID'].isin(invalid_density | uncertain)).mask(absent, 0.)
     ambiguous = df.get('_parent_id_ambiguous', pd.Series(False, index=df.index)).fillna(False)
-    ambiguous = ambiguous | df['GlobalID'].isna() | df['GlobalID'].duplicated(keep=False)
+    blank_id = df['GlobalID'].astype('string').str.strip().eq('').fillna(True)
+    ambiguous = ambiguous | blank_id | df['GlobalID'].duplicated(keep=False)
     present = present.mask(ambiguous)
     values = values.mask(ambiguous | present.isna()).mask(present.eq(False).fillna(False), 0.)
     return helper.attach_columns(df, {
@@ -2070,7 +2088,9 @@ def _log_tree_sampling_issues(df: pd.DataFrame, tree_df: pd.DataFrame) -> set[st
     :return: Canonical IDs whose tree-derived results must remain missing.
     """
     issue = tree_df.get('_tree_sampling_issue_code', pd.Series('', index=tree_df.index))
-    affected = tree_df.loc[issue.eq('tree_sampling_invalid_protocol')]
+    absence = _get_tree_absence(df).all(axis=1)
+    absent_parents = set(df.loc[absence, 'GlobalID'])
+    affected = tree_df.loc[issue.eq('tree_sampling_invalid_protocol') & ~tree_df['ParentGlobalID'].isin(absent_parents)]
     excluded = set()
     for parent_id, records in affected.groupby('ParentGlobalID'):
         parent = df.loc[df['GlobalID'].eq(parent_id)]
@@ -2080,7 +2100,7 @@ def _log_tree_sampling_issues(df: pd.DataFrame, tree_df: pd.DataFrame) -> set[st
         column = records['_tree_sampling_protocol_column'].iloc[0]
         logger.error(
             f"Invalid or missing tree sampling protocol in column '{column}' for parent {parent_id}; "
-            'tree-derived results left missing for this plot.',
+            'tree-derived results left missing; plot omitted from ConPyro and FOFEM consumption because tree inputs are unknown.',
             extra={'unique_id': unique_id, 'issue_code': 'tree_sampling_invalid_protocol'},
         )
         excluded.add(unique_id)
@@ -2371,7 +2391,8 @@ def process_trees(
         surface_fire_intensity_model: str,
         stand_summary_params: dict,
         gen_conpyro_df: bool,
-        tree_sampling_params: dict | None = None
+        tree_sampling_params: dict | None = None,
+        selected_plot_ids: set[str] | None = None
 ) -> tuple[pd.DataFrame, list, pd.DataFrame]:
     """
     Get the tree data from CSV files.
@@ -2383,6 +2404,7 @@ def process_trees(
     :param stand_summary_params: Dictionary containing stand summary parameters.
     :param gen_conpyro_df: Boolean indicating whether to generate ConPyro DataFrame.
     :param tree_sampling_params: Sampling thresholds and optional parent protocol overrides.
+    :param selected_plot_ids: Canonical IDs selecting Trees in Plot Attributes; None processes all parents.
     :return: Tuple containing:
         - Updated DataFrame with plot-level attributes.
         - List of columns to keep in the final DataFrame.
@@ -2414,15 +2436,23 @@ def process_trees(
     # Generate a unique ID for each plot
     df = helper.get_unique_id(df)
     df['_parent_id_ambiguous'] = df['GlobalID'].isin(ambiguous_parent_ids)
+    selected = (pd.Series(True, index=df.index) if selected_plot_ids is None
+                else df['unique_id'].isin(selected_plot_ids))
     # Calculate plot attributes
     df = _calc_plot_multipliers(df)
     df = _round_plot_data(df)
 
     # Read the sapling and tree tables, and leave out the plots that record a species that is not in
     # tree_parameters.csv (each is logged), so that the other plots are still calculated
-    tree_df, sapling_df = _read_tree_repeats(in_folder, df)
+    tree_df, sapling_df = _read_tree_repeats(in_folder, df.loc[selected])
+    valid_parent_id = df['GlobalID'].notna() & df['GlobalID'].astype('string').str.strip().ne('').fillna(False)
+    ignored_parents = (set(df.loc[~selected & valid_parent_id, 'GlobalID'])
+                       - set(df.loc[selected & valid_parent_id, 'GlobalID']))
+    tree_df = tree_df.loc[~tree_df['ParentGlobalID'].isin(ignored_parents)].copy()
+    sapling_df = sapling_df.loc[~sapling_df['ParentGlobalID'].isin(ignored_parents)].copy()
     tree_df, sapling_df = _filter_tree_presence(df, tree_df, sapling_df, tree_sampling_params)
     tree_df, sapling_df, excluded_plot_ids = _exclude_unlisted_species(df, tree_df, sapling_df, tree_params_df)
+    species_excluded = set(excluded_plot_ids)
 
     # ### PROCESS SAPLING ATTRIBUTES
     # Normalize the sapling dataframe read above
@@ -2477,17 +2507,22 @@ def process_trees(
     ] = np.nan
 
     # ### PROCESS STAND_LEVEL (PER HA) ATTRIBUTES
-    if gen_conpyro_df:
-        df = _calc_conpyro_live_density(df, tree_df, sapling_df)
-        keep_columns.extend(['conpyro_live_tree_density', 'conpyro_live_trees_present'])
-    df, add_columns = _calc_stand_composition(df, tree_df, gen_conpyro_df)
+    # Presence is required for both model-input writers, even without ConPyro export.
+    df = _calc_conpyro_live_density(df, tree_df, sapling_df)
+    keep_columns.extend(['conpyro_live_tree_density', 'conpyro_live_trees_present'])
+    excluded = df['unique_id'].isin(excluded_plot_ids)
+    df.loc[excluded | ~selected, ['conpyro_live_tree_density', 'conpyro_live_trees_present']] = np.nan
+    # Inventory remains available even when live-tree status prevents fire modelling.
+    summary_parents = df.loc[selected].copy()
+    summary_trees = tree_df.loc[tree_df['ParentGlobalID'].isin(summary_parents['GlobalID'])]
+    summary_parents, composition_columns = _calc_stand_composition(summary_parents, summary_trees, gen_conpyro_df)
+    summary_parents, stand_columns = _calc_stand_attributes(summary_parents, summary_trees, stand_summary_params)
+    add_columns = list(dict.fromkeys(composition_columns + stand_columns))
+    lookup = summary_parents.set_index('unique_id')
+    df = helper.attach_columns(df, {column: df['unique_id'].map(lookup[column]) for column in add_columns})
     keep_columns.extend(add_columns)
-    df, add_columns = _calc_stand_attributes(df, tree_df, stand_summary_params)
-    keep_columns.extend(add_columns)
-    # A plot left out for an unlisted species has no trees to summarize, so its tree results are missing, not zero
-    if excluded_plot_ids:
-        tree_columns = [column for column in keep_columns if column in df.columns]
-        df[tree_columns] = df[tree_columns].mask(df['unique_id'].isin(excluded_plot_ids))
+    # Species/protocol data failures still invalidate their affected stand calculations.
+    df[add_columns] = df[add_columns].mask(excluded, axis=0)
 
     # ### SAVE DATASETS TO OUTPUT FOLDER
     os.makedirs(out_folder, exist_ok=True)
@@ -2504,8 +2539,15 @@ def process_trees(
 
     _print_tree_density_summary(partial_log)
 
-    # Mark the plots left out for an unlisted species, so that the model inputs leave them out too; the marker
-    # is in the returned table only, never in an output file
-    df = helper.attach_columns(export_df, {helper.TREES_EXCLUDED_COLUMN: df['unique_id'].isin(excluded_plot_ids)})
+    # Keep parent identity, absence evidence, and exclusion reasons for shared model eligibility.
+    # These internal markers do not appear in exported tables.
+    markers = pd.DataFrame({
+        'unique_id': df['unique_id'],
+        helper.TREES_EXCLUDED_COLUMN: df['unique_id'].isin(excluded_plot_ids),
+        '_trees_species_excluded': df['unique_id'].isin(species_excluded),
+        '_trees_confirmed_absent': _get_tree_absence(df).all(axis=1) & ~df['unique_id'].isin(species_excluded) & selected,
+        '_tree_parent_present': selected,
+    }, index=df.index)
+    df = _attach_tree_observation_markers(export_df, markers)
 
     return df, helper.sort_list(keep_columns), master_tree_df

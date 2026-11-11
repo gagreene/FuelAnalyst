@@ -629,7 +629,9 @@ def test_fuel_analyst_continues_and_reports_a_plot_with_an_unlisted_tree_species
     stand_columns = [c for c in master.columns if c.startswith('stand_') and 'duff' not in c and 'litter' not in c]
     in_master = master['unique_id'].eq(affected.iloc[0])
     assert master.loc[in_master, stand_columns].isna().all(axis=None)
-    assert master.loc[~in_master, stand_columns].notna().any(axis=1).all()
+    # Other unknown-tree plots also keep every stand variable missing.
+    known = master['conpyro_live_trees_present'].notna()
+    assert master.loc[known & ~in_master, stand_columns].notna().any(axis=1).all()
 
 
 def test_exclude_unlisted_species_does_not_attribute_a_parentless_record_to_a_plot_without_a_global_id(caplog):
@@ -689,22 +691,15 @@ def test_plot_with_an_unlisted_tree_species_is_left_out_of_the_model_inputs(tmp_
     errors = pd.read_csv(out_dir / 'fuelanalyst_errors.csv', low_memory=False)
     excluded = errors.loc[errors['Trees'].astype(str).str.contains("Species 'ZZ'"), 'unique_id'].iloc[0]
     conpyro = pd.read_csv(out_dir / 'conpyro_df.csv', low_memory=False).set_index('unique_id')
-    # The example plot has BY substrate. Excluded tree inputs now receive an explicit
-    # non-burning processing fallback, while their unknown canopy fuels remain missing.
-    assert conpyro.loc[excluded, 'surface_fuel_type'] == 'nonfuel_error'
-    assert conpyro.loc[excluded, 'stand_density'] == 'L'
-    assert float(conpyro.loc[excluded, 'stand_type']) == 0
-    assert pd.isna(conpyro.loc[excluded, 'sros_model'])
-    assert conpyro.loc[excluded, ['cfl_ovrstry', 'cbd_ovrstry']].isna().all()
-    messages = ' '.join(errors.loc[errors['unique_id'] == excluded].astype(str).iloc[0])
-    assert '[ERROR]' in messages and 'tree inputs were excluded' in messages
-    others = conpyro.drop(index=excluded)
+    assert excluded not in conpyro.index
+    others = conpyro
     assert others['stand_density'].notna().sum() > 0 and others['stand_type'].notna().sum() > 0
     assert '_trees_excluded' not in conpyro.columns
     master = pd.read_csv(out_dir / 'master_fuel_df.csv', low_memory=False)
     assert '_trees_excluded' not in master.columns and len(master) == len(plot_ids)
     consume = pd.read_csv(out_dir / 'fofem_consume_si_df.csv', low_memory=False)
-    assert len(consume) == len(master) - 1
+    expected = master['conpyro_live_trees_present'].notna().sum()
+    assert len(consume) == expected
 
 
 # ── Highly decayed trees with no measured height ─────────────────────────────────────────────────────────────────────
