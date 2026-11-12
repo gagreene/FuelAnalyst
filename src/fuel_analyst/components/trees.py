@@ -82,10 +82,23 @@ def _attach_tree_observation_markers(export_df: pd.DataFrame, markers: pd.DataFr
     :param markers: Original unique_id and internal observation/exclusion columns.
     :return: Parent attributes with correctly aligned internal model-eligibility evidence.
     """
-    lookup = markers.set_index('unique_id')
-    return helper.attach_columns(export_df, {
+    duplicate = markers['unique_id'].duplicated(keep=False)
+    ambiguous = export_df['unique_id'].isin(markers.loc[duplicate, 'unique_id'])
+    lookup = markers.loc[~duplicate].set_index('unique_id')
+    result = helper.attach_columns(export_df, {
         column: export_df['unique_id'].map(lookup[column]) for column in lookup.columns
     })
+    if ambiguous.any():
+        for column in ('_tree_parent_present', '_trees_confirmed_absent'):
+            result.loc[ambiguous, column] = False
+        for column in ('_tree_live_trees_present', '_tree_live_tree_density',
+                       'conpyro_live_trees_present', 'conpyro_live_tree_density'):
+            if column in result:
+                result.loc[ambiguous, column] = pd.NA
+        if '_tree_model_unknown_reason' not in result:
+            result['_tree_model_unknown_reason'] = ''
+        result.loc[ambiguous, '_tree_model_unknown_reason'] = 'ambiguous Trees parent unique_id'
+    return result
 
 
 def _calc_conpyro_live_density(
@@ -113,7 +126,13 @@ def _calc_conpyro_live_density(
     invalid_density = set(tree_df.loc[density_invalid, 'ParentGlobalID'])
     absence = _get_tree_absence(df)
     covered = absence.copy()
+    class_reasons = {name: pd.Series('', index=df.index, dtype='object') for name in _PLOT_RADIUS_FIELDS}
     radius_class = tree_df.get('tree_density_radius_class', pd.Series('', index=tree_df.index))
+    for name in _PLOT_RADIUS_FIELDS:
+        affected = invalid & (radius_class.eq(name) | radius_class.isna() | radius_class.eq(''))
+        class_reasons[name].loc[df['GlobalID'].isin(tree_df.loc[affected, 'ParentGlobalID'])] = (
+            'invalid count or tree status'
+        )
     for name in ('lgtree', 'smtree', 'sapling'):
         recorded = set(tree_df.loc[radius_class.eq(name), 'ParentGlobalID'])
         covered[name] |= df['GlobalID'].isin(recorded)
@@ -123,6 +142,8 @@ def _calc_conpyro_live_density(
         valid_live_count = live_count.notna() & np.isfinite(live_count) & live_count.ge(0) & live_count.eq(live_count.round())
         known_live.update(sapling_df.loc[valid_live_count & live_count.gt(0), 'ParentGlobalID'])
         uncertain.update(sapling_df.loc[~valid_live_count, 'ParentGlobalID'])
+        invalid_parents = sapling_df.loc[~valid_live_count, 'ParentGlobalID']
+        class_reasons['sapling'].loc[df['GlobalID'].isin(invalid_parents)] = 'invalid live sapling count'
     present = pd.Series(pd.NA, index=df.index, dtype='boolean')
     present.loc[covered.all(axis=1) & ~df['GlobalID'].isin(uncertain)] = False
     present.loc[df['GlobalID'].isin(known_live)] = True
@@ -134,9 +155,18 @@ def _calc_conpyro_live_density(
     ambiguous = ambiguous | blank_id | df['GlobalID'].duplicated(keep=False)
     present = present.mask(ambiguous)
     values = values.mask(ambiguous | present.isna()).mask(present.eq(False).fillna(False), 0.)
+    reasons = pd.Series('', index=df.index, dtype='object')
+    for name, label in (('lgtree', 'large trees'), ('smtree', 'small trees'), ('sapling', 'saplings')):
+        detail = class_reasons[name].mask(~covered[name], 'no absence or valid observation evidence')
+        detail = detail.where(~absence[name], '')
+        missing = present.isna() & detail.ne('')
+        reasons.loc[missing] += label + ' (' + name + '): ' + detail.loc[missing] + '; '
+    reasons = reasons.str.rstrip('; ')
+    reasons.loc[ambiguous] = 'ambiguous or missing Trees parent GlobalID'
     return helper.attach_columns(df, {
         'conpyro_live_tree_density': values,
         'conpyro_live_trees_present': present,
+        '_tree_model_unknown_reason': reasons,
     })
 
 
@@ -1582,6 +1612,8 @@ def _classify_numeric_input(raw: pd.Series, numeric: pd.Series, prefix: str, all
         issue.loc[finite & numeric.lt(0)] = f'negative_{prefix}'
     else:
         issue.loc[finite & numeric.le(0)] = f'non_positive_{prefix}'
+    if prefix in ('tree_count', 'sapling_count'):
+        issue.loc[issue.eq('') & finite & numeric.ne(numeric.round())] = f'non_integer_{prefix}'
     return issue
 
 
@@ -2035,6 +2067,7 @@ def _log_tree_density_issues(
                 f"{tree.get('tree_density_source_table', 'unknown source')} "
                 f"record {tree.get('tree_density_source_record_id', 'unknown')}"
             )
+        tree_detail += f"; sampling class {tree.get('tree_density_radius_class', 'unknown')}"
         for code in codes:
             if code in radius_issue_codes or code == 'tree_sampling_invalid_protocol':
                 continue
@@ -2052,7 +2085,7 @@ def _log_tree_density_issues(
     for _, sapling in sapling_df.iterrows():
         # Saplings are tallied by species per plot, not individually tagged like
         # trees, so species is the most specific identifier available for these.
-        sapling_detail = f"sapling species {sapling.get('sapling_species')}"
+        sapling_detail = f"sapling species {sapling.get('sapling_species')}; sampling class sapling"
         parent_id = sapling.get('ParentGlobalID')
         parent_code = ''
         if pd.isna(parent_id) or not str(parent_id).strip():
@@ -2392,7 +2425,8 @@ def process_trees(
         stand_summary_params: dict,
         gen_conpyro_df: bool,
         tree_sampling_params: dict | None = None,
-        selected_plot_ids: set[str] | None = None
+        selected_plot_ids: set[str] | None = None,
+        parent_df: pd.DataFrame | None = None
 ) -> tuple[pd.DataFrame, list, pd.DataFrame]:
     """
     Get the tree data from CSV files.
@@ -2405,6 +2439,8 @@ def process_trees(
     :param gen_conpyro_df: Boolean indicating whether to generate ConPyro DataFrame.
     :param tree_sampling_params: Sampling thresholds and optional parent protocol overrides.
     :param selected_plot_ids: Canonical IDs selecting Trees in Plot Attributes; None processes all parents.
+    :param parent_df: Optional raw parent table already read with the configured protocol column
+        preserved as literal text.
     :return: Tuple containing:
         - Updated DataFrame with plot-level attributes.
         - List of columns to keep in the final DataFrame.
@@ -2427,7 +2463,8 @@ def process_trees(
     # deduplication selects the latest record.
     protocol_column = tree_sampling_params['protocol_column']
     literal_columns = (protocol_column,) if protocol_column is not None else ()
-    df = table_reader.read_table(in_folder, 'survey_0', literal_text_columns=literal_columns)
+    df = (table_reader.read_table(in_folder, 'survey_0', literal_text_columns=literal_columns)
+          if parent_df is None else parent_df.copy(deep=True))
     if df.empty:
         raise ValueError("Trees parent table 'survey_0' has no plot records.")
     ambiguous_parent_ids = set(
@@ -2509,9 +2546,14 @@ def process_trees(
     # ### PROCESS STAND_LEVEL (PER HA) ATTRIBUTES
     # Presence is required for both model-input writers, even without ConPyro export.
     df = _calc_conpyro_live_density(df, tree_df, sapling_df)
-    keep_columns.extend(['conpyro_live_tree_density', 'conpyro_live_trees_present'])
     excluded = df['unique_id'].isin(excluded_plot_ids)
     df.loc[excluded | ~selected, ['conpyro_live_tree_density', 'conpyro_live_trees_present']] = np.nan
+    df['_tree_live_tree_density'] = df['conpyro_live_tree_density']
+    df['_tree_live_trees_present'] = df['conpyro_live_trees_present']
+    if gen_conpyro_df:
+        keep_columns.extend(['conpyro_live_tree_density', 'conpyro_live_trees_present'])
+    else:
+        df = df.drop(columns=['conpyro_live_tree_density', 'conpyro_live_trees_present'])
     # Inventory remains available even when live-tree status prevents fire modelling.
     summary_parents = df.loc[selected].copy()
     summary_trees = tree_df.loc[tree_df['ParentGlobalID'].isin(summary_parents['GlobalID'])]
@@ -2547,6 +2589,9 @@ def process_trees(
         '_trees_species_excluded': df['unique_id'].isin(species_excluded),
         '_trees_confirmed_absent': _get_tree_absence(df).all(axis=1) & ~df['unique_id'].isin(species_excluded) & selected,
         '_tree_parent_present': selected,
+        '_tree_live_tree_density': df['_tree_live_tree_density'],
+        '_tree_live_trees_present': df['_tree_live_trees_present'],
+        '_tree_model_unknown_reason': df['_tree_model_unknown_reason'],
     }, index=df.index)
     df = _attach_tree_observation_markers(export_df, markers)
 

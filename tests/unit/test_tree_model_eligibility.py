@@ -134,10 +134,11 @@ def test_tree_processor_preserves_absence_with_invalid_protocol_and_masks_unknow
         result, columns, _ = trees.process_trees(str(source), str(tmp_path / 'out'), 'Byram',
                                                  deepcopy(default_stand_summary_dict), export_conpyro, settings, selected_plot_ids=selected_ids)
     result = result.set_index('plot_id')
-    assert bool(result.loc[1, 'conpyro_live_trees_present'])
-    assert result.loc[2, 'conpyro_live_trees_present'] == False
+    presence_column = 'conpyro_live_trees_present' if export_conpyro else '_tree_live_trees_present'
+    assert bool(result.loc[1, presence_column])
+    assert result.loc[2, presence_column] == False
     assert result.loc[2, '_trees_confirmed_absent']
-    assert pd.isna(result.loc[3, 'conpyro_live_trees_present'])
+    assert pd.isna(result.loc[3, presence_column])
     assert result.loc[3, [c for c in columns if c in result]].isna().all()
     eligible, _ = helper.get_tree_model_eligibility(result)
     assert eligible.tolist() == [True, True, False]

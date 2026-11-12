@@ -480,7 +480,7 @@ present in one form but absent from another.
 
 The Plot Attributes `form_select` value determines whether the plants, trees, cover, and woody components are expected for each plot. Missing component folders are skipped, with a warning when a plot selected that form. Trees uses the model-specific diagnostics below when model inputs are requested.
 
-`gen_conpyro_df=True` requires Plants and Regeneration, Canopy Cover, and Woody Debris. FOFEM consumption preparation requires Plants and Regeneration and Woody Debris. A missing Trees folder is ignored for plots with Trees unticked in `form_select`; ticked plots have unresolved tree observations and are omitted from both model tables with a Trees ERROR. The files may be empty with normal headers. Missing Trees alone does not abort these exports. If only the FOFEM GUI mortality export is requested, missing, empty, or wholly unmatched Trees parents produce per-plot warnings. No GUI mortality file is generated without a processed `master_tree_df`; combined model requests use the shared Trees eligibility errors.
+`gen_conpyro_df=True` requires Plants and Regeneration, Canopy Cover, and Woody Debris. FOFEM consumption preparation requires Plants and Regeneration and Woody Debris. A missing Trees folder is ignored for plots with Trees unticked in `form_select`; ticked plots have unresolved tree observations and are omitted from both model tables with a Trees ERROR. The files may be empty with normal headers. Missing Trees alone does not abort these exports. Whenever the FOFEM GUI mortality export is requested, missing, empty, or unmatched Trees parents also produce per-plot GUI warnings. Combined requests retain both the shared Trees eligibility error and the separate GUI warning. No GUI mortality file is generated without a processed `master_tree_df`.
 
 ### Run the included example
 
@@ -780,6 +780,10 @@ establish measured nonfuel conditions. Missing consumption inputs are reported a
 inputs and weather merges to apply this classification. See [Technical Reference section 4.2](docs/TECHNICAL_REFERENCE.md#surface-model-assignment-and-grass-inputs)
 for the complete routing, diagnostics, and fallback rules.
 
+Direct DataFrame builders also report unresolved sampled Trees with class-specific eligibility errors. An absent
+`form_select` column preserves legacy tree inputs and reports `tree_model_inputs_form_select_missing`; it does not
+mean Trees was unticked. Ordinary Survey123 runs carry the form-selection column.
+
 Terrain adjustment of FFMC now defaults to `False`. This can change spread rate, fireline intensity, and downstream
 fire effects on sloped plots; flat plots are effectively unaffected. Terrain effects on wind remain enabled.
 To reproduce the former default, set `conpyro.input_params.model_terrain_effects_on_ffmc=True` in the fire-model dictionary.
@@ -787,7 +791,8 @@ Regenerate affected cached fire-model results when adopting this change.
 
 `run_conpyro()` now defaults to `sros_model='use_csv'` and
 `default_fire_modelling_dict['conpyro']['input_params']['grass_curing']=60` (percent, passed as `gcf`).
-An explicit scalar SROS setting still overrides all rows. Older weather-merged inputs without `sros_model`
+An explicit scalar SROS setting changes the selected model for positive-fuel rows. Numeric `stand_type=0` remains
+nonfuel with zero physical fire outputs even when a scalar override changes its model metadata. Older weather-merged inputs without `sros_model`
 must be regenerated, or used with an explicit model selection. The standalone demo refreshes its plot inputs
 against committed weather automatically. See the
 [ConPyro modelling reference](docs/TECHNICAL_REFERENCE.md#42-conpyro-fire-behaviour-modelling) for fuel-load mappings and limitations.

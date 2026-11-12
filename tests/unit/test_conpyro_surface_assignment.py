@@ -74,7 +74,8 @@ def test_surface_assignment_uses_live_trees_before_substrate_and_preserves_missi
     assert result.sros_model.iloc[:6].tolist() == [13, 31, 31, 31, 31, 31]
     assert result.surface_fuel_type.iloc[:6].tolist() == ['forest', 'grass_herbs', 'grass_herbs', 'grass_herbs', 'shrubs', 'shrubs']
     assert result.sros_model.iloc[6:].isna().all()
-    assert {'bryoid', 'unknown', 'excluded'} <= {r.unique_id for r in caplog.records}
+    assert {'bryoid', 'unknown'} <= {r.unique_id for r in caplog.records}
+    assert 'excluded' not in {r.unique_id for r in caplog.records}
     assert 'sros_model' not in source
 
 

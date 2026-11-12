@@ -263,8 +263,12 @@ stand summaries, including dead density, biomass, and snags, even when model exp
 `trees._attach_tree_observation_markers()` aligns internal evidence by `unique_id` after export-column cleanup:
 `helper.TREES_EXCLUDED_COLUMN` (`_trees_excluded`) records species/protocol exclusions, `_trees_species_excluded`
 distinguishes species failures, `_trees_confirmed_absent` records all-three-class absence, and `_tree_parent_present`
-records a matching selected parent. These markers reach the orchestrator but are never exported. Shared model
-eligibility uses them with nullable `conpyro_live_trees_present`; see the helper module and
+records a matching selected parent. Duplicate canonical parent IDs become unknown rather than borrowing another
+row's evidence. `_tree_model_unknown_reason` carries class-specific missing/invalid observation details.
+Private `_tree_live_trees_present` and `_tree_live_tree_density` evidence is calculated on every Trees run,
+including consumption-only runs. Public `conpyro_live_trees_present` and `conpyro_live_tree_density` columns are
+exported only with `gen_conpyro_df=True`; ordinary master-output schemas retain their existing columns.
+Internal markers are never exported. Shared model eligibility uses this evidence; see the helper module and
 [Technical Reference section 4.2](TECHNICAL_REFERENCE.md#surface-model-assignment-and-grass-inputs) for routing rules.
 
 Species validation ignores empty entries, sapling rows without a live or dead count, and `NO_SAPLINGS`;
@@ -348,7 +352,12 @@ repository example lookup, and `unique_id` generation. `TREES_EXCLUDED_COLUMN` c
 `helper.get_tree_model_eligibility()` resolves per-plot eligibility from form selection and tree evidence.
 `helper.prepare_tree_model_inputs()` filters a model copy and clears ignored or inapplicable live-tree inputs;
 both ConPyro and FOFEM consumption builders use it. The orchestrator's `fuel_analyst._prepare_tree_model_inputs()`
-applies their shared filter and diagnostics once, preserving master inventory values. Repository example lookup
+applies their shared filter and calls `helper.log_tree_model_issues()` for common diagnostics, preserving master
+inventory values. Direct builders and private surface classification use the same logger; unresolved sampled
+Trees produces `tree_model_inputs_unknown`, while unsupported known substrates retain their surface-model warning.
+If a direct DataFrame lacks `form_select`, the builder preserves legacy tree inputs rather than treating Trees as
+unticked, and warns with `tree_model_inputs_form_select_missing` in the Trees source, General Error row when collected.
+Repository example lookup
 supports the development `__main__` routines; installed API calls do not depend on the repository layout.
 
 ## Data flow and outputs
@@ -561,10 +570,10 @@ in the General Error row of `fuelanalyst_errors.csv`. This happens when ConPyro 
 are requested, before `run_conpyro()`.
 
 The GUI mortality hand-off is generated only when `gen_fofem_gui_app_tree_df=True` and a processed `master_tree_df`
-exists. There is no global missing-Trees exception. When GUI mortality is the only model export requested,
-`fuel_analyst._log_missing_tree_mortality_inputs()` warns per selected plot for missing, empty, or wholly unmatched
-Trees parents (`fofem_gui_missing_tree_parent`). Combined requests use the shared Trees eligibility errors;
-without a processed `master_tree_df`, they produce no GUI mortality file.
+exists. There is no global missing-Trees exception. Whenever GUI mortality is requested,
+`fuel_analyst._log_missing_tree_mortality_inputs()` warns per selected plot for missing, empty, or unmatched
+Trees parents (`fofem_gui_missing_tree_parent`). Combined requests retain this GUI-specific warning alongside
+the shared Trees eligibility error. Without a processed `master_tree_df`, they produce no GUI mortality file.
 
 `keep_columns` remains additive: skipped or unselected components do not add
 their result columns to `master_fuel_df.csv`.
@@ -641,7 +650,7 @@ interchangeable:
 
 The resolver receives only unambiguous parents referenced by surviving required records after species exclusion and sapling merging. It returns index-aligned thresholds and `sampling_issue_code`; invalid or missing protocol labels produce missing thresholds without raising. `_log_tree_sampling_issues()` logs once per affected plot and returns canonical IDs that join the existing tree-exclusion set. Protocol-invalid density stays NaN instead of taking the legacy zero-density fallback, and per-area outputs are remasked after calculations. The generic density logger skips the protocol code to avoid duplicate errors and an incorrect zero-density message.
 
-The configured protocol column is preserved as literal text during input reading and format normalization. Labels such as `001`, `NA`, `NULL` and `NaN` retain their spelling; case and whitespace are not changed. This applies only to the configured column: other fields retain their normal numeric and missing-value inference. Empty cells and genuine missing values still fail protocol validation for eligible plots. A value already stored as a numeric cell cannot recover leading zeros that are no longer in the source.
+The configured protocol column is preserved as literal text during input reading and format normalization. Labels such as `001`, `NA`, `NULL` and `NaN` retain their spelling; case and whitespace are not changed. The orchestrator's parent pre-read uses the same literal-column option and passes `parent_df` to `process_trees()` without rereading it. This applies only to the configured column: other fields retain their normal numeric and missing-value inference. Empty cells and genuine missing values still fail protocol validation for eligible plots. A value already stored as a numeric cell cannot recover leading zeros that are no longer in the source.
 
 Measured records use configured cutoffs (defaults 5/12.5 cm); `sapling_1.csv` source records always use their counted sapling area. This deliberately corrects out-of-class sapling results even with default settings. Source provenance is assigned during input normalization/merge. Missing source markers in legacy direct helper calls retain measured-tree behavior. DBH rounding to 0.1 cm and reporting/classification bins are unchanged.
 
@@ -879,7 +888,8 @@ The engine's O1 grass models require `gcf`, now supplied by `grass_curing` (defa
 `trees._calc_conpyro_live_density()` derives fixed density and nullable live presence independently of
 stand-summary configuration. `helper.get_tree_model_eligibility()` and `helper.prepare_tree_model_inputs()`
 share model routing: Trees unticked uses substrate; ticked with valid live observations uses forest; a unique
-all-N parent or valid zero-live/dead-only observations covering every class permits substrate. Missing counts
+all-N parent or valid zero-live/dead-only observations covering every class permits substrate. Counts must be finite,
+nonnegative integers; fractional counts cannot establish live presence or absence. Missing counts
 cannot establish absence; missing/ambiguous parents and unresolved observations omit ticked plots. Species/protocol
 exclusions also omit them unless explicit all-N absence overrides a protocol exclusion. Available master stand
 summaries remain, except for species/protocol-invalid calculations. The orchestrator logs shared omissions once;
@@ -897,12 +907,15 @@ fallback. That fallback does not establish observed nonfuel conditions. Unknown 
 The runner's general numeric `stand_type=0` rule retains nonfuel rows with missing SROS model and fills missing
 density with `L`.
 
-The runner partitions BY internally, preserving scenario order, duplicate caller indexes, and the original batch's
+ConPyro preparation assigns a unique positional index before shared eligibility and restores caller labels on its
+outputs, so duplicate caller indexes do not affect the filter or BY assignments. The runner partitions BY internally,
+preserving scenario order, duplicate caller indexes, and the original batch's
 all-or-none FBP availability. It warns per plot about missing/nonfinite BY loads or BUI before worker dispatch;
 consumption remains missing. The adapter explicitly selects non-CFIS SFC for BY. The deliberate 10/1 pairing
 produces ConPyro's informational stand/model mismatch warning. FBP preparation and substrate fields are unchanged.
 The runner defaults to `sros_model='use_csv'` and passes `grass_curing=60` as `gcf`; numeric/alias overrides remain
-available. Regenerate model inputs and weather merges rather than guessing a model for stale merges.
+available for positive fuels. Numeric stand code 0 remains nonfuel with zero physical outputs under scalar overrides,
+even if selected-model metadata changes. Regenerate model inputs and weather merges rather than guessing a model for stale merges.
 
 `fofem_moisture.derive_grass_duff_moisture()` fills missing grass/herb, shrub-proxy, and stand-domain-10 BY `mc_dmc`
 from weather DMC using the existing FWIS conversion and 10-200 bounds. New and reloaded results use it; both

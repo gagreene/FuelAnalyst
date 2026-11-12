@@ -189,17 +189,19 @@ def get_tree_model_eligibility(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     :return: Eligible mask and unknown reasons. Unchecked Trees uses surface inputs;
         sampled Trees requires resolved live presence or covered zero-live absence.
     """
-    selected = df.get('form_select', pd.Series('', index=df.index)).fillna('').str.contains(r'\btrees\b', regex=True)
+    selected = df.get('form_select', pd.Series('trees', index=df.index)).fillna('').str.contains(r'\btrees\b', regex=True)
     parent = df.get('_tree_parent_present', pd.Series(False, index=df.index)).fillna(False).astype(bool)
     absent = df.get('_trees_confirmed_absent', pd.Series(False, index=df.index)).fillna(False).astype(bool)
-    present = df.get('conpyro_live_trees_present', pd.Series(pd.NA, index=df.index))
+    present = df.get('conpyro_live_trees_present', df.get('_tree_live_trees_present', pd.Series(pd.NA, index=df.index)))
     known = (present.eq(True) | present.eq(False)).fillna(False)
     excluded = get_tree_excluded_plots(df)
-    eligible = ~selected | (parent & (known | absent) & ~excluded)
+    eligible = (~excluded if 'form_select' not in df else ~selected | (parent & (known | absent) & ~excluded))
     reason = pd.Series('', index=df.index, dtype=object)
     reason.loc[~eligible] = 'sampled tree observations do not establish live presence or covered zero-live absence'
+    evidence = df.get('_tree_model_unknown_reason', pd.Series('', index=df.index)).fillna('')
+    reason.loc[~eligible & evidence.ne('')] = evidence.loc[~eligible & evidence.ne('')]
     reason.loc[excluded & selected] = 'tree inputs were excluded for a species or sampling issue'
-    reason.loc[~parent & selected] = 'Trees parent row is missing'
+    reason.loc[~parent & selected & evidence.eq('')] = 'Trees parent row is missing'
     reason.loc[eligible] = ''
     return eligible, reason
 
@@ -239,18 +241,57 @@ def get_unique_id(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def prepare_tree_model_inputs(df: pd.DataFrame) -> pd.DataFrame:
+def log_tree_model_issues(df: pd.DataFrame, eligible: pd.Series, reasons: pd.Series) -> None:
+    """
+    Report unresolved sampled Trees once, retaining existing species/protocol errors.
+
+    :param df: Model-source rows containing canonical plot identities.
+    :param eligible: Boolean eligibility mask aligned with df.
+    :param reasons: Specific missing-class or invalid-observation explanations.
+    :return: None. Writes one Trees error per unresolved plot, without duplicate exclusion errors.
+    """
+    from . import error_handling
+
+    report = ~eligible & ~get_tree_excluded_plots(df)
+    for unique_id in df.loc[report, 'unique_id'].drop_duplicates():
+        reason = reasons.loc[df['unique_id'].eq(unique_id)].iloc[0]
+        error_handling.get_logger('trees').error(
+            'Plot omitted from ConPyro and FOFEM consumption: %s; no model stand inputs are generated.',
+            reason, extra={'unique_id': unique_id, 'issue_code': 'tree_model_inputs_unknown'},
+        )
+
+
+def prepare_tree_model_inputs(df: pd.DataFrame, log_issues: bool = True) -> pd.DataFrame:
     """
     Select model-eligible rows and clear ignored or inapplicable live-tree inputs.
 
     :param df: Merged plot data; the original inventory is never modified.
+    :param log_issues: Whether to report unknown observations omitted by this preparation.
     :return: Model copy with unknown sampled Trees omitted and surface-only tree
         attributes set to zero. Unticked Trees ignores all stale tree values.
     """
-    eligible, _ = get_tree_model_eligibility(df)
+    from . import error_handling
+
+    eligible, reasons = get_tree_model_eligibility(df)
+    if log_issues:
+        log_tree_model_issues(df, eligible, reasons)
     result = df.loc[eligible].copy()
-    selected = result.get('form_select', pd.Series('', index=result.index)).fillna('').str.contains(r'\btrees\b')
+    if 'form_select' not in result:
+        error_handling.get_logger('trees').warning(
+            'form_select is missing; preserving legacy tree inputs without applying the unticked-Trees rule.',
+            extra={'issue_code': 'tree_model_inputs_form_select_missing'},
+        )
+    selected = result.get('form_select', pd.Series('trees', index=result.index)).fillna('').str.contains(r'\btrees\b')
+    for public, private in [('conpyro_live_trees_present', '_tree_live_trees_present'),
+                            ('conpyro_live_tree_density', '_tree_live_tree_density')]:
+        if public not in result and private in result:
+            result[public] = result[private]
+    if 'form_select' not in result and 'conpyro_live_trees_present' not in result:
+        density = pd.to_numeric(result.get('conpyro_live_tree_density',
+                                          pd.Series(float('nan'), index=result.index)), errors='coerce')
+        result['conpyro_live_trees_present'] = density.gt(0).astype('boolean').mask(density.isna())
     present = result.get('conpyro_live_trees_present', pd.Series(pd.NA, index=result.index))
+    result['conpyro_live_trees_present'] = present
     surface = ~selected | present.eq(False).fillna(False)
     if not surface.any():
         return result

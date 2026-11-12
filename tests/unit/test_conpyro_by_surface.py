@@ -53,7 +53,11 @@ def test_by_bad_inputs_report_error_and_preserve_missing_model(caplog, present, 
     if present is None or excluded:
         assert result.loc[0, 'surface_fuel_type'] == ''
         assert pd.isna(result.loc[0, 'sros_model'])
-        assert len(caplog.records) == 1 and caplog.records[0].levelno == logging.WARNING
+        if excluded:
+            assert caplog.records == []  # Existing species/protocol errors identify the cause.
+        else:
+            assert len(caplog.records) == 1 and caplog.records[0].levelno == logging.ERROR
+            assert caplog.records[0].issue_code == 'tree_model_inputs_unknown'
         return
     assert result.loc[0, 'surface_fuel_type'] == 'nonfuel_error'
     assert pd.isna(result.loc[0, 'sros_model'])

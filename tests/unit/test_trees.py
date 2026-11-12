@@ -629,9 +629,9 @@ def test_fuel_analyst_continues_and_reports_a_plot_with_an_unlisted_tree_species
     stand_columns = [c for c in master.columns if c.startswith('stand_') and 'duff' not in c and 'litter' not in c]
     in_master = master['unique_id'].eq(affected.iloc[0])
     assert master.loc[in_master, stand_columns].isna().all(axis=None)
-    # Other unknown-tree plots also keep every stand variable missing.
-    known = master['conpyro_live_trees_present'].notna()
-    assert master.loc[known & ~in_master, stand_columns].notna().any(axis=1).all()
+    # Plain inventory exports keep their schema and the other plots' stand summaries.
+    assert not {'conpyro_live_trees_present', 'conpyro_live_tree_density'} & set(master.columns)
+    assert master.loc[~in_master, stand_columns].notna().any(axis=None)
 
 
 def test_exclude_unlisted_species_does_not_attribute_a_parentless_record_to_a_plot_without_a_global_id(caplog):

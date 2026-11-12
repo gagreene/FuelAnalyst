@@ -165,21 +165,14 @@ def _prepare_tree_model_inputs(df: pd.DataFrame, tree_columns: list, log_drops: 
     eligible, reasons = helper.get_tree_model_eligibility(df)
     result = df.copy()
     if log_drops:
-        # Species/protocol exclusions already have a plot-specific Trees error.
-        report = ~eligible & ~helper.get_tree_excluded_plots(result)
-        for unique_id in result.loc[report, 'unique_id'].drop_duplicates():
-            reason = reasons.loc[result['unique_id'].eq(unique_id)].iloc[0]
-            error_handling.get_logger('trees').error(
-                'Plot omitted from ConPyro and FOFEM consumption: %s; no model stand inputs are generated.',
-                reason, extra={'unique_id': unique_id, 'issue_code': 'tree_model_inputs_unknown'},
-            )
+        helper.log_tree_model_issues(result, eligible, reasons)
         if not eligible.any():
             error_handling.get_logger('trees').error(
                 'No plots are eligible for ConPyro or FOFEM consumption; requested model-input files will be empty.',
                 extra={'issue_code': 'tree_model_inputs_all_dropped'},
             )
     model = result.loc[eligible].copy()
-    selected = model.get('form_select', pd.Series('', index=model.index)).fillna('').str.contains(r'\btrees\b')
+    selected = model.get('form_select', pd.Series('trees', index=model.index)).fillna('').str.contains(r'\btrees\b')
     columns = [column for column in tree_columns if column in model]
     model[columns] = model[columns].mask(~selected, axis=0)
     return model
@@ -376,7 +369,7 @@ def fuel_analyst(
                                                       os.path.join(out_dir, dir_dict.get('plot')))
     keep_columns.extend(add_columns)
 
-    report_gui_parent_issues = gen_fofem_gui_app_tree_df and not (gen_conpyro_df or gen_fofem_consume_df)
+    report_gui_parent_issues = gen_fofem_gui_app_tree_df
 
     # Process selected forms
     for form in form_select_list:
@@ -418,7 +411,9 @@ def fuel_analyst(
                     if report_gui_parent_issues:
                         _log_missing_tree_mortality_inputs(id_list, 'Trees parent table is missing')
                     continue
-                tree_parents = table_reader.read_table(form_source, 'survey_0')
+                protocol_column = tree_sampling_params['protocol_column']
+                literal_columns = (protocol_column,) if protocol_column is not None else ()
+                tree_parents = table_reader.read_table(form_source, 'survey_0', literal_text_columns=literal_columns)
                 if tree_parents.empty:
                     if report_gui_parent_issues:
                         _log_missing_tree_mortality_inputs(id_list, 'Trees parent table is empty')
@@ -435,7 +430,8 @@ def fuel_analyst(
                                                        stand_summary_params,
                                                        gen_conpyro_df,
                                                        tree_sampling_params=tree_sampling_params,
-                                                       selected_plot_ids=set(id_list))
+                                                       selected_plot_ids=set(id_list),
+                                                       parent_df=tree_parents)
             elif form == 'cover':
                 form_df, add_columns = cc.process_canopy_cover(form_source, out_path)
             elif form == 'woody':
@@ -456,6 +452,9 @@ def fuel_analyst(
             if missing_from_form or extra_in_form:
                 print(f'\tWarning:')
                 for missing_id in missing_from_form:
+                    if form == 'trees' and report_gui_parent_issues:
+                        _log_missing_tree_mortality_inputs([missing_id], 'Trees parent row is missing')
+                        continue
                     if form == 'trees' and (gen_conpyro_df or gen_fofem_consume_df):
                         continue
                     error_handling.get_logger(form).warning(

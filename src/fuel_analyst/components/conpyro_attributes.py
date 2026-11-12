@@ -219,7 +219,12 @@ def _calc_surface_models(df: pd.DataFrame, model_settings: dict) -> pd.DataFrame
             category.loc[idx] = 'forest_floor'
     result['surface_fuel_type'] = category
     result['sros_model'] = category.map({**models, 'forest_floor': 1})
-    for plot_id in result.loc[category.eq(''), 'unique_id'].drop_duplicates():
+    unresolved = present.isna() | excluded
+    if unresolved.any():
+        reasons = result.get('_tree_model_unknown_reason', pd.Series('', index=result.index)).fillna('')
+        reasons = reasons.mask(reasons.eq(''), 'live-tree presence is unresolved')
+        helper.log_tree_model_issues(result, ~unresolved, reasons)
+    for plot_id in result.loc[category.eq('') & ~unresolved, 'unique_id'].drop_duplicates():
         logger.warning(
             'Surface model not assigned: the substrate-only plot has no supported '
             'grass/herb, shrub, or BY dominant substrate.',
@@ -316,8 +321,9 @@ def gen_conpyro_df(df: pd.DataFrame, conpyro_params: dict) -> tuple[pd.DataFrame
     :return: DataFrame containing the ConPyro attributes.
     """
     # Work with row positions so duplicate caller index labels cannot select multiple plots.
-    df = helper.prepare_tree_model_inputs(df)
-    input_index = df.index.copy()
+    caller_index = df.index.copy()
+    df = helper.prepare_tree_model_inputs(df.reset_index(drop=True))
+    input_index = caller_index.take(df.index)
     df = df.reset_index(drop=True)
     if df.empty:
         base = ['unique_id', '_date', 'treatment_area', 'treatment_unit', 'treatment_type', 'plot_id', 'SPECIES_CD_1']

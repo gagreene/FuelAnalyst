@@ -177,7 +177,8 @@ def test_unknown_live_count_retains_measured_dead_inventory(tmp_path, model_outp
     sapling.to_csv(source / 'sapling_1.csv', index=False)
     result, _, _ = trees.process_trees(str(source), str(tmp_path / 'out'), 'Byram',
                                       deepcopy(default_stand_summary_dict), model_outputs)
-    assert pd.isna(result.conpyro_live_trees_present.iloc[0])
+    presence_column = 'conpyro_live_trees_present' if model_outputs else '_tree_live_trees_present'
+    assert pd.isna(result[presence_column].iloc[0])
     assert result['stand_dens_tpha_dead_sum'].iloc[0] > 0
     wood = [c for c in result if c.startswith('stand_wood_') and '_dead_' in c]
     assert wood and result[wood].iloc[0].gt(0).any()
