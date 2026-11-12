@@ -12,7 +12,7 @@ import re
 import shutil
 import pandas as pd
 
-# Plot-level marker set by trees.process_trees() for plots left out of the tree calculations (never exported)
+# Internal species/protocol exclusion marker set by trees.process_trees(); not exported to CSV.
 TREES_EXCLUDED_COLUMN = '_trees_excluded'
 
 
@@ -164,13 +164,14 @@ def get_repo_root(start_dir: str) -> str:
 
 def get_tree_excluded_plots(df: pd.DataFrame) -> pd.Series:
     """
-    Flag unknown tree inputs, allowing explicit absence to override sampling-only exclusions.
+    Flag effective species/protocol exclusions after the explicit-absence exception.
 
-    Trees marks exclusions internally. Confirmed absence can bypass a sampling exclusion,
+    Trees marks calculation exclusions internally. Confirmed all-N absence bypasses a sampling exclusion,
     but never an unlisted-species exclusion. Unknown inputs must not become zero stand fuels.
 
     :param df: Plot-level DataFrame, which may carry the marker column from process_trees().
-    :return: Boolean Series aligned with df, True for a plot that was left out of the tree calculations.
+    :return: Boolean Series aligned with df. True identifies a species exclusion or a sampling
+        exclusion without all-N absence; missing observations are classified separately.
     """
     if TREES_EXCLUDED_COLUMN not in df.columns:
         return pd.Series(False, index=df.index, dtype=bool)

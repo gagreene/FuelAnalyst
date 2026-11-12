@@ -221,8 +221,8 @@ def _calc_surface_models(df: pd.DataFrame, model_settings: dict) -> pd.DataFrame
     result['sros_model'] = category.map({**models, 'forest_floor': 1})
     for plot_id in result.loc[category.eq(''), 'unique_id'].drop_duplicates():
         logger.warning(
-            'Surface model not assigned: live-tree observations are missing/excluded or the '
-            'treeless plot has no supported grass/herb or shrub dominant substrate.',
+            'Surface model not assigned: the substrate-only plot has no supported '
+            'grass/herb, shrub, or BY dominant substrate.',
             extra={'unique_id': plot_id, 'issue_code': 'conpyro_surface_model_unassigned'},
         )
     return result
@@ -384,7 +384,7 @@ def gen_conpyro_df(df: pd.DataFrame, conpyro_params: dict) -> tuple[pd.DataFrame
     # Confirmed treeless surface fuels have no live canopy geometry.
     conpyro_df.loc[open_fuel, ['canopy_cover', 'ht_ovrstry_live', 'cbh_ovrstry', 'fsg']] = 0.
 
-    # Excluded tree inputs are unknown, not measured zero canopy fuel.
+    # Model canopy fields cleared for BY forest-floor and nonfuel routing below.
     tree_columns = [
         'pct_cnfr', 'cfl_ovrstry', 'cbd_ovrstry', 'cfl_midstry', 'cbd_midstry',
         'dead_branch_fl_midstry', 'ht_ovrstry_live', 'ht_midstry_live',

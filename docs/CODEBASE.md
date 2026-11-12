@@ -253,16 +253,22 @@ list, and `master_tree_df`. `master_tree_df` includes both live and dead
 trees, distinguished by a `status` column; `dens_live_ha`/`ba_live_ha` are 0
 for dead trees, while `dens_ha`/`ba_ha` hold real totals for every tree.
 
-Before any calculation, `_exclude_unlisted_species()` logs each plot that records a tree or sapling species missing
-from `supporting_data/tree_parameters.csv` through `error_handling` (issue code `tree_species_not_in_table`, with a
-record count per table; a record whose plot cannot be resolved goes to the General Error row). It then removes every
-tree and sapling record of those plots, so no plot is summarized from some of its trees, and the run continues:
-`process_trees()` sets the tree-derived columns of those plots to missing (not zero) and marks them in a plot-level
-column (`helper.TREES_EXCLUDED_COLUMN`) that is returned to `fuel_analyst()` but never exported. The model inputs use
-the marker so that no canopy fuel is invented: `gen_conpyro_df()` and `gen_fofem_consumption_df()` omit the plot when Trees is ticked in `form_select`
-entirely. Trees unticked bypasses tree eligibility and uses substrate only. Model eligibility does not clear available measured stand summaries, dead density, biomass, or snags in master outputs, even when model exports are disabled.
-Eligibility reasons are logged once per plot across both model outputs. Empty entries, sapling rows without a live or dead count, and the
-`NO_SAPLINGS` value are ignored; any other code, including `NO_REGEN`, is looked up like a species. In
+Before calculation, `_exclude_unlisted_species()` logs each plot that records a tree or sapling species missing
+from `supporting_data/tree_parameters.csv` (ERROR `tree_species_not_in_table`, with a record count per table;
+unresolved plot identities use the General Error row). It removes every tree and sapling record of a
+species-excluded plot, so stand calculations never summarize only its listed species. `process_trees()` leaves
+species/protocol-invalid stand calculations missing. Other model-eligibility failures preserve available master
+stand summaries, including dead density, biomass, and snags, even when model exports are disabled.
+
+`trees._attach_tree_observation_markers()` aligns internal evidence by `unique_id` after export-column cleanup:
+`helper.TREES_EXCLUDED_COLUMN` (`_trees_excluded`) records species/protocol exclusions, `_trees_species_excluded`
+distinguishes species failures, `_trees_confirmed_absent` records all-three-class absence, and `_tree_parent_present`
+records a matching selected parent. These markers reach the orchestrator but are never exported. Shared model
+eligibility uses them with nullable `conpyro_live_trees_present`; see the helper module and
+[Technical Reference section 4.2](TECHNICAL_REFERENCE.md#surface-model-assignment-and-grass-inputs) for routing rules.
+
+Species validation ignores empty entries, sapling rows without a live or dead count, and `NO_SAPLINGS`;
+any other code, including `NO_REGEN`, is looked up like a species. In
 `components/conpyro_attributes.py`, `_calc_stand_type()` likewise logs a plot whose `SPECIES_CD_1` to `SPECIES_CD_6`
 holds a code that is not in the table (issue code `stand_type_species_not_in_table`, reported as ConPyro Attributes)
 and leaves that plot's stand type empty. Conifer status comes from the
@@ -337,10 +343,13 @@ percentages using the documented Van Wagner equations.
 ### `components/helper.py`
 
 Contains CSV utilities, missing-column checks, the overwrite-safe `attach_columns()`, alphanumeric sorting,
-repository example lookup, `unique_id` generation, and the marker for plots left out of the tree calculations
-(`TREES_EXCLUDED_COLUMN`, read through `get_tree_excluded_plots()`). Repository example lookup is for
-the development `__main__` routines; normal installed API calls do not depend
-on the repository layout.
+repository example lookup, and `unique_id` generation. `TREES_EXCLUDED_COLUMN` carries species/protocol exclusions;
+`get_tree_excluded_plots()` allows confirmed absence to override protocol exclusions, while preserving species exclusions.
+`helper.get_tree_model_eligibility()` resolves per-plot eligibility from form selection and tree evidence.
+`helper.prepare_tree_model_inputs()` filters a model copy and clears ignored or inapplicable live-tree inputs;
+both ConPyro and FOFEM consumption builders use it. The orchestrator's `fuel_analyst._prepare_tree_model_inputs()`
+applies their shared filter and diagnostics once, preserving master inventory values. Repository example lookup
+supports the development `__main__` routines; installed API calls do not depend on the repository layout.
 
 ## Data flow and outputs
 
@@ -399,7 +408,7 @@ flowchart TD
 
 - `master_tree_df.csv` requires processed tree data;
 - `conpyro_df.csv` and `fbp_prep_df.csv` require `gen_conpyro_df=True`;
-- `fofem_gui_app_tree_mortality_df.csv` requires `gen_fofem_gui_app_tree_df=True`; and
+- `fofem_gui_app_tree_mortality_df.csv` requires `gen_fofem_gui_app_tree_df=True` and a processed `master_tree_df`; and
 - `fofem_consume_si_df.csv`/`fofem_consume_imperial_df.csv` requires `gen_fofem_consume_df=True`
   (filename set by `fofem_consume_params['fofem_processing_units']`, default SI).
 
@@ -539,13 +548,23 @@ flowchart TD
 
 Missing component folders are skipped. If any plot selected the missing form,
 FuelAnalyst logs a warning for each affected plot; a missing unselected form is
-silent. Generation flags raise `FileNotFoundError` naming missing required forms before processing:
+silent. Trees uses the model-specific reporting below when model inputs are requested.
+Generation flags raise `FileNotFoundError` naming missing required forms before processing:
 `gen_conpyro_df=True` requires Plants and Regeneration, Canopy Cover, and Woody Debris;
 `gen_fofem_consume_df=True` requires Plants and Regeneration and Woody Debris, but not Canopy Cover.
 A missing Trees folder alone does not abort ConPyro or FOFEM consumption preparation. Trees-unticked plots ignore
 tree data and use substrate only; unresolved Trees-ticked plots are omitted. Both files can be empty with normal
-headers. Other required forms remain required. `gen_fofem_gui_app_tree_df=True` still requires Trees because its
-mortality hand-off is built from `master_tree_df`; empty or unmatched Trees parents receive a warning.
+headers. Missing parents use Trees ERROR `tree_model_inputs_unknown`; species/protocol exclusions retain their
+existing `tree_species_not_in_table`/`tree_sampling_invalid_protocol` errors without a duplicate eligibility error.
+If no plots remain eligible, input preparation in `fuel_analyst()` logs ERROR `tree_model_inputs_all_dropped`
+in the General Error row of `fuelanalyst_errors.csv`. This happens when ConPyro or FOFEM consumption inputs
+are requested, before `run_conpyro()`.
+
+The GUI mortality hand-off is generated only when `gen_fofem_gui_app_tree_df=True` and a processed `master_tree_df`
+exists. There is no global missing-Trees exception. When GUI mortality is the only model export requested,
+`fuel_analyst._log_missing_tree_mortality_inputs()` warns per selected plot for missing, empty, or wholly unmatched
+Trees parents (`fofem_gui_missing_tree_parent`). Combined requests use the shared Trees eligibility errors;
+without a processed `master_tree_df`, they produce no GUI mortality file.
 
 `keep_columns` remains additive: skipped or unselected components do not add
 their result columns to `master_fuel_df.csv`.
@@ -626,7 +645,14 @@ The configured protocol column is preserved as literal text during input reading
 
 Measured records use configured cutoffs (defaults 5/12.5 cm); `sapling_1.csv` source records always use their counted sapling area. This deliberately corrects out-of-class sapling results even with default settings. Source provenance is assigned during input normalization/merge. Missing source markers in legacy direct helper calls retain measured-tree behavior. DBH rounding to 0.1 cm and reporting/classification bins are unchanged.
 
-`helper.TREES_EXCLUDED_COLUMN` carries protocol exclusions through the existing downstream flow. Trees-ticked plots with unresolved tree status are omitted from ConPyro and FOFEM consumption inputs, and positive-density filtering excludes their mortality rows. Confirmed treeless plots remain eligible for surface modelling despite sampling/protocol exclusions; sampling metadata is irrelevant when all three classes are explicitly absent. No sampling settings need to be duplicated in model dictionaries. Trees form version `2026.11.06` adds hidden `sampling_protocol` metadata with default `CWC`, immediately before `tree_large_present`. Older exports remain valid with default settings; mixed-protocol adapters must populate the actual labels and explicitly enable protocol overrides.
+`helper.TREES_EXCLUDED_COLUMN` carries species/protocol exclusions through the shared eligibility helpers.
+Species/protocol-invalid stand calculations remain missing; other model-eligibility failures preserve available
+master summaries. Trees-ticked plots with unresolved tree status are omitted from ConPyro and FOFEM consumption
+inputs. All-three-class absence permits substrate modelling despite protocol exclusions; sampling metadata is
+irrelevant when no class is present. No sampling settings need to be duplicated in model dictionaries.
+Trees form version `2026.11.06` adds hidden `sampling_protocol` metadata with default `CWC`, immediately before
+`tree_large_present`. Older exports remain valid with default settings; mixed-protocol adapters must populate
+the actual labels and explicitly enable protocol overrides.
 
 ### Tree presence flags
 
@@ -850,56 +876,41 @@ The engine's O1 grass models require `gcf`, now supplied by `grass_curing` (defa
 
 ### Automatic surface-model assignment
 
-`trees._calc_conpyro_live_density()` derives fixed density and nullable live presence independently of stand-summary
-configuration. Valid live status/count observations establish forest presence independently of zero-filled density.
-For model preparation, `form_select` is the Trees switch. Unticked plots ignore Trees and use grass/herb, shrub,
-or BY substrate; missing Trees is not an error or an unknown-tree exclusion. Ticked plots with valid live-tree
-observations select forest. Ticked plots may use substrate when a unique parent marks all three classes `N`, or when
-fully surveyed dead-only/zero-live observations cover every sampling class. Unknown sapling counts and other missing
-counts cannot prove absence. Missing or ambiguous parents, empty records without absence flags, unlisted species,
-and invalid protocols without all-N confirmation omit ticked plots from both exports with one shared diagnostic.
-All-N absence remains eligible despite sampling/protocol exclusions. Available measured stand summaries, including
-dead density, biomass, and snags, remain in master outputs even when models are ineligible or disabled.
-`conpyro_attributes._calc_surface_models()` selects configured forest,
-grass/herb or shrub models and exports `surface_fuel_type` plus `sros_model`. `HG/HF/HE` map to grass/herbs and `SL/ST`
-to shrubs when Trees is unticked or no live trees are established with all sampling classes covered. BY handling is described below; other substrates remain unassigned with warnings.
+`trees._calc_conpyro_live_density()` derives fixed density and nullable live presence independently of
+stand-summary configuration. `helper.get_tree_model_eligibility()` and `helper.prepare_tree_model_inputs()`
+share model routing: Trees unticked uses substrate; ticked with valid live observations uses forest; a unique
+all-N parent or valid zero-live/dead-only observations covering every class permits substrate. Missing counts
+cannot establish absence; missing/ambiguous parents and unresolved observations omit ticked plots. Species/protocol
+exclusions also omit them unless explicit all-N absence overrides a protocol exclusion. Available master stand
+summaries remain, except for species/protocol-invalid calculations. The orchestrator logs shared omissions once;
+see [optional forms and model preparation](#optional-forms-and-model-preparation) for diagnostic ownership.
+The full branch rules are in [Technical Reference section 4.2](TECHNICAL_REFERENCE.md#surface-model-assignment-and-grass-inputs).
 
-For substrate-only BY (Trees unticked or observed no-live-tree conditions) plots, positive `pc_flammable` selects `surface_fuel_type='forest_floor'`,
-`stand_type=10`, and SROS model 1 independently of the configured forest mapping. Canopy geometry,
-canopy fuel, and grass/herb/shrub model loads are zero; measured duff, litter, and woody loads remain.
-This uses the grass stand domain as a surface-only calculation domain, not as an observation of grass.
-The runner calculates duff/litter/woody consumption with the vendored SFC component and explicitly
-supplies its total to ConPyro, avoiding the grass domain's default of using grass load as SFC.
-The calculation uses measured duff plus litter, woody load, and weather BUI, without an FBP fuel-type
-surrogate. Existing SFC input limits (forest floor 0-5 kg/m2, wood 0-2 kg/m2, BUI 5-200) and total
-consumption bounds (0.1-6 kg/m2) apply. Model 1 spread uses FFMC-derived moisture in stand domain 10;
-weather DMC still supplies `mc_dmc` for FOFEM duff moisture. Crown consumption/intensity are zero.
-Mixed batches process BY separately so forest and grass/shrub consumption paths are preserved.
-Partitioning carries the original batch's all-or-none FBP availability into each component so CFIS consumption
-cannot change merely because BY was separated. Internal row positions preserve order with duplicate caller indexes;
-input preparation restores the caller index on its outputs. Missing/nonnumeric/nonfinite BY loads or BUI are logged
-as a per-plot WARNING with affected/total scenario counts before worker dispatch, and consumed-input masks are retained across the pinned vendor adapter.
-The adapter sets the vendor SFC instance's non-CFIS selector explicitly because `run_sfc` reads that attribute;
-real-engine regression tests protect this contract during vendor refreshes.
-ConPyro emits its informational stand/model mismatch warning for the deliberate 10/1 pairing.
+`conpyro_attributes._calc_surface_models()` emits `surface_fuel_type` and `sros_model`. Forest uses its configured
+model; `HG/HF/HE` use grass/herbs and `SL/ST` use shrubs. Model 31 is a temporary grass proxy for shrubs.
+For substrate-only `BY` (bryoids, including mosses and lichens), positive `pc_flammable` (percent flammable
+substrate) selects `forest_floor`, stand domain 10, and fixed model 1. The model copy has zero live-canopy geometry
+and fuels. Measured duff, litter, and woody loads feed the vendored SFC component; the adapter supplies its total
+explicitly to ConPyro. Spread uses FFMC-derived moisture; BUI affects consumption and intensity. BY zero
+flammability selects `nonfuel`; invalid flammability selects `nonfuel_error` with an ERROR and a non-burning
+fallback. That fallback does not establish observed nonfuel conditions. Unknown tree status is omitted upstream.
+The runner's general numeric `stand_type=0` rule retains nonfuel rows with missing SROS model and fills missing
+density with `L`.
 
-For substrate-only BY (Trees unticked or observed no-live-tree conditions) with zero flammability, inputs use `stand_type=0`, a missing SROS model,
-and `surface_fuel_type='nonfuel'`, with INFO. Missing, nonnumeric, nonfinite, or out-of-range flammability
-on substrate-only BY uses `surface_fuel_type='nonfuel_error'` and the same processing fallback, with
-an ERROR. Zero fire outputs from that fallback do not establish nonfuel observations. Unresolved tree status on Trees-ticked plots
-is omitted, never converted to `nonfuel_error` or stand zero. The runner treats any numeric `stand_type=0`
-as nonfuel, allows a missing SROS model, and fills missing density with `L`; substrate-only BY is the
-main generated case. A model run with every plot dropped reports one clear General message. FBP preparation and both substrate fields are unchanged.
+The runner partitions BY internally, preserving scenario order, duplicate caller indexes, and the original batch's
+all-or-none FBP availability. It warns per plot about missing/nonfinite BY loads or BUI before worker dispatch;
+consumption remains missing. The adapter explicitly selects non-CFIS SFC for BY. The deliberate 10/1 pairing
+produces ConPyro's informational stand/model mismatch warning. FBP preparation and substrate fields are unchanged.
+The runner defaults to `sros_model='use_csv'` and passes `grass_curing=60` as `gcf`; numeric/alias overrides remain
+available. Regenerate model inputs and weather merges rather than guessing a model for stale merges.
 
-The runner defaults to `sros_model='use_csv'`, accepts numeric and alias model values, preserves numeric stand code 10
-in mixed CSVs, and supplies constant `grass_curing=60` as `gcf`. Open-fuel rows use zero live-canopy geometry; shrub-proxy
-consumption adds shrub to herbaceous load. Model 31 is explicitly a temporary grass proxy for shrubs. Scalar overrides
-remain available. No vendor equations were edited. The standalone example refreshes plot attributes against existing
-weather; never add a guessed model 13 to stale weather merges as an automatic migration.
+`fofem_moisture.derive_grass_duff_moisture()` fills missing grass/herb, shrub-proxy, and stand-domain-10 BY `mc_dmc`
+from weather DMC using the existing FWIS conversion and 10-200 bounds. New and reloaded results use it; both
+emissions readers retain optional DMC and surface metadata. Finite moisture values remain unchanged. Unresolved
+rows are skipped and logged with original plot IDs before backend execution; an empty subset skips the backend.
 
-`fofem_moisture.derive_grass_duff_moisture()` completes missing grass/herb, shrub-proxy, and stand-code-10 BY mc_dmc from weather DMC,
-using the existing FWIS conversion and ConPyro's forest bounds of 10-200. The runner applies it to new and reloaded
-results. Both emissions readers retain optional dmc and surface metadata; the shared moisture helper repairs older
-results before assigning DuffMoisture = mc_dmc. Existing finite values are preserved. There is no configured-regime
-fallback for missing grass/shrub moisture. Unresolved rows are skipped before backend execution and logged using
-original plot IDs; empty subsets produce empty stage output without invoking the model.
+Terrain adjustment of FFMC defaults to `False` in `conpyro.input_params`. This can change spread rate, intensity,
+and downstream fire effects on sloped plots. Flat plots are effectively unaffected because zero slope bypasses
+the vendored FFMC adjustment. Terrain wind adjustment remains enabled.
+Set `conpyro.input_params.model_terrain_effects_on_ffmc=True` to restore the former default, and regenerate
+affected cached fire-model results.

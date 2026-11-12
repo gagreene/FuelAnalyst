@@ -46,10 +46,11 @@ def calc_fuel_moisture_content(df: pd.DataFrame, logger: logging.Logger) -> pd.D
 
 def derive_grass_duff_moisture(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Complete grass and shrub-proxy mc_dmc from weather using the existing DMC conversion.
+    Complete open-fuel mc_dmc from weather using the existing DMC conversion.
 
     :param df: Fire results with mc_dmc and optional weather dmc and surface-type columns.
-    :return: Copy with missing grass/shrub mc_dmc calculated from finite nonnegative DMC,
+    :return: Copy with missing grass/herb, shrub-proxy, or numeric stand_type=10 mc_dmc
+        calculated from finite nonnegative DMC,
         bounded to 10-200 as in ConPyro's forest moisture path. Existing values are preserved.
     """
     result = df.copy()
