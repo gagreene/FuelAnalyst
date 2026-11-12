@@ -17,6 +17,46 @@ from . import fofem_units
 
 logger = logging.getLogger(__name__)
 
+_CONSUMPTION_COLUMNS = [
+    '#PlotId',
+    'Litter',
+    'wfl1Hour',
+    'wfl10Hour',
+    'wfl10HourMoisture',
+    'wfl100Hour',
+    'wfl3_6S',
+    'wfl6_9S',
+    'wfl9_20S',
+    'wfl20plusS',
+    'wfl3_6R',
+    'wfl6_9R',
+    'wfl9_20R',
+    'wfl20plusR',
+    'wfl1000HourMoisture',
+    'Duff',
+    'DuffMoisture',
+    'DuffDepth',
+    'Herbaceous',
+    'Shrub',
+    'CrownFoliage',
+    'CrownBranch',
+    'PercentCrownBurned',
+    'Region',
+    'CoverGroup',
+    'Season',
+    'FuelCategory',
+    'SoilFamily',
+    'SoilMoisture',
+    'LitterLoad_ConsumEq1',
+    'PctDuff_ConsumEq2',
+    'DuffDepth_ConsumEq3',
+    'MSE_ConsumEq4',
+    'Herb_ConsumEq5',
+    'Shrub_ConsumEq6',
+    'remove_hereafter',
+    'fuel_bed_depth_m',
+]
+
 
 def gen_fofem_gui_app_tree_df(df: pd.DataFrame, master_tree_df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -103,15 +143,15 @@ def gen_fofem_consumption_df(
     values are returned at full float precision; rounding is left to the specific consumer
     (e.g. the fof_gui batch-file writer) that actually requires it.
 
-    :param df: DataFrame with plot-level data. A plot left out of the tree calculations for an unlisted tree species
-        (marked by trees.process_trees()) is left out of the returned DataFrame.
+    :param df: Plot data with collected Trees-parent and observation markers. Unknown
+        tree observations are omitted; confirmed all-N absence retains surface fuels.
     :param fofem_consume_params: Dictionary of FOFEM consumption parameters, including region, season,
         moisture regime, soil heating options, and 'fofem_processing_units' ('SI' or 'Imperial';
         defaults to 'SI' when the key is absent).
     :return: DataFrame with FOFEM consumption variables.
     """
-    # A plot left out of the tree calculations has no canopy fuel values, which would be written as 0, so it is left out
-    df = df.loc[~helper.get_tree_excluded_plots(df)]
+    # Apply the same known-tree/explicit-absence decision as the ConPyro input writer.
+    df = helper.prepare_tree_model_inputs(df)
 
     # Extract FOFEM input parameters from the provided dictionary
     fofem_region = fofem_consume_params['region']
@@ -121,6 +161,8 @@ def gen_fofem_consumption_df(
     processing_units = fofem_units.validate_fofem_units(
         fofem_consume_params.get('fofem_processing_units', 'SI')
     )
+    if df.empty:
+        return pd.DataFrame(columns=_CONSUMPTION_COLUMNS, index=df.index)
 
     # Moisture regime lookup table: [Duff, 10hr, 1000hr, Soil]
     fofem_moist_regime_dict = {

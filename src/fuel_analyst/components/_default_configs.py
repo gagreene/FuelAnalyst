@@ -208,6 +208,7 @@ default_woody_debris_dict = {
 }
 
 default_conpyro_dict = {
+    # Flammable treeless BY plots use fixed SROS model 1 and stand code 10 outside this mapping.
     'sros_model': {'forest': 13, 'grass_herbs': 31, 'shrubs': 31},  # Shrubs use O1b as a temporary proxy
     'stand_attributes': {  # All attributes must output a single column
         'conpyro_cfl_ovrstry': {  # This name is fixed for ConPyro
@@ -457,7 +458,7 @@ default_fire_modelling_dict = {
             'process_ladder': False,     # Toggle ladder fuel processing on/off
             'smooth_ros': True,          # Toggle ROS smoothing function on/off
             'model_terrain_effects_on_wind': True,  # Toggle terrain (slope/aspect) effects on wind speed and direction
-            'model_terrain_effects_on_ffmc': True,  # Toggle terrain (slope/aspect) effects on FFMC
+            'model_terrain_effects_on_ffmc': False,  # Toggle terrain (slope/aspect) effects on FFMC
             'suppress_messages': True,              # Toggle ConPyro processing messages on/off
             'wx_date': 'use_csv',   # Options: Integer in format YYYYMMDD, or string "use_csv" (default)
                                     #    wx_date used for fine dead fuel and ladder foliar MC calculations

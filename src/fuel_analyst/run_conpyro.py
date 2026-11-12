@@ -10,7 +10,7 @@ import logging
 import math
 import numbers
 import os
-from numpy import array, column_stack, full, nan
+from numpy import array, column_stack, full, isfinite, ma, nan
 import pandas as pd
 from typing import Optional
 
@@ -22,6 +22,7 @@ from .components import helper
 # Re-export the public fire-modelling defaults.
 from .components._default_configs import default_fire_modelling_dict
 from ._vendor.conpyro import conpyro
+from ._vendor.conpyro.components.surface_fuel_consumption import SFC
 import flame_components as fc
 import tqdm
 import concurrent.futures
@@ -40,6 +41,38 @@ except ImportError:
 # internally. Re-verify these against pyfofem if it's updated.
 _FOFEM_MIN_FLAME_RES_TIME_S = 10.0
 _FOFEM_MAX_FLAME_RES_TIME_S = 200.0
+
+
+def _calc_by_surface_consumption(subset_df: pd.DataFrame):
+    """
+    Calculate duff/litter/woody consumption for the treeless BY surface domain.
+
+    :param subset_df: BY plot/weather rows with measured surface loads and weather.
+    :return: Masked consumption array in kg/m2 from the existing ConPyro SFC
+        component, including its input limits and consumption bounds.
+    """
+    fields = ['duff_fuel_load', 'litter_fuel_load', 'woody_fuel_load', 'bui']
+    values = subset_df[fields].apply(pd.to_numeric, errors='coerce')
+    values = values.where(isfinite(values))
+    consumption = SFC()
+    consumption.initialize_sfc(
+        fuel_type=None,
+        ffmc=subset_df['ffmc'].to_numpy(dtype=float),
+        bui=values['bui'].to_numpy(dtype=float),
+        ffl=values[['duff_fuel_load', 'litter_fuel_load']].sum(axis=1, min_count=2).to_numpy(dtype=float),
+        wfl=values['woody_fuel_load'].to_numpy(dtype=float),
+        gfl=full(len(subset_df), 0.),
+        pct_cnfr=full(len(subset_df), 0.),
+    )
+    # Adapter for the pinned vendor: run_sfc reads self.cfo_model despite accepting
+    # it as an argument. Select a non-CFIS model so BY consumption uses measured
+    # surface loads and BUI, not an FBP forest-type surrogate. Real-engine tests
+    # cover this contract; recheck it during vendor refreshes.
+    consumption.cfo_model = full(len(subset_df), 5)
+    consumption.run_sfc(consumption.cfo_model)
+    # Some vendor equation branches discard input masks (notably missing BUI).
+    # Retain the full consumed-input mask at this adapter boundary.
+    return ma.masked_where(values.isna().any(axis=1).to_numpy(), consumption.sfc)
 
 
 def _calc_instand_ws(df: pd.DataFrame) -> pd.DataFrame:
@@ -404,6 +437,34 @@ def _log_cfis_fuel_type_issues(df: pd.DataFrame, input_params: dict, plot_id_col
         )
 
 
+def _log_missing_by_surface_inputs(df: pd.DataFrame, plot_id_col: str) -> None:
+    """
+    Report unusable inputs to explicit BY consumption before worker dispatch.
+
+    :param df: ConPyro inputs after stand and surface-model filtering.
+    :param plot_id_col: Column identifying plots in the input dataframe.
+    :return: None. Logs one WARNING per affected plot naming invalid input fields and counts;
+        does not replace missing fuel loads or change the input dataframe.
+    """
+    category = df.get('surface_fuel_type', pd.Series('', index=df.index))
+    rows = df.loc[category.eq('forest_floor')]
+    if rows.empty:
+        return
+    fields = ['duff_fuel_load', 'litter_fuel_load', 'woody_fuel_load', 'bui']
+    values = rows[fields].apply(pd.to_numeric, errors='coerce')
+    invalid = ~isfinite(values)
+    affected = rows.loc[invalid.any(axis=1)]
+    for plot_id, group in affected.groupby(plot_id_col, dropna=False):
+        missing = [field for field in fields if invalid.loc[group.index, field].any()]
+        logger.warning(
+            'BY surface consumption is unknown for %s of %s scenario(s) with missing, nonnumeric, '
+            'or nonfinite %s. SFC remains missing; no zero is substituted. Check source '
+            'fuel loads and weather BUI, then regenerate the ConPyro/weather inputs.',
+            len(group), int(rows[plot_id_col].eq(plot_id).sum()), ', '.join(missing),
+            extra={'unique_id': plot_id, 'issue_code': 'conpyro_by_consumption_inputs_missing'},
+        )
+
+
 def _log_missing_shrub_proxy_loads(df, plot_id_col):
     """
     Report missing components of shrub-proxy consumption once per plot.
@@ -480,14 +541,35 @@ def _log_skipped_empty_stand_plots(
         )
 
 
-def _single_run_fire_behavior(args):
+def _single_run_fire_behavior(args, use_fuel_type: Optional[bool] = None):
     """
     Run one ConPyro fire-behavior calculation for a weather date and time.
 
     :param args: Weather date, time, input subset, model parameters, and requested outputs.
-    :return: ConPyro results for the supplied date and time.
+    :param use_fuel_type: Original batch's all-or-none FBP availability when partitioning
+        surface domains; None determines availability from the supplied batch.
+    :return: ConPyro results for the supplied date and time, preserving input row order.
     """
     wx_date, time, subset_df, input_params, conpyro_out_list = args
+    # Index labels are not scenario identifiers; use unique row positions internally.
+    subset_df = subset_df.reset_index(drop=True)
+    if use_fuel_type is None:
+        use_fuel_type = bool(subset_df['fbp_fuel_type'].notna().all())
+    by_surface = subset_df.get('surface_fuel_type', pd.Series('', index=subset_df.index)).eq('forest_floor')
+    if by_surface.any() and not by_surface.all():
+        # Explicit SFC applies only to BY rows; other domains keep ConPyro's normal SFC path.
+        parts = []
+        for selected in (by_surface, ~by_surface):
+            part = _single_run_fire_behavior(
+                (wx_date, time, subset_df.loc[selected], input_params, conpyro_out_list),
+                use_fuel_type=use_fuel_type)
+            part.index = subset_df.index[selected]
+            parts.append(part)
+        return pd.concat(parts).reindex(subset_df.index).reset_index(drop=True)
+    supplied_sfc = _calc_by_surface_consumption(subset_df) if by_surface.any() else None
+    floor_loads = subset_df[['duff_fuel_load', 'litter_fuel_load']]
+    if by_surface.any():
+        floor_loads = floor_loads.apply(pd.to_numeric, errors='coerce')
     if input_params['sros_model'] != 'use_csv':
         subset_df = subset_df.copy()
         subset_df['sros_model'] = input_params['sros_model']
@@ -510,7 +592,7 @@ def _single_run_fire_behavior(args):
         cbd=subset_df['cbd_ovrstry'].values,
         cfl_ovrstry=subset_df['cfl_ovrstry'].values,
         fsg=subset_df['fsg'].values,
-        ffl=subset_df[['duff_fuel_load', 'litter_fuel_load']].sum(axis=1).values,
+        ffl=floor_loads.sum(axis=1, min_count=2 if by_surface.any() else 0).values,
         wfl=subset_df['woody_fuel_load'].values,
         gfl=grass_load.to_numpy(),
         gcf=input_params.get('grass_curing', 60),
@@ -522,7 +604,7 @@ def _single_run_fire_behavior(args):
         ffmc=subset_df['ffmc'].values,
         dmc=subset_df['dmc'].values,
         bui=subset_df['bui'].values,
-        fuel_type=(subset_df['fbp_fuel_type'].to_numpy(dtype=str) if subset_df['fbp_fuel_type'].notna().all() else None),
+        fuel_type=(subset_df['fbp_fuel_type'].to_numpy(dtype=str) if use_fuel_type else None),
         pct_cnfr=subset_df['pct_cnfr'].values,
         ht_midstry_live=subset_df['ht_midstry_live'].values,
         ht_midstry_dead=subset_df['ht_midstry_dead'].values,
@@ -553,7 +635,7 @@ def _single_run_fire_behavior(args):
         long=subset_df['long'].values,
         d0=None,
         dj=None,
-        sfc=None,
+        sfc=supplied_sfc,
         suppress_messages=input_params['suppress_messages'],
     )
     cp.run_conpyro()
@@ -912,6 +994,9 @@ def run_conpyro(
 
         # Drop rows with empty values in required columns, and report each skipped plot
         drop_empty_rows_in_cols = ['stand_density', 'stand_type']
+        nonfuel = pd.to_numeric(df['stand_type'], errors='coerce').eq(0)
+        df['stand_density'] = df['stand_density'].astype(object)
+        df.loc[nonfuel & df['stand_density'].isna(), 'stand_density'] = 'L'
         skipped_df = df[df[drop_empty_rows_in_cols].isna().any(axis=1)]
         df = df.drop(index=skipped_df.index)
         _log_skipped_empty_stand_plots(skipped_df, drop_empty_rows_in_cols, conpyro_params['plot_id_col_name'])
@@ -939,7 +1024,8 @@ def run_conpyro(
             )
 
         if input_params.get('sros_model') == 'use_csv':
-            missing_model = df['sros_model'].isna()
+            nonfuel = pd.to_numeric(df['stand_type'], errors='coerce').eq(0)
+            missing_model = df['sros_model'].isna() & ~nonfuel
             for plot_id in df.loc[missing_model, conpyro_params['plot_id_col_name']].drop_duplicates():
                 logger.warning(
                     'ConPyro scenario skipped: sros_model is unassigned. Check live-tree observations '
@@ -950,6 +1036,7 @@ def run_conpyro(
             df = df.loc[~missing_model]
 
         _log_cfis_fuel_type_issues(df, input_params, conpyro_params['plot_id_col_name'])
+        _log_missing_by_surface_inputs(df, conpyro_params['plot_id_col_name'])
         _log_missing_shrub_proxy_loads(df, conpyro_params['plot_id_col_name'])
 
         # ### MODEL FIRE BEHAVIOR WITH CONPYRO ###

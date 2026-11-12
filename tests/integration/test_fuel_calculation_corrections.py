@@ -32,6 +32,7 @@ def _conpyro_source(cover):
         'unique_id': 'p1', 'GlobalID': 'plot-1', '_date': '01/01/2025 10:00',
         'treatment_area': 'area', 'treatment_unit': 'unit', 'treatment_type': 'untreated',
         'plot_id': '1', 'SPECIES_PCT_1': 100.0, 'cc': cover,
+        'form_select': 'trees', '_tree_parent_present': True, 'conpyro_live_trees_present': True,
     }
     for index in range(1, 7):
         row[f'SPECIES_CD_{index}'] = 'FDI' if index == 1 else None

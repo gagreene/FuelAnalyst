@@ -38,15 +38,17 @@ def test_generated_inputs_export_models_and_open_canopy_without_rescuing_exclusi
             row[field] = 0.1
         rows.append(row)
     source = pd.DataFrame(rows)
+    source['form_select'] = 'trees'
+    source['_tree_parent_present'] = True
+    source['conpyro_live_trees_present'] = [True, False, False, None]
+    source['_trees_confirmed_absent'] = [False, True, True, False]
     result, _ = conpyro_attributes.gen_conpyro_df(source, copy.deepcopy(default_conpyro_dict))
     result = result.set_index('unique_id')
     assert result.loc[['f', 'g', 's'], 'sros_model'].tolist() == [13, 31, 31]
     assert result.loc[['g', 's'], 'stand_type'].eq(10).all()
     assert result.loc[['g', 's'], 'stand_density'].eq('L').all()
     assert result.loc[['g', 's'], ['canopy_cover', 'ht_ovrstry_live', 'fsg']].eq(0).all(axis=None)
-    assert pd.isna(result.loc['x', 'sros_model'])
-    assert result.loc['x', 'stand_type'] == ''
-    assert result.loc['x', ['cfl_ovrstry', 'cbd_ovrstry']].isna().all()
+    assert 'x' not in result.index
     assert source.loc[1, 'cc'] is np.nan or pd.isna(source.loc[1, 'cc'])
 
 
@@ -72,7 +74,8 @@ def test_surface_assignment_uses_live_trees_before_substrate_and_preserves_missi
     assert result.sros_model.iloc[:6].tolist() == [13, 31, 31, 31, 31, 31]
     assert result.surface_fuel_type.iloc[:6].tolist() == ['forest', 'grass_herbs', 'grass_herbs', 'grass_herbs', 'shrubs', 'shrubs']
     assert result.sros_model.iloc[6:].isna().all()
-    assert {'bryoid', 'unknown', 'excluded'} <= {r.unique_id for r in caplog.records}
+    assert {'bryoid', 'unknown'} <= {r.unique_id for r in caplog.records}
+    assert 'excluded' not in {r.unique_id for r in caplog.records}
     assert 'sros_model' not in source
 
 

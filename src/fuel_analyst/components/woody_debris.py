@@ -1115,16 +1115,6 @@ def _merge_spp_comp(
             # Filter to only rows with valid data before processing
             valid_rows = plot_df[valid_data].copy()
 
-            for _, missing_row in plot_df.loc[~valid_data].iterrows():
-                logger.info(
-                    'No tree-derived species composition for this plot; falling back to '
-                    'another spp_comp_type source.',
-                    extra={
-                        'unique_id': missing_row.get('unique_id'),
-                        'issue_code': 'stand_spp_comp_woody_missing_for_plot',
-                    },
-                )
-
             # Split the string into tuples and create a DataFrame
             plot_spp_comp = (
                 valid_rows['stand_spp_comp_woody']
@@ -1147,12 +1137,7 @@ def _merge_spp_comp(
             # Concatenate with existing spp_comp_df
             spp_comp_df = _concat_spp_comp_frames(spp_comp_df, plot_spp_comp)
         else:
-            logger.warning(
-                'stand_spp_comp_woody column exists but contains no valid data for any plot.'
-            )
             print('\t\tThis is normal if trees were not processed or plots have no trees')
-    else:
-        logger.warning('stand_spp_comp_woody column not found (trees may not have been processed).')
 
     # ### PROCESS TRANSECT SPECIES COMPOSITION DATA
     # All (plot, species) pairs in woody_merged_df with their summed percent
@@ -1234,7 +1219,8 @@ def _resolve_spp_comp_type(df: pd.DataFrame, spp_comp_df: pd.DataFrame) -> tuple
         and 'spp_comp_type'.
     :return: Updated df with 'spp_comp_type' overwritten to the resolved source and a new
         'spp_comp_type_declared' column preserving the original value, plus a list of columns
-        to keep.
+        to keep. Logs successful substitutions at INFO and missing sources at ERROR
+        when positive fuel measurements require species-based biomass conversion.
     """
     print('\tResolving species composition source availability')
 
@@ -1262,6 +1248,31 @@ def _resolve_spp_comp_type(df: pd.DataFrame, spp_comp_df: pd.DataFrame) -> tuple
                     extra={'unique_id': row['unique_id'], 'issue_code': 'spp_comp_type_fallback'},
                 )
                 return fallback
+
+        tally_fields = [field for mapping in woody_tally_map for field in mapping]
+        measurements = pd.to_numeric(
+            row.reindex(['stand_duff_depth_cm', 'stand_litter_depth_cm'] + tally_fields),
+            errors='coerce',
+        )
+        affected = []
+        if measurements['stand_duff_depth_cm'] > 0:
+            affected.append('duff biomass')
+        if measurements['stand_litter_depth_cm'] > 0:
+            affected.append('litter biomass')
+        if measurements[tally_fields].gt(0).any():
+            affected.append('tallied woody biomass')
+        if affected:
+            logger.error(
+                "No usable species composition for declared spp_comp_type '%s': "
+                'no matching tree_data, transect_data or manual_entry data. Cannot calculate %s; '
+                'affected values remain missing.',
+                declared,
+                ', '.join(affected),
+                extra={
+                    'unique_id': row['unique_id'],
+                    'issue_code': 'woody_species_composition_unavailable',
+                },
+            )
         return declared
 
     df['spp_comp_type_declared'] = df['spp_comp_type']

@@ -44,8 +44,15 @@ def test_complete_survey123_pipeline_generates_owned_output_contracts(tmp_path):
     fofem_trees = pd.read_csv(output_dir / 'fofem_gui_app_tree_mortality_df.csv', low_memory=False)
 
     assert master['unique_id'].is_unique
-    assert set(conpyro['unique_id']) == set(master['unique_id'])
-    assert set(fbp['unique_id']) == set(master['unique_id'])
+    from fuel_analyst.components import helper
+    source_plots = helper.get_unique_id(pd.read_csv(input_dir / '1_Plot_Attributes/survey_0.csv'))
+    unchecked_ids = set(source_plots.loc[~source_plots['form_select'].str.contains('trees', na=False), 'unique_id'])
+    eligible = master['conpyro_live_trees_present'].notna() | master['unique_id'].isin(unchecked_ids)
+    expected_ids = set(master.loc[eligible, 'unique_id'])
+    assert set(conpyro['unique_id']) == expected_ids
+    assert set(fbp['unique_id']) == expected_ids
+    consume = pd.read_csv(output_dir / 'fofem_consume_si_df.csv')
+    assert set(consume['#PlotId']) == expected_ids
     assert fofem_trees['PlotId'].notna().all()
     assert set(fofem_trees['PlotId']) & set(master['unique_id'])
     assert 'treatment_unit_other' not in master.columns

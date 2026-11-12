@@ -629,7 +629,9 @@ def test_fuel_analyst_continues_and_reports_a_plot_with_an_unlisted_tree_species
     stand_columns = [c for c in master.columns if c.startswith('stand_') and 'duff' not in c and 'litter' not in c]
     in_master = master['unique_id'].eq(affected.iloc[0])
     assert master.loc[in_master, stand_columns].isna().all(axis=None)
-    assert master.loc[~in_master, stand_columns].notna().any(axis=1).all()
+    # Plain inventory exports keep their schema and the other plots' stand summaries.
+    assert not {'conpyro_live_trees_present', 'conpyro_live_tree_density'} & set(master.columns)
+    assert master.loc[~in_master, stand_columns].notna().any(axis=None)
 
 
 def test_exclude_unlisted_species_does_not_attribute_a_parentless_record_to_a_plot_without_a_global_id(caplog):
@@ -689,14 +691,15 @@ def test_plot_with_an_unlisted_tree_species_is_left_out_of_the_model_inputs(tmp_
     errors = pd.read_csv(out_dir / 'fuelanalyst_errors.csv', low_memory=False)
     excluded = errors.loc[errors['Trees'].astype(str).str.contains("Species 'ZZ'"), 'unique_id'].iloc[0]
     conpyro = pd.read_csv(out_dir / 'conpyro_df.csv', low_memory=False).set_index('unique_id')
-    assert pd.isna(conpyro.loc[excluded, 'stand_density']) and pd.isna(conpyro.loc[excluded, 'stand_type'])
-    others = conpyro.drop(index=excluded)
+    assert excluded not in conpyro.index
+    others = conpyro
     assert others['stand_density'].notna().sum() > 0 and others['stand_type'].notna().sum() > 0
     assert '_trees_excluded' not in conpyro.columns
     master = pd.read_csv(out_dir / 'master_fuel_df.csv', low_memory=False)
     assert '_trees_excluded' not in master.columns and len(master) == len(plot_ids)
     consume = pd.read_csv(out_dir / 'fofem_consume_si_df.csv', low_memory=False)
-    assert len(consume) == len(master) - 1
+    expected = master['conpyro_live_trees_present'].notna().sum()
+    assert len(consume) == expected
 
 
 # ── Highly decayed trees with no measured height ─────────────────────────────────────────────────────────────────────
