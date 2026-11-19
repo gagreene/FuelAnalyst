@@ -41,6 +41,7 @@ _CONSUME_ROW = {
 }
 _FIRE_ROW = {
     'unique_id': 'p1', 'wx_date': 20250615, 'hfi': 1500.0, 'flame_res_time_sec': 60.0,
+    'flame_depth_m': 2.5,
     'instand_ws_mps': 2.0, 'temp': 20.0, 'mc_sa': 10.0, 'mc_dmc': 20.0, 'dc': 100.0, 'cfb': 0.1,
 }
 
@@ -82,7 +83,7 @@ def test_process_emissions_consumption_mode_matches_direct_runfofem_output(tmp_p
     manual_dir.mkdir()
     burnup_path = manual_dir / 'Burnup-In.brn'
     fofem_gui_emissions._write_burnup_params_694(
-        str(burnup_path), intensity=1500.0, ig_time=60.0, windspeed=2.0, depth=0.25, ambient_temp=20.0,
+        str(burnup_path), intensity=600.0, ig_time=60.0, windspeed=2.0, depth=0.25, ambient_temp=20.0,
     )
     input_path = manual_dir / 'input.txt'
     with open(input_path, 'w', newline='\r\n') as f:

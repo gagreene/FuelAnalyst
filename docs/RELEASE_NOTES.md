@@ -1,5 +1,13 @@
 # Release notes
 
+## Unreleased
+
+- Both FOFEM emissions backends now divide head fireline intensity by horizontal flame depth for Burnup ignition. The fire results include `burnup_ign_intensity_kWpm2`. Burnup eligibility, consumption, and emissions can change.
+
+### Breaking changes and action needed
+
+- **Supply flame depth for FOFEM emissions.** Custom fire-results CSVs must include `flame_depth_m` in metres. Regenerate fire results if this column is missing.
+
 ## 0.5.0
 
 This is a minor release: protocol-aware tree sampling, automatic surface-model selection, the ConPyro update, and Trees form metadata change inputs, results, and documented behaviour. Review the migration steps and model assumptions before reusing existing inputs or comparing results with earlier releases.

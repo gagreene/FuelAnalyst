@@ -221,13 +221,14 @@ def test_write_burnup_params_694_matches_verified_fixture_byte_for_byte(tmp_path
     assert actual == expected
 
 
-def test_write_burnup_params_694_substitutes_dynamic_values(tmp_path):
+@pytest.mark.parametrize('intensity', [1234.5, 39.999])
+def test_write_burnup_params_694_substitutes_dynamic_values(tmp_path, intensity):
     out_path = tmp_path / 'burnup.brn'
     fofem_gui_emissions._write_burnup_params_694(
-        str(out_path), intensity=1234.5, ig_time=61.25, windspeed=3.14, depth=0.42, ambient_temp=25.5,
+        str(out_path), intensity=intensity, ig_time=61.25, windspeed=3.14, depth=0.42, ambient_temp=25.5,
     )
     content = out_path.read_text()
-    assert '#INTENSITY 1234.5' in content
+    assert f'#INTENSITY {intensity}' in content
     assert '#IG_TIME 61.25' in content
     assert '#WINDSPEED 3.14' in content
     assert '#DEPTH 0.42' in content
@@ -459,6 +460,7 @@ _CONSUME_ROW = {
 }
 _FIRE_ROW = {
     'unique_id': 'p1', 'wx_date': 20250615, 'hfi': 1500.0, 'flame_res_time_sec': 60.0,
+    'flame_depth_m': 2.5,
     'instand_ws_mps': 2.0, 'temp': 20.0, 'mc_sa': 10.0, 'mc_dmc': 20.0, 'dc': 100.0, 'cfb': 0.1,
 }
 

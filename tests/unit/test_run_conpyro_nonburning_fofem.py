@@ -10,6 +10,51 @@ from real_conpyro_fixtures import ROW, make_params, run_conpyro_module  # noqa: 
 
 
 @pytest.mark.parametrize('backend', ['pyfofem', 'fof_gui'])
+def test_emissions_merge_keeps_same_date_scenarios_distinct(run_conpyro_module, tmp_path, monkeypatch, backend):
+    module = run_conpyro_module
+    source = tmp_path / 'fire.csv'
+    pd.DataFrame({
+        'unique_id': ['plot', 'plot'], 'wx_date': [20240609, 20240609], 'time': [1100, 1200],
+        'fire_type': [1, 1], 'hfi': [30.0, 30.0], 'flame_depth_m': [0.0, 0.5],
+    }).to_csv(source, index=False)
+
+    def fake_emissions(**kwargs):
+        fire = pd.read_csv(kwargs['plot_wx_fire_csv_path'])
+        valid = fire['flame_depth_m'].gt(0)
+        result = fire[['unique_id', 'wx_date', 'time']].rename(columns={'unique_id': '#PlotId'})
+        result['test_emissions'] = valid.map({True: 3.0, False: float('nan')})
+        return result.loc[valid] if backend == 'pyfofem' else result
+
+    components = importlib.import_module('fuel_analyst.components')
+    emissions_module = 'fofem_emissions' if backend == 'pyfofem' else 'fofem_gui_emissions'
+    stub = types.ModuleType(f'fuel_analyst.components.{emissions_module}')
+    stub.process_emissions = fake_emissions
+    monkeypatch.setitem(sys.modules, stub.__name__, stub)
+    monkeypatch.setattr(components, emissions_module, stub, raising=False)
+
+    settings = make_params(module)
+    settings['conpyro']['run_model'] = False
+    settings['fofem_emissions'].update(run_model=True, model_select=backend, emissions_units='SI')
+    module.run_conpyro(
+        str(tmp_path / 'out'), str(source), in_fofem_consume_csv_path=str(tmp_path / 'fofem_consume_si_df.csv'),
+        fire_modelling_params=settings,
+    )
+
+    result = pd.read_csv(tmp_path / 'out/conpyro_emissions_results.csv').set_index('time')
+    assert len(result) == 2
+    assert pd.isna(result.loc[1100, 'test_emissions'])
+    assert result.loc[1200, 'test_emissions'] == 3.0
+
+
+def test_empty_fire_results_include_ignition_intensity_with_legacy_settings(run_conpyro_module):
+    df = pd.DataFrame(columns=['hfi'])
+    result = run_conpyro_module._model_flame_components(df, ['flame_length_m', 'flame_depth_m'])
+
+    assert result.empty
+    assert result.columns[-2:].tolist() == ['flame_depth_m', 'burnup_ign_intensity_kWpm2']
+
+
+@pytest.mark.parametrize('backend', ['pyfofem', 'fof_gui'])
 @pytest.mark.parametrize('mixed, same_date', [(False, False), (True, False), (True, True)])
 @pytest.mark.parametrize('reload_results', [False, True])
 def test_nonburning_scenarios_skip_fofem_backends(
@@ -26,6 +71,8 @@ def test_nonburning_scenarios_skip_fofem_backends(
     if reload_results:
         module.run_conpyro(str(tmp_path / 'initial'), str(source), fire_modelling_params=settings)
         source = tmp_path / 'initial/fire_behavior/conpyro_results.csv'
+        legacy = pd.read_csv(source).drop(columns='burnup_ign_intensity_kWpm2', errors='ignore')
+        legacy.to_csv(source, index=False)
         settings['conpyro']['run_model'] = False
     source_bytes = source.read_bytes()
     calls = []
@@ -66,9 +113,15 @@ def test_nonburning_scenarios_skip_fofem_backends(
     assert source.read_bytes() == source_bytes
     result = pd.read_csv(tmp_path / 'out/conpyro_mortality_emissions_results.csv').set_index('scenario')
     assert len(result) == len(rows)
+    ignition_column = 'burnup_ign_intensity_kWpm2'
+    assert result.columns.get_loc(ignition_column) == result.columns.get_loc('flame_depth_m') + 1
+    assert pd.isna(result.loc['nonfuel', ignition_column])
     assert result.loc['nonfuel', ['fire_type', 'hfi', 'hros', 'tfc']].eq(0).all()
     assert result.reindex(columns=['test_mortality', 'test_emissions']).loc['nonfuel'].isna().all()
     if mixed:
+        assert result.loc['forest', ignition_column] == pytest.approx(
+            result.loc['forest', 'hfi'] / result.loc['forest', 'flame_depth_m']
+        )
         assert result.loc['forest', 'test_mortality'] == 0.25
         assert result.loc['forest', 'test_emissions'] == 3.
     report = pd.read_csv(tmp_path / 'out/run_conpyro_errors.csv').astype(str)

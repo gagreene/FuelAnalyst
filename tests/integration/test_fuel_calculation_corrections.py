@@ -98,6 +98,7 @@ def test_plant_depth_consumption_csv_reaches_both_emissions_routes(
 
     fire = {
         'unique_id': 'p1', 'wx_date': 20250615, 'hfi': 1500.0, 'flame_res_time_sec': 60.0,
+        'flame_depth_m': 2.5,
         'instand_ws_mps': 2.0, 'temp': 20.0, 'mc_sa': 10.0, 'mc_dmc': 20.0, 'dc': 100.0, 'cfb': 0.1,
     }
     fire_path = tmp_path / 'fire.csv'
@@ -114,6 +115,7 @@ def test_plant_depth_consumption_csv_reaches_both_emissions_routes(
         fofem_consume_csv_path=str(consume_path), out_dir=str(tmp_path / 'pyfofem'), return_df=True,
     )
     assert received['fuel_bed_depth'].tolist() == [expected]
+    assert received['hfi'].tolist() == [600.0]
 
     runtime = tmp_path / 'runtime'
     runtime.mkdir()
@@ -126,15 +128,18 @@ def test_plant_depth_consumption_csv_reaches_both_emissions_routes(
     monkeypatch.setattr(fofem_gui_emissions, '_run_runfofem', unavailable_backend)
     writer = fofem_gui_emissions._write_burnup_params_694
     written_depths = []
+    written_intensities = []
 
     def write_burnup(**kwargs):
         written_depths.append(kwargs['depth'])
+        written_intensities.append(kwargs['intensity'])
         return writer(**kwargs)
 
     monkeypatch.setattr(fofem_gui_emissions, '_write_burnup_params_694', write_burnup)
     merged_row = reloaded.iloc[0].to_dict() | fire
     fofem_gui_emissions._model_emissions(merged_row, str(tmp_path / 'legacy'), 'S', 'SI', str(runtime))
     assert written_depths == [expected]
+    assert written_intensities == [600.0]
 
 
 def test_tree_fsg_uses_field_height_independent_of_plant_depth():

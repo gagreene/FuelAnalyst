@@ -43,6 +43,7 @@ _CONSUME_ROW = {
 }
 _FIRE_ROW = {
     'unique_id': 'p1', 'wx_date': 20250615, 'hfi': 1500.0, 'flame_res_time_sec': 60.0,
+    'flame_depth_m': 2.5,
     'instand_ws_mps': 2.0, 'temp': 20.0, 'mc_sa': 10.0, 'mc_dmc': 20.0, 'dc': 100.0, 'cfb': 0.1,
 }
 

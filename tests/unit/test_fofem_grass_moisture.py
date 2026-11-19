@@ -49,6 +49,7 @@ def test_weather_dmc_reaches_both_emissions_moisture_helpers(tmp_path, monkeypat
     fire_path = tmp_path / 'fire.csv'
     consume_path = tmp_path / 'consume.csv'
     pd.DataFrame({'unique_id': ['p'], 'wx_date': [20250615], 'hfi': [100.], 'flame_res_time_sec': [30.],
+                  'flame_depth_m': [0.5],
                   'instand_ws_mps': [1.], 'temp': [20.], 'mc_sa': [10.], 'mc_dmc': [np.nan], 'dmc': [40.],
                   'dc': [100.], 'cfb': [0.], 'surface_fuel_type': ['shrubs'], 'stand_type': [10]}).to_csv(fire_path, index=False)
     pd.DataFrame({'#PlotId': ['p'], 'DuffMoisture': [90.]}).to_csv(consume_path, index=False)

@@ -1129,10 +1129,13 @@ existing forest moisture path. The completed `mc_dmc` is written to fire results
 emissions backends. Reloaded results with missing `mc_dmc` are repaired from their weather DMC as well. Existing
 finite moisture values are preserved. There is no fallback to the consumption file's fixed moisture regime: rows
 without usable `mc_dmc` or finite nonnegative weather DMC are skipped for grass/shrub emissions, with a plot warning;
-the combined ConPyro row remains without calculated emissions. Forest moisture handling remains unchanged. Existing
-Burnup limits still apply: low-intensity scenarios may return `BurnupError=10` (igniting intensity below the backend
-minimum), even when ConPyro successfully models them. FuelAnalyst does not raise their predicted intensity to force
-acceptance by Burnup.
+the combined ConPyro row remains without calculated emissions. Forest moisture handling remains unchanged.
+
+Both emissions backends use `burnup_ign_intensity_kWpm2`, calculated as ConPyro's head fireline intensity (`hfi`, kW/m)
+divided by the horizontal flame depth (`flame_depth_m`, m). The results list this value after the flame columns.
+Fuel bed depth is a separate input. Scenarios with invalid intensity or flame depth are reported and excluded from
+emissions modelling. The `pyfofem` backend reports
+`BurnupError=10` when the converted intensity is below 40 kW/m².
 
 ## 4.4 Outputs and Error Reporting
 

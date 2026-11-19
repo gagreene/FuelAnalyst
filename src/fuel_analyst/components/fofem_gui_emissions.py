@@ -419,14 +419,14 @@ def _get_merged_consumption_df(
 
     required_cols = [
         plot_id_col_name, 'wx_date', 'hfi',
-        'flame_res_time_sec', 'instand_ws_mps',
+        'flame_depth_m', 'flame_res_time_sec', 'instand_ws_mps',
         'temp', 'mc_sa', 'mc_dmc', 'dc', 'cfb'
     ]
 
     missing_cols = helper.get_missing_df_columns(plot_fire_df, required_cols)
     if missing_cols:
         raise ValueError(
-            f'Missing required column(s) in weather and fire behavior CSV: {required_cols}'
+            f'Missing required column(s) in weather and fire behavior CSV: {missing_cols}'
         )
 
     optional_cols = [column for column in ('surface_fuel_type', 'stand_type', 'dmc') if column in plot_fire_df]
@@ -578,9 +578,16 @@ def _model_emissions(row: dict, out_dir: str, consume_model: str, emissions_unit
         row_df = _convert_consume_row_to_imperial(pd.DataFrame([row]), emissions_units)
         row_series = row_df.iloc[0]
 
+        ignition_column = fofem_units.BURNUP_IGNITION_INTENSITY_COLUMN
+        ignition_intensity = row[ignition_column] if ignition_column in row else float(
+            fofem_units.calc_burnup_ignition_intensity(row['hfi'], row['flame_depth_m'])
+        )
+        if not np.isfinite(ignition_intensity):
+            raise ValueError('Burnup requires finite non-negative hfi and finite positive flame depth (flame_depth_m).')
+
         _write_burnup_params_694(
             out_path=burnup_path,
-            intensity=row['hfi'],
+            intensity=ignition_intensity,
             ig_time=row['flame_res_time_sec'],
             windspeed=row['instand_ws_mps'],
             depth=row['fuel_bed_depth_m'],
@@ -803,15 +810,15 @@ def _write_burnup_params_694(
     Write a verified 113-switch FOFEM 6.9.4 Burnup parameter file.
 
     :param out_path: Output path for the Burnup parameter file.
-    :param intensity: Heat per unit area (kJ/m^2).
+    :param intensity: Ignition heat release rate per unit area (kW/m²).
     :param ig_time: Ignition (flame residence) time (seconds).
     :param windspeed: In-stand/mid-flame wind speed (m/s).
-    :param depth: Flame depth (m).
+    :param depth: Fuel bed depth (m).
     :param ambient_temp: Ambient temperature (degC).
     :return: None. Writes the parameter file to out_path.
     """
     content = _BURNUP_PARAMS_694_TEMPLATE.format(
-        intensity=_format_burnup_value(intensity),
+        intensity=str(float(intensity)).removesuffix('.0'),
         ig_time=_format_burnup_value(ig_time),
         windspeed=_format_burnup_value(windspeed),
         depth=_format_burnup_value(depth),
@@ -933,6 +940,7 @@ def process_emissions(
         consume_model=consume_model,
     )
     merged_df = _calc_fuel_moisture_content(merged_df)
+    fofem_units.add_burnup_ignition_intensity(merged_df)
     if merged_df.empty:
         helper.export_csv(merged_df, os.path.join(out_dir, 'fofem_emissions_results.csv'))
         return merged_df if return_df else None

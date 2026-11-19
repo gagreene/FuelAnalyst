@@ -8,6 +8,10 @@ __author__ = ['Gregory A. Greene']
 
 import os
 
+import numpy as np
+import pandas as pd
+
+BURNUP_IGNITION_INTENSITY_COLUMN = 'burnup_ign_intensity_kWpm2'
 VALID_FOFEM_UNITS = ('SI', 'Imperial')
 
 LOAD_CONV_FACTOR = 4.46089561  # kg/m2 -> US short tons/acre
@@ -80,6 +84,38 @@ EMISSIONS_GAS_RESULT_FIELDS = [
 # their names - verified against pyfofem.py's soil-heating block; the equation-identifier fields
 # 'Lit-Equ', 'DufCon-Equ', 'DufRed-Equ', 'MSE-Equ', 'Herb-Equ', 'Shurb-Equ'; and the status/error
 # codes 'BurnupLimitAdj', 'BurnupError'.
+
+
+def add_burnup_ignition_intensity(df: pd.DataFrame) -> None:
+    """
+    Calculate Burnup ignition intensity and put it after the flame columns.
+
+    :param df: Fire results with head fireline intensity and horizontal flame depth.
+    :return: None. Inserts or replaces the Burnup ignition intensity column in df.
+    """
+    hfi = pd.to_numeric(df['hfi'], errors='coerce').to_numpy(dtype=float, na_value=np.nan)
+    depth = pd.to_numeric(df['flame_depth_m'], errors='coerce').to_numpy(dtype=float, na_value=np.nan)
+    if BURNUP_IGNITION_INTENSITY_COLUMN in df:
+        del df[BURNUP_IGNITION_INTENSITY_COLUMN]
+    last_flame_column = max(index for index, name in enumerate(df.columns) if name.startswith('flame_'))
+    df.insert(last_flame_column + 1, BURNUP_IGNITION_INTENSITY_COLUMN, calc_burnup_ignition_intensity(hfi, depth))
+
+
+def calc_burnup_ignition_intensity(hfi: float | np.ndarray, flame_depth_m: float | np.ndarray) -> np.ndarray:
+    """
+    Convert head fireline intensity to Burnup ignition intensity.
+
+    :param hfi: Head fireline intensity (kW/m), as a scalar or array.
+    :param flame_depth_m: Horizontal flame depth (m), with the same shape as hfi.
+    :return: Ignition intensity (kW/m²), with NaN for invalid inputs or a nonfinite result.
+    """
+    fireline_intensity = np.asarray(hfi, dtype=float)
+    flame_depth = np.asarray(flame_depth_m, dtype=float)
+    valid = np.isfinite(fireline_intensity) & (fireline_intensity >= 0) & np.isfinite(flame_depth) & (flame_depth > 0)
+    intensity = np.full(fireline_intensity.shape, np.nan)
+    with np.errstate(over='ignore'):
+        np.divide(fireline_intensity, flame_depth, out=intensity, where=valid)
+    return np.where(np.isfinite(intensity), intensity, np.nan)
 
 
 def consume_filename(units: str) -> str:

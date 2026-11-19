@@ -725,7 +725,10 @@ def _model_flame_components(
         retain their ConPyro metrics and have missing, inapplicable flame quantities.
     """
     if df.empty:
-        return df.reindex(columns=list(dict.fromkeys([*df.columns, *flame_comp_out_list])))
+        columns = list(dict.fromkeys([*df.columns, 'hfi', *flame_comp_out_list, 'flame_depth_m']))
+        df = df.reindex(columns=columns)
+        fofem_units.add_burnup_ignition_intensity(df)
+        return df
 
     # FLAME models accept burning types 1-3, not ConPyro's non-burning type 0.
     # Temporarily mask the consumed fire metrics, then restore the engine outputs.
@@ -765,6 +768,7 @@ def _model_flame_components(
     # Calculate flame depth
     print('\tCalculating flame depth...')
     df = _calc_flame_depth(df)
+    fofem_units.add_burnup_ignition_intensity(df)
 
     if original_fire is not None:
         df[original_fire.columns] = original_fire
@@ -856,12 +860,15 @@ def _model_fofem_emissions(
     # with a burning scenario. They must never inherit that scenario's fire effects.
     nonburning = df.get('fire_type', pd.Series(index=df.index, dtype=float)).eq(0)
     nonburning_df = df.loc[nonburning]
+    scenario_columns = ['wx_date']
+    if 'time' in df.columns and 'time' in emiss_df.columns:
+        scenario_columns.append('time')
     # Merge emissions results back to original plot_fire_df to preserve all columns
     df = pd.merge(
         df.loc[~nonburning],
         emiss_df,
-        left_on=[conpyro_params['plot_id_col_name'], 'wx_date'],
-        right_on=['#PlotId', 'wx_date'],
+        left_on=[conpyro_params['plot_id_col_name'], *scenario_columns],
+        right_on=['#PlotId', *scenario_columns],
         how='left',
         suffixes=('', '_fofem_emissions'),
     )
@@ -1067,6 +1074,8 @@ def run_conpyro(
             df = pd.read_csv(in_conpyro_csv_path, low_memory=False)
             fire_csv_path = in_conpyro_csv_path
             df = fofem_moisture.derive_grass_duff_moisture(df)
+            if {'hfi', 'flame_depth_m'}.issubset(df.columns):
+                fofem_units.add_burnup_ignition_intensity(df)
         else:
             raise FileNotFoundError(f'ConPyro results CSV not found at {in_conpyro_csv_path}.'
                                     f'Please run ConPyro model first or provide existing results CSV.')

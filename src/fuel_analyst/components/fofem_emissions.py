@@ -83,7 +83,7 @@ def _get_merged_consumption_df(
 
     required_fire_cols = [
         plot_id_col_name, 'wx_date', 'hfi',
-        'flame_res_time_sec', 'instand_ws_mps',
+        'flame_depth_m', 'flame_res_time_sec', 'instand_ws_mps',
         'temp', 'mc_sa', 'mc_dmc', 'dc', 'cfb'
     ]
     missing_cols = helper.get_missing_df_columns(plot_fire_df, required_fire_cols)
@@ -256,6 +256,16 @@ def process_emissions(
     )
 
     merged_df = _calc_fuel_moisture_content(merged_df)
+    fofem_units.add_burnup_ignition_intensity(merged_df)
+    ignition_column = fofem_units.BURNUP_IGNITION_INTENSITY_COLUMN
+    valid_ignition = merged_df[ignition_column].notna()
+    for plot_id in merged_df.loc[~valid_ignition, plot_id_col_name].drop_duplicates():
+        logger.warning(
+            'FOFEM emissions scenarios skipped: Burnup requires finite non-negative hfi and '
+            'finite positive flame depth (flame_depth_m).',
+            extra={'unique_id': plot_id, 'issue_code': 'fofem_burnup_ignition_invalid'},
+        )
+    merged_df = merged_df.loc[valid_ignition].copy()
     if merged_df.empty:
         helper.export_csv(merged_df, os.path.join(out_dir, 'fofem_emissions_results.csv'))
         return merged_df if return_df else None
@@ -311,7 +321,7 @@ def process_emissions(
         dw6_9r=_to_float_arr(model_df, 'wfl6_9R'),
         dw9_20r=_to_float_arr(model_df, 'wfl9_20R'),
         dw20r=_to_float_arr(model_df, 'wfl20plusR'),
-        hfi=_to_float_arr(model_df, 'hfi'),
+        hfi=model_df[ignition_column].to_numpy(),
         flame_res_time=_to_float_arr(model_df, 'flame_res_time_sec'),
         fuel_bed_depth=_to_float_arr(model_df, 'fuel_bed_depth_m', default=0.3),
         ambient_temp=_to_float_arr(model_df, 'temp', default=27.0),

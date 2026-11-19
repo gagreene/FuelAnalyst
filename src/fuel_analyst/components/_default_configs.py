@@ -164,6 +164,7 @@ default_woody_debris_dict = {
         'size_classes': [0.5, 7, 30, float('inf')],  # Default size classes for transects (cm)
         'transect_lengths': [4, 10, 20, 30],  # Default transect lengths (m)
     },
+    'measure_vs_tally_qmd_comparison': True,  # Compare differences (QMD, biomass) between measured and tallied data
     'woody_debris_classes': {
         'canadian': {
             'process_classes': True,  # Process Canadian woody debris classes (options: True, False)
@@ -204,7 +205,6 @@ default_woody_debris_dict = {
             ],
         },
     },
-    'measure_vs_tally_qmd_comparison': True,  # Compare differences (QMD, biomass) between measured and tallied data
 }
 
 default_conpyro_dict = {
@@ -481,7 +481,8 @@ default_fire_modelling_dict = {
             ],
             # Leave flame_comp_out_list fixed for the time being - do not let user adjust
             'flame_comp_out_list': [
-                'instand_ws', 'flame_length_m', 'flame_tilt', 'flame_height', 'flame_res_time', 'flame_depth'
+                'instand_ws', 'flame_length_m', 'flame_tilt', 'flame_height', 'flame_res_time', 'flame_depth',
+                'burnup_ign_intensity_kWpm2',
             ],
         },
     },
