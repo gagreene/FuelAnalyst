@@ -429,7 +429,7 @@ def _get_merged_consumption_df(
             f'Missing required column(s) in weather and fire behavior CSV: {missing_cols}'
         )
 
-    optional_cols = [column for column in ('surface_fuel_type', 'stand_type', 'dmc') if column in plot_fire_df]
+    optional_cols = [column for column in ('time', 'surface_fuel_type', 'stand_type', 'dmc') if column in plot_fire_df]
     plot_fire_df = plot_fire_df[required_cols + optional_cols]
 
     merged_df = pd.merge(

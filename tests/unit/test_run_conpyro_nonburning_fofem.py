@@ -16,27 +16,44 @@ def test_emissions_merge_keeps_same_date_scenarios_distinct(run_conpyro_module, 
     pd.DataFrame({
         'unique_id': ['plot', 'plot'], 'wx_date': [20240609, 20240609], 'time': [1100, 1200],
         'fire_type': [1, 1], 'hfi': [30.0, 30.0], 'flame_depth_m': [0.0, 0.5],
+        'flame_res_time_sec': 60.0, 'instand_ws_mps': 2.0, 'temp': 20.0,
+        'mc_sa': 10.0, 'mc_dmc': 20.0, 'dc': 100.0, 'cfb': 0.1,
     }).to_csv(source, index=False)
+    consumption = tmp_path / module.fofem_units.consume_filename('SI')
+    pd.DataFrame([{
+        **dict.fromkeys(module.fofem_units.FOFEM_LOAD_COLUMNS, 0.1),
+        '#PlotId': 'plot', 'DuffDepth': 3.0, 'fuel_bed_depth_m': 0.25,
+        'Region': 'InteriorWest', 'CoverGroup': 'GrassGroup', 'FuelCategory': 'Natural',
+        'Season': 'Summer', 'remove_hereafter': None,
+    }]).to_csv(consumption, index=False)
 
-    def fake_emissions(**kwargs):
-        fire = pd.read_csv(kwargs['plot_wx_fire_csv_path'])
-        valid = fire['flame_depth_m'].gt(0)
-        result = fire[['unique_id', 'wx_date', 'time']].rename(columns={'unique_id': '#PlotId'})
-        result['test_emissions'] = valid.map({True: 3.0, False: float('nan')})
-        return result.loc[valid] if backend == 'pyfofem' else result
+    if backend == 'pyfofem':
+        if 'pyfofem' not in sys.modules:
+            stub = types.ModuleType('pyfofem')
+            stub.pyfofem = types.SimpleNamespace()
+            monkeypatch.setitem(sys.modules, 'pyfofem', stub)
+        emissions = importlib.import_module('fuel_analyst.components.fofem_emissions')
+        monkeypatch.setattr(
+            emissions.fofem, 'run_fofem_emissions', lambda **kwargs: {'test_emissions': kwargs['hfi'] / 20},
+            raising=False,
+        )
+    else:
+        emissions = importlib.import_module('fuel_analyst.components.fofem_gui_emissions')
 
-    components = importlib.import_module('fuel_analyst.components')
-    emissions_module = 'fofem_emissions' if backend == 'pyfofem' else 'fofem_gui_emissions'
-    stub = types.ModuleType(f'fuel_analyst.components.{emissions_module}')
-    stub.process_emissions = fake_emissions
-    monkeypatch.setitem(sys.modules, stub.__name__, stub)
-    monkeypatch.setattr(components, emissions_module, stub, raising=False)
+        def run_worker(row, out_dir, consume_model, emissions_units, fofem_dir):
+            intensity = row['burnup_ign_intensity_kWpm2']
+            if pd.isna(intensity):
+                return {'fofem_gui_error': 'Invalid flame depth'}
+            return {'test_emissions': intensity / 20}
+
+        monkeypatch.setattr(emissions, '_get_fofem_dir', lambda: str(tmp_path))
+        monkeypatch.setattr(emissions, '_model_emissions', run_worker)
 
     settings = make_params(module)
     settings['conpyro']['run_model'] = False
     settings['fofem_emissions'].update(run_model=True, model_select=backend, emissions_units='SI')
     module.run_conpyro(
-        str(tmp_path / 'out'), str(source), in_fofem_consume_csv_path=str(tmp_path / 'fofem_consume_si_df.csv'),
+        str(tmp_path / 'out'), str(source), in_fofem_consume_csv_path=str(consumption),
         fire_modelling_params=settings,
     )
 
@@ -44,6 +61,9 @@ def test_emissions_merge_keeps_same_date_scenarios_distinct(run_conpyro_module, 
     assert len(result) == 2
     assert pd.isna(result.loc[1100, 'test_emissions'])
     assert result.loc[1200, 'test_emissions'] == 3.0
+    if backend == 'fof_gui':
+        assert result.loc[1100, 'fofem_gui_error'] == 'Invalid flame depth'
+        assert pd.isna(result.loc[1200, 'fofem_gui_error'])
 
 
 def test_empty_fire_results_include_ignition_intensity_with_legacy_settings(run_conpyro_module):
