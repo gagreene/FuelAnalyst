@@ -108,8 +108,9 @@ def test_grass_emissions_uses_weather_moisture_and_reports_missing_dmc(tmp_path,
 def test_process_emissions_passes_areal_intensity_and_skips_invalid_depth(tmp_path, monkeypatch, caplog):
     consume_csv, fire_csv, out_dir, recorded = _write_inputs(tmp_path, 'SI', monkeypatch)
     pd.DataFrame([
-        dict(_FIRE_ROW, hfi=30.0, flame_depth_m=0.5),
-        dict(_FIRE_ROW, wx_date=20250616, flame_depth_m=0.0),
+        dict(_FIRE_ROW, hfi=30.0, flame_depth_m=0.5, _fofem_scenario_id=9),
+        dict(_FIRE_ROW, wx_date=20250616, flame_depth_m=0.0, _fofem_scenario_id=10),
+        dict(_FIRE_ROW, wx_date=20250617, hfi=-30.0, _fofem_scenario_id=11),
     ]).to_csv(fire_csv, index=False)
 
     result = fofem_emissions.process_emissions(fire_csv, 'unique_id', consume_csv, out_dir, return_df=True)
@@ -117,8 +118,12 @@ def test_process_emissions_passes_areal_intensity_and_skips_invalid_depth(tmp_pa
     assert recorded['hfi'].tolist() == [60.0]
     assert result['hfi'].tolist() == [30.0]
     assert result['burnup_ign_intensity_kWpm2'].tolist() == [60.0]
+    assert result['_fofem_scenario_id'].tolist() == [9]
+    assert '_fofem_scenario_id' not in pd.read_csv(f'{out_dir}/fofem_emissions_results.csv')
     [warning] = [record for record in caplog.records if 'flame depth' in record.message]
     assert warning.unique_id == 'p1'
+    assert warning.levelname == 'WARNING'
+    assert warning.issue_code == 'fofem_burnup_ignition_invalid'
 
 
 def test_process_emissions_si_writes_suffixed_columns_and_passes_si_units(tmp_path, monkeypatch):

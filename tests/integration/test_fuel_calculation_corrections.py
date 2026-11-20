@@ -136,8 +136,10 @@ def test_plant_depth_consumption_csv_reaches_both_emissions_routes(
         return writer(**kwargs)
 
     monkeypatch.setattr(fofem_gui_emissions, '_write_burnup_params_694', write_burnup)
-    merged_row = reloaded.iloc[0].to_dict() | fire
-    fofem_gui_emissions._model_emissions(merged_row, str(tmp_path / 'legacy'), 'S', 'SI', str(runtime))
+    merged = pd.DataFrame([reloaded.iloc[0].to_dict() | fire])
+    fofem_units.add_burnup_ignition_intensity(merged)
+    prepared_row = merged.iloc[0].to_dict()
+    fofem_gui_emissions._model_emissions(prepared_row, str(tmp_path / 'legacy'), 'S', 'SI', str(runtime))
     assert written_depths == [expected]
     assert written_intensities == [600.0]
 

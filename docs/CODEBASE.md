@@ -77,7 +77,7 @@ vendored: generated copies of their upstream repositories, refreshed with `scrip
 (it shallow-clones each upstream default branch; `CONPYRO_SRC`/`BC_SRC` select a local clone instead), and the bounded
 `flame-components>=0.1.1,<0.2` distribution from PyPI is a core dependency, as are `openpyxl` and `pyogrio`, which read Survey123
 Excel, GeoPackage, and file geodatabase tables (`pyogrio` is called directly because geopandas before 1.0 defaults to fiona). The
-`parquet` extra (`pyarrow>=14.0`) reads Parquet and Feather tables and is part of `all` and `test`. The `fofem` extra installs the bounded `pyfofem-fire-effects>=0.1.2,<0.2`
+`parquet` extra (`pyarrow>=14.0`) reads Parquet and Feather tables and is part of `all` and `test`. The `fofem` extra installs the pinned `pyfofem-fire-effects==0.1.2`
 distribution from PyPI (imports as `pyfofem`, matching the prior GitHub checkout's
 import name) and needs no Git checkout for the Python-backed `model_select='pyfofem'`
 emissions path (mortality automation is pyfofem-only; the official FOFEM app is never

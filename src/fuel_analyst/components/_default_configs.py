@@ -443,6 +443,17 @@ default_tree_sampling_dict = {
     'protocol_overrides': {},
 }
 
+FLAME_COMPONENT_COLUMNS = (
+    'instand_ws_model', 'instand_ws_mps',
+    'flame_length_model', 'flame_length_m',
+    'flame_ht_model', 'flame_ht_m',
+    'flame_tilt_model', 'flame_tilt_deg',
+    'flame_res_time_model', 'flame_res_time_min', 'flame_res_time_sec',
+    'flame_res_time_sec_orig', 'flame_res_time_comment',
+    'flame_depth_model', 'flame_depth_m', 'burnup_ign_intensity_kWpm2',
+)
+
+
 default_fire_modelling_dict = {
     'num_workers': max(1, (os.cpu_count() or 2) - 1),
     'conpyro': {
@@ -479,11 +490,7 @@ default_fire_modelling_dict = {
                 'sfi', 'cfi', 'hfi',
                 'cfb', 'fire_type'
             ],
-            # Leave flame_comp_out_list fixed for the time being - do not let user adjust
-            'flame_comp_out_list': [
-                'instand_ws', 'flame_length_m', 'flame_tilt', 'flame_height', 'flame_res_time', 'flame_depth',
-                'burnup_ign_intensity_kWpm2',
-            ],
+            'flame_comp_out_list': list(FLAME_COMPONENT_COLUMNS),
         },
     },
     'fofem_mortality': {

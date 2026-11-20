@@ -72,7 +72,7 @@ with it active. Then install FuelAnalyst and the packages the tutorial uses:
 ```
 python -m pip install --upgrade pip
 python -m pip install -e .
-python -m pip install "pyfofem-fire-effects>=0.1.2,<0.2" matplotlib ipykernel ipywidgets
+python -m pip install "pyfofem-fire-effects==0.1.2" matplotlib ipykernel ipywidgets
 ```
 
 What each line does:
@@ -81,7 +81,7 @@ What each line does:
 |---|---|
 | `pip install --upgrade pip` | Updates the package installer itself |
 | `pip install -e .` | Installs FuelAnalyst, its bundled ConPyro crown fire model, and its scientific Python dependencies, including the flame geometry package and the readers for Excel, GeoPackage, and file geodatabase tables (this takes a few minutes) |
-| `pip install pyfofem-fire-effects matplotlib ipykernel ipywidgets` | Installs the FOFEM fire effects package, the plotting library the tutorial's figures use, the component that lets editors run notebooks, and the one that draws notebook progress bars (without it, a harmless `TqdmWarning: IProgress not found` appears) |
+| `pip install pyfofem-fire-effects==0.1.2 matplotlib ipykernel ipywidgets` | Installs the FOFEM fire effects package, the plotting library the tutorial's figures use, the component that lets editors run notebooks, and the one that draws notebook progress bars (without it, a harmless `TqdmWarning: IProgress not found` appears) |
 
 Check that everything installed:
 

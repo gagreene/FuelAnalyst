@@ -50,9 +50,9 @@ _FIRE_ROW = {
 
 def _declared_pyfofem_specifier():
     """
-    Read the fofem extra's pyfofem-fire-effects version range straight from pyproject.toml,
+    Read the fofem extra's pyfofem-fire-effects version specifier from pyproject.toml,
     so this test always validates against the single declared source of truth (currently
-    >=0.1.2,<0.2) instead of a hardcoded string that could drift from it.
+    ==0.1.2) instead of a hardcoded string that could drift from it.
 
     :return: packaging.specifiers.SpecifierSet for the declared pyfofem-fire-effects requirement.
     """
@@ -192,3 +192,23 @@ def test_process_mortality_real_pyfofem_wheel_produces_expected_schema(tmp_path)
     assert np.all((probs >= 0.0) & (probs <= 1.0))
     assert 'tree_dead_ba_crnsch_m2pha' in plot_fire_df.columns
     assert (tmp_path / 'out' / 'fofem_tree_mortality_results.csv').is_file()
+
+
+@pytest.mark.skipif(not _PYFOFEM_INSTALLED, reason='pyfofem-fire-effects is not installed (optional fofem extra)')
+def test_pyfofem_burnup_threshold_uses_areal_intensity(tmp_path):
+    fofem_emissions, _ = _reload_real_pyfofem_bindings()
+    consume_csv = tmp_path / fofem_units.consume_filename('SI')
+    pd.DataFrame([_CONSUME_ROW]).to_csv(consume_csv, index=False)
+    fire_csv = tmp_path / 'fire.csv'
+    pd.DataFrame([
+        dict(_FIRE_ROW, hfi=99.75, flame_depth_m=2.5, wx_date=20250615),
+        dict(_FIRE_ROW, hfi=100.25, flame_depth_m=2.5, wx_date=20250616),
+    ]).to_csv(fire_csv, index=False)
+
+    result = fofem_emissions.process_emissions(
+        plot_wx_fire_csv_path=str(fire_csv), plot_id_col_name='unique_id',
+        fofem_consume_csv_path=str(consume_csv), out_dir=str(tmp_path / 'out'), return_df=True,
+    )
+
+    assert result['burnup_ign_intensity_kWpm2'].tolist() == pytest.approx([39.9, 40.1])
+    assert result['BurnupError'].tolist() == [10, 0]

@@ -221,14 +221,17 @@ def test_write_burnup_params_694_matches_verified_fixture_byte_for_byte(tmp_path
     assert actual == expected
 
 
-@pytest.mark.parametrize('intensity', [1234.5, 39.999])
-def test_write_burnup_params_694_substitutes_dynamic_values(tmp_path, intensity):
+@pytest.mark.parametrize(
+    ('intensity', 'intensity_text'),
+    [(1234.5, '1234.5'), (39.999, '39.999'), (1e-7, '0.0000001'), (1e20, '100000000000000000000')],
+)
+def test_write_burnup_params_694_substitutes_dynamic_values(tmp_path, intensity, intensity_text):
     out_path = tmp_path / 'burnup.brn'
     fofem_gui_emissions._write_burnup_params_694(
         str(out_path), intensity=intensity, ig_time=61.25, windspeed=3.14, depth=0.42, ambient_temp=25.5,
     )
     content = out_path.read_text()
-    assert f'#INTENSITY {intensity}' in content
+    assert f'#INTENSITY {intensity_text}\n' in content
     assert '#IG_TIME 61.25' in content
     assert '#WINDSPEED 3.14' in content
     assert '#DEPTH 0.42' in content
@@ -480,6 +483,56 @@ def _write_process_emissions_inputs(tmp_path, units):
     return str(consume_csv_path), str(fire_csv_path), str(tmp_path / 'out')
 
 
+@pytest.mark.parametrize('num_workers', [1, 4])
+def test_process_emissions_passes_areal_intensity_and_skips_invalid_depth(tmp_path, monkeypatch, caplog, num_workers):
+    consume_csv, fire_csv, out_dir = _write_process_emissions_inputs(tmp_path, 'SI')
+    pd.DataFrame([
+        dict(_FIRE_ROW, hfi=30.0, flame_depth_m=0.5, _fofem_scenario_id=9),
+        dict(_FIRE_ROW, wx_date=20250616, flame_depth_m=0.0, _fofem_scenario_id=10),
+        dict(_FIRE_ROW, wx_date=20250617, hfi=-30.0, _fofem_scenario_id=11),
+    ]).to_csv(fire_csv, index=False)
+    dispatched_intensities = []
+
+    def model(row, out_dir, consume_model, emissions_units, fofem_dir):
+        dispatched_intensities.append(row['burnup_ign_intensity_kWpm2'])
+        return {'LitPre': 1.0}
+
+    monkeypatch.setattr(fofem_gui_emissions, '_get_fofem_dir', lambda: str(tmp_path))
+    monkeypatch.setattr(fofem_gui_emissions, '_model_emissions', model)
+    monkeypatch.setattr(fofem_gui_emissions, '_TQDM_PROCESS_MAP_AVAILABLE', True)
+    monkeypatch.setattr(
+        fofem_gui_emissions, 'process_map', lambda fn, *args, **kwargs: [fn(*a) for a in zip(*args)], raising=False,
+    )
+
+    result = fofem_gui_emissions.process_emissions(
+        fire_csv, 'unique_id', consume_csv, out_dir, num_workers=num_workers, return_df=True,
+    )
+
+    assert dispatched_intensities == [60.0]
+    assert result['hfi'].tolist() == [30.0]
+    assert result['burnup_ign_intensity_kWpm2'].tolist() == [60.0]
+    assert result['_fofem_scenario_id'].tolist() == [9]
+    assert '_fofem_scenario_id' not in pd.read_csv(f'{out_dir}/fofem_emissions_results.csv')
+    [warning] = [record for record in caplog.records if 'flame depth' in record.message]
+    assert warning.unique_id == 'p1'
+    assert warning.levelname == 'WARNING'
+    assert warning.issue_code == 'fofem_burnup_ignition_invalid'
+    assert 'fofem_gui_error' not in result
+
+
+def test_process_emissions_skips_runtime_when_all_ignition_inputs_are_invalid(tmp_path, monkeypatch, caplog):
+    consume_csv, fire_csv, out_dir = _write_process_emissions_inputs(tmp_path, 'SI')
+    pd.DataFrame([dict(_FIRE_ROW, flame_depth_m=0.0)]).to_csv(fire_csv, index=False)
+    monkeypatch.setenv('FUEL_ANALYST_FOFEM_DIR', str(tmp_path / 'nonexistent_runtime'))
+
+    result = fofem_gui_emissions.process_emissions(fire_csv, 'unique_id', consume_csv, out_dir, return_df=True)
+
+    assert result.empty
+    [warning] = caplog.records
+    assert warning.issue_code == 'fofem_burnup_ignition_invalid'
+    assert not any(path.is_dir() for path in (tmp_path / 'out').iterdir())
+
+
 def test_process_emissions_rejects_invalid_units(tmp_path):
     consume_csv, fire_csv, out_dir = _write_process_emissions_inputs(tmp_path, 'SI')
     with pytest.raises(ValueError, match='Invalid FOFEM processing units'):
@@ -661,7 +714,7 @@ def test_no_runfofem_failure_logs_nothing(caplog):
 
 
 def test_the_worker_returns_the_failure_without_logging_it(tmp_path, caplog):
-    row = {'#PlotId': 'p1', 'wx_date': 20250615}
+    row = {'#PlotId': 'p1', 'wx_date': 20250615, fofem_units.BURNUP_IGNITION_INTENSITY_COLUMN: 600.0}
     with caplog.at_level(logging.ERROR, logger='fuel_analyst.components.fofem_gui_emissions'):
         result = fofem_gui_emissions._model_emissions(row, str(tmp_path), 'C', 'SI', str(tmp_path / 'missing_runtime'))
     assert 'runfofem.exe failed for plot "p1", wx_date 20250615' in result['fofem_gui_error']
