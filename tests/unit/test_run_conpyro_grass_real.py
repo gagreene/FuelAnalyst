@@ -124,6 +124,7 @@ def test_reloaded_grass_results_export_weather_derived_mc_dmc(run_conpyro_module
     source = tmp_path / 'previous_results.csv'
     pd.DataFrame({'unique_id': ['grass', 'shrub'], 'wx_date': [20240601, 20240602],
                   'stand_type': [10, 10], 'surface_fuel_type': ['grass_herbs', 'shrubs'],
+                  'hfi': 120.0, 'flame_depth_m': 0.5,
                   'dmc': [40., 70.], 'mc_dmc': [np.nan, np.nan]}).to_csv(source, index=False)
     original = source.read_bytes()
     settings = make_params(run_conpyro_module)

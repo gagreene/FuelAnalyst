@@ -9,6 +9,7 @@ this file's fixtures/expectations were cross-verified against.
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -41,6 +42,7 @@ _CONSUME_ROW = {
 }
 _FIRE_ROW = {
     'unique_id': 'p1', 'wx_date': 20250615, 'hfi': 1500.0, 'flame_res_time_sec': 60.0,
+    'flame_depth_m': 2.5,
     'instand_ws_mps': 2.0, 'temp': 20.0, 'mc_sa': 10.0, 'mc_dmc': 20.0, 'dc': 100.0, 'cfb': 0.1,
 }
 
@@ -82,7 +84,7 @@ def test_process_emissions_consumption_mode_matches_direct_runfofem_output(tmp_p
     manual_dir.mkdir()
     burnup_path = manual_dir / 'Burnup-In.brn'
     fofem_gui_emissions._write_burnup_params_694(
-        str(burnup_path), intensity=1500.0, ig_time=60.0, windspeed=2.0, depth=0.25, ambient_temp=20.0,
+        str(burnup_path), intensity=600.0, ig_time=60.0, windspeed=2.0, depth=0.25, ambient_temp=20.0,
     )
     input_path = manual_dir / 'input.txt'
     with open(input_path, 'w', newline='\r\n') as f:
@@ -108,6 +110,47 @@ def test_process_emissions_consumption_mode_matches_direct_runfofem_output(tmp_p
     assert result.loc[0, 'LitPre_kgpm2'] * fofem_units.LOAD_CONV_FACTOR == pytest.approx(
         manual_df.loc[0, 'LitPre'], abs=0.05
     )
+
+
+@pytest.mark.parametrize(
+    ('intensity', 'expected_error'),
+    [
+        (601.25, None),
+        (39.999, 'igniting fire intensity out of range'),
+        (1e-7, 'igniting fire intensity out of range'),
+        (1e-300, 'igniting fire intensity out of range'),
+        (1e308, 'igniting fire intensity out of range'),
+    ],
+)
+def test_process_emissions_preserves_decimal_intensity(tmp_path, intensity, expected_error):
+    consume_csv, fire_csv, out_dir = _write_inputs(tmp_path)
+    pd.DataFrame([dict(_FIRE_ROW, hfi=intensity, flame_depth_m=1.0)]).to_csv(fire_csv, index=False)
+    result = fofem_gui_emissions.process_emissions(fire_csv, 'unique_id', consume_csv, out_dir, return_df=True)
+
+    assert result.loc[0, 'burnup_ign_intensity_kWpm2'] == intensity
+    if expected_error:
+        assert expected_error in result.loc[0, 'fofem_gui_error']
+    else:
+        assert 'fofem_gui_error' not in result, result.get('fofem_gui_error')
+        assert result.loc[0, 'LitPre_kgpm2'] > 0
+
+
+def test_process_emissions_real_executable_rejects_exponent_notation(tmp_path, monkeypatch):
+    consume_csv, fire_csv, out_dir = _write_inputs(tmp_path)
+    write_burnup = fofem_gui_emissions._write_burnup_params_694
+
+    def write_exponent(**kwargs):
+        write_burnup(**kwargs)
+        path = Path(kwargs['out_path'])
+        contents = path.read_bytes()
+        # The numeric value is within Burnup's bounds. Change only the spelling.
+        path.write_bytes(contents.replace(b'#INTENSITY 600\r\n', b'#INTENSITY 6e+02\r\n', 1))
+
+    monkeypatch.setattr(fofem_gui_emissions, '_write_burnup_params_694', write_exponent)
+
+    result = fofem_gui_emissions.process_emissions(fire_csv, 'unique_id', consume_csv, out_dir, return_df=True)
+
+    assert 'bad switch argument: #INTENSITY 6e+02' in result.loc[0, 'fofem_gui_error']
 
 
 def test_process_emissions_soil_mode(tmp_path):
@@ -221,6 +264,24 @@ def test_process_emissions_missing_fofem_data_fails_before_rows(tmp_path, monkey
             emissions_units='SI',
             return_df=True,
         )
+
+
+@pytest.mark.parametrize('intensity, accepted', [(39.999999, False), (40.0, True), (100000.001, False)])
+def test_process_emissions_checks_burnup_cutoffs_before_native_rounding(tmp_path, intensity, accepted):
+    consume_csv, fire_csv, out_dir = _write_inputs(tmp_path)
+    pd.DataFrame([dict(_FIRE_ROW, hfi=intensity, flame_depth_m=1.0)]).to_csv(fire_csv, index=False)
+    result = fofem_gui_emissions.process_emissions(
+        plot_wx_fire_csv_path=fire_csv, plot_id_col_name='unique_id',
+        fofem_consume_csv_path=consume_csv, out_dir=out_dir, return_df=True,
+    )
+
+    assert result.loc[0, 'burnup_ign_intensity_kWpm2'] == pytest.approx(intensity)
+    if accepted:
+        assert result.loc[0, 'LitPre_kgpm2'] > 0
+        assert 'fofem_gui_error' not in result
+    else:
+        assert 'LitPre_kgpm2' not in result
+        assert 'igniting fire intensity out of range' in result.loc[0, 'fofem_gui_error']
 
 
 def test_run_runfofem_invalid_input_raises_with_batch_error_message(tmp_path):

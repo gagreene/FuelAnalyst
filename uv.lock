@@ -822,7 +822,7 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'photoload'", specifier = ">=9.2" },
     { name = "pyarrow", marker = "extra == 'parquet'", specifier = ">=16.0" },
     { name = "pyarrow", marker = "extra == 'test'", specifier = ">=16.0" },
-    { name = "pyfofem-fire-effects", marker = "extra == 'fofem'", specifier = ">=0.1.2,<0.2" },
+    { name = "pyfofem-fire-effects", marker = "extra == 'fofem'", specifier = "==0.1.2" },
     { name = "pymupdf", marker = "extra == 'photoload'", specifier = ">=1.24.3" },
     { name = "pyogrio", specifier = ">=0.8" },
     { name = "pyproj", specifier = ">=3.4" },
