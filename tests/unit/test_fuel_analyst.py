@@ -49,7 +49,7 @@ def test_fuel_analyst_requires_all_forms_for_conpyro(tmp_path):
     original_handlers = list(root_logger.handlers)
     original_level = root_logger.level
     (tmp_path / 'input').mkdir()
-    with pytest.raises(FileNotFoundError, match='All Survey123 forms'):
+    with pytest.raises(FileNotFoundError, match='Plants and Regeneration, Canopy Cover'):
         fuel_analyst(
             str(tmp_path / 'input'), str(tmp_path / 'output'), 'Byram', gen_conpyro_df=True
         )
@@ -57,18 +57,13 @@ def test_fuel_analyst_requires_all_forms_for_conpyro(tmp_path):
     assert root_logger.level == original_level
 
 
-def test_fuel_analyst_requires_trees_for_fofem_gui_app_tree_df(tmp_path):
-    root_logger = logging.getLogger('fuel_analyst')
-    original_handlers = list(root_logger.handlers)
-    original_level = root_logger.level
-    (tmp_path / 'input').mkdir()
-    with pytest.raises(FileNotFoundError, match='Trees form is required'):
-        fuel_analyst(
-            str(tmp_path / 'input'), str(tmp_path / 'output'), 'Byram',
-            gen_fofem_gui_app_tree_df=True,
-        )
-    assert root_logger.handlers == original_handlers
-    assert root_logger.level == original_level
+def test_gui_export_does_not_require_unselected_trees(tmp_path):
+    source = tmp_path / 'input'
+    _write_minimal_plot_attributes(source)
+    (source / '3_Trees').rmdir()  # Empty synthetic directory; Trees was not selected.
+    out = tmp_path / 'out'
+    fuel_analyst(str(source), str(out), 'Byram', gen_fofem_gui_app_tree_df=True)
+    assert pd.read_csv(out / 'fuelanalyst_errors.csv').empty
 
 
 def test_fuel_analyst_requires_trees_plants_and_woody_for_fofem_consume_df(tmp_path):
@@ -77,7 +72,7 @@ def test_fuel_analyst_requires_trees_plants_and_woody_for_fofem_consume_df(tmp_p
     original_level = root_logger.level
     (tmp_path / 'input').mkdir()
     with pytest.raises(
-        FileNotFoundError, match='Trees, Plants and Regeneration, and Woody Debris'
+        FileNotFoundError, match='Plants and Regeneration and Woody Debris'
     ):
         fuel_analyst(
             str(tmp_path / 'input'), str(tmp_path / 'output'), 'Byram',

@@ -6,8 +6,14 @@ Created on Tue Sep 08, 17:00:00 2026
 """
 __author__ = ['Gregory A. Greene']
 
+import logging
 import os
 
+import numpy as np
+import pandas as pd
+
+BURNUP_IGNITION_INTENSITY_COLUMN = 'burnup_ign_intensity_kWpm2'
+FOFEM_SCENARIO_ID = '_fofem_scenario_id'
 VALID_FOFEM_UNITS = ('SI', 'Imperial')
 
 LOAD_CONV_FACTOR = 4.46089561  # kg/m2 -> US short tons/acre
@@ -82,6 +88,43 @@ EMISSIONS_GAS_RESULT_FIELDS = [
 # codes 'BurnupLimitAdj', 'BurnupError'.
 
 
+def add_burnup_ignition_intensity(df: pd.DataFrame) -> None:
+    """
+    Calculate Burnup ignition intensity and put it after the flame columns.
+
+    :param df: Fire results with head fireline intensity and horizontal flame depth.
+    :raises ValueError: If either required fire input column is missing.
+    :return: None. Inserts or replaces the Burnup ignition intensity column in df.
+    """
+    missing = [column for column in ('hfi', 'flame_depth_m') if column not in df]
+    if missing:
+        raise ValueError(f'Missing required column(s) for Burnup ignition intensity: {missing}')
+
+    hfi = pd.to_numeric(df['hfi'], errors='coerce').to_numpy(dtype=float, na_value=np.nan)
+    depth = pd.to_numeric(df['flame_depth_m'], errors='coerce').to_numpy(dtype=float, na_value=np.nan)
+    if BURNUP_IGNITION_INTENSITY_COLUMN in df:
+        del df[BURNUP_IGNITION_INTENSITY_COLUMN]
+    last_flame_column = max(index for index, name in enumerate(df.columns) if name.startswith('flame_'))
+    df.insert(last_flame_column + 1, BURNUP_IGNITION_INTENSITY_COLUMN, calc_burnup_ignition_intensity(hfi, depth))
+
+
+def calc_burnup_ignition_intensity(hfi: float | np.ndarray, flame_depth_m: float | np.ndarray) -> np.ndarray:
+    """
+    Convert head fireline intensity to Burnup ignition intensity.
+
+    :param hfi: Head fireline intensity (kW/m), as a scalar or array.
+    :param flame_depth_m: Horizontal flame depth (m), with the same shape as hfi.
+    :return: Ignition intensity (kW/m²), with NaN for invalid inputs or a nonfinite result.
+    """
+    fireline_intensity = np.asarray(hfi, dtype=float)
+    flame_depth = np.asarray(flame_depth_m, dtype=float)
+    valid = np.isfinite(fireline_intensity) & (fireline_intensity >= 0) & np.isfinite(flame_depth) & (flame_depth > 0)
+    intensity = np.full(fireline_intensity.shape, np.nan)
+    with np.errstate(over='ignore'):
+        np.divide(fireline_intensity, flame_depth, out=intensity, where=valid)
+    return np.where(np.isfinite(intensity), intensity, np.nan)
+
+
 def consume_filename(units: str) -> str:
     """
     Get the canonical, unit-bearing FOFEM consumption CSV filename for a unit system.
@@ -149,6 +192,40 @@ def infer_consume_units(path: str) -> str:
     return _CONSUME_FILENAME_UNITS[basename]
 
 
+def prepare_burnup_ignition_inputs(df: pd.DataFrame, plot_id_col_name: str, logger: logging.Logger) -> pd.DataFrame:
+    """
+    Calculate ignition intensity and skip invalid scenarios before emissions dispatch.
+
+    :param df: Merged consumption and fire rows. The ignition intensity column is added in place.
+    :param plot_id_col_name: Column identifying the plot for each scenario.
+    :param logger: Adapter logger used to report one warning per affected plot.
+    :return: Copy of the rows with finite ignition intensity.
+    """
+    add_burnup_ignition_intensity(df)
+    valid_ignition = df[BURNUP_IGNITION_INTENSITY_COLUMN].notna()
+    for plot_id in df.loc[~valid_ignition, plot_id_col_name].drop_duplicates():
+        logger.warning(
+            'FOFEM emissions scenarios skipped: Burnup requires finite non-negative hfi and '
+            'finite positive flame depth (flame_depth_m).',
+            extra={'unique_id': plot_id, 'issue_code': 'fofem_burnup_ignition_invalid'},
+        )
+    return df.loc[valid_ignition].copy()
+
+
+def validate_consume_plot_ids(plot_ids: pd.Series, fire_plot_ids: pd.Series) -> None:
+    """
+    Check that every plot has a single set of FOFEM consumption inputs.
+
+    :param plot_ids: Consumption CSV plot IDs.
+    :param fire_plot_ids: Plot IDs present in the fire input.
+    :return: None. Raises ValueError if an input plot has repeated consumption rows.
+    """
+    matched = plot_ids.loc[plot_ids.isin(fire_plot_ids.dropna())]
+    duplicates = matched.loc[matched.duplicated()].unique().tolist()
+    if duplicates:
+        raise ValueError(f'FOFEM consumption CSV contains duplicate #PlotId values: {duplicates}.')
+
+
 def validate_consume_units(path: str, configured_units: str) -> None:
     """
     Validate that a FOFEM consumption CSV's filename matches the configured processing units.
@@ -170,6 +247,20 @@ def validate_consume_units(path: str, configured_units: str) -> None:
             f'file (see fofem_units.consume_filename()) or correct the configured '
             f'"fofem_processing_units"/"emissions_units" setting.'
         )
+
+
+def validate_fofem_scenario_ids(values: pd.Series) -> pd.Series:
+    """
+    Validate and normalize the private keys for FOFEM scenario joins.
+
+    :param values: Scenario IDs from a fire input or a backend result.
+    :return: Unique non-negative scenario IDs as signed 64-bit integers.
+    """
+    numeric = pd.to_numeric(values, errors='coerce')
+    invalid = numeric.isna() | numeric.lt(0) | numeric.ge(2 ** 63) | numeric.mod(1).ne(0)
+    if invalid.any() or not numeric.is_unique:
+        raise ValueError('FOFEM scenario identifiers must be unique non-negative integers.')
+    return numeric.astype('int64')
 
 
 def validate_fofem_units(units: str) -> str:

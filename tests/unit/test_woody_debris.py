@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from fuel_analyst.components import woody_debris
 from fuel_analyst.components.woody_debris import (
     _add_spp_comp_type,
     _assign_spp_comp_id_col,
@@ -263,6 +264,23 @@ def test_calc_tallied_woody_biomass_drops_stale_compare_columns_when_toggled_off
 
     assert not any(column.startswith('compare_') for column in result.columns)
     assert keep_columns == ['woody_kgpm2_test_1']
+
+
+def test_calc_tallied_woody_biomass_logs_regression_failure_with_plot_id(caplog, monkeypatch):
+    df, pieces, params = _sloped_tally_frames()
+    df['unique_id'] = 'plot-A'
+
+    def fail_fit(in_x, in_y):
+        raise ValueError('regression cannot be fitted')
+
+    monkeypatch.setattr(woody_debris, 'linregress', fail_fit)
+    with caplog.at_level(logging.WARNING, logger=woody_debris.__name__):
+        result, _ = _calc_tallied_woody_biomass(df, pieces, params)
+
+    assert result.loc[0, 'compare_woody_qmd_vanwagner_test_1'] == 0.68975
+    assert len(caplog.records) == 1
+    assert caplog.records[0].unique_id == 'plot-A'
+    assert caplog.records[0].issue_code == 'woody_qmd_regression_failed'
 
 
 def test_calc_tallied_woody_biomass_replaces_pre_existing_output_columns():

@@ -27,6 +27,31 @@ ROW = {
 WINDS = [0.0, 4.0, 8.0, 15.0, 30.0]
 
 
+def make_params(module, cfo_model=5, sros_model=13, terrain_wind=True, terrain_ffmc=None):
+    """Fire modelling settings with only ConPyro enabled, run serially with the given models."""
+    params = copy.deepcopy(module.default_fire_modelling_dict)
+    params['num_workers'] = 1
+    params['fofem_mortality']['run_model'] = False
+    params['fofem_emissions']['run_model'] = False
+    params['conpyro']['input_params']['cfo_model'] = cfo_model
+    params['conpyro']['input_params']['sros_model'] = sros_model
+    params['conpyro']['input_params']['model_terrain_effects_on_wind'] = terrain_wind
+    if terrain_ffmc is not None:
+        params['conpyro']['input_params']['model_terrain_effects_on_ffmc'] = terrain_ffmc
+    params['conpyro']['input_params']['time'] = 1200
+    return params
+
+
+def run(module, tmp_path, cfo_model=5, sros_model=13, terrain_wind=True, cfo_models=None, terrain_ffmc=None):
+    """Run run_conpyro() on the five scenarios and return the fire behaviour results."""
+    module.run_conpyro(
+        out_dir=str(tmp_path / 'out'),
+        in_conpyro_csv_path=write_input(tmp_path, cfo_models),
+        fire_modelling_params=make_params(module, cfo_model, sros_model, terrain_wind, terrain_ffmc),
+    )
+    return pd.read_csv(tmp_path / 'out' / 'fire_behavior' / 'conpyro_results.csv')
+
+
 @pytest.fixture
 def run_conpyro_module(monkeypatch):
     """fuel_analyst.run_conpyro, with the real flame_components even when another test file installed a fake."""
@@ -48,26 +73,3 @@ def write_input(tmp_path, cfo_models=None):
     path = tmp_path / 'conpyro_input.csv'
     df.to_csv(path, index=False)
     return str(path)
-
-
-def make_params(module, cfo_model=5, sros_model=13, terrain_wind=True):
-    """Fire modelling settings with only ConPyro enabled, run serially with the given models."""
-    params = copy.deepcopy(module.default_fire_modelling_dict)
-    params['num_workers'] = 1
-    params['fofem_mortality']['run_model'] = False
-    params['fofem_emissions']['run_model'] = False
-    params['conpyro']['input_params']['cfo_model'] = cfo_model
-    params['conpyro']['input_params']['sros_model'] = sros_model
-    params['conpyro']['input_params']['model_terrain_effects_on_wind'] = terrain_wind
-    params['conpyro']['input_params']['time'] = 1200
-    return params
-
-
-def run(module, tmp_path, cfo_model=5, sros_model=13, terrain_wind=True, cfo_models=None):
-    """Run run_conpyro() on the five scenarios and return the fire behaviour results."""
-    module.run_conpyro(
-        out_dir=str(tmp_path / 'out'),
-        in_conpyro_csv_path=write_input(tmp_path, cfo_models),
-        fire_modelling_params=make_params(module, cfo_model, sros_model, terrain_wind),
-    )
-    return pd.read_csv(tmp_path / 'out' / 'fire_behavior' / 'conpyro_results.csv')

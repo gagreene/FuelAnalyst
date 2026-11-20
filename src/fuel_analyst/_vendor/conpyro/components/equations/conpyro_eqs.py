@@ -11,6 +11,8 @@ __author__ = ["Gregory A. Greene"]
 import numpy as np
 from numpy import ma as mask
 
+from . import cheney_eqs, grass_eqs
+
 # ============================================================================
 # MODEL PARAMETER DICTIONARIES
 # ============================================================================
@@ -88,11 +90,12 @@ SROS_PARAMS_DICT = {
     18: (0.15, 0.07207, 2.28189, 2.69568, -0.76090),  # Paper/R 18c
     19: (0.11771, None, None, None, None),  # Stand-adjusted ISI
     21: (120, 0.02751, 1.7, None, None),  # Gray-stage MPB
+    30: (190, 0.0310, 1.4, None, None),  # FBP O1a, ST-X-3 Eq. 36 / Table 6
+    31: (250, 0.0350, 1.7, None, None),  # FBP O1b, ST-X-3 Eq. 36 / Table 6
 }
 
 # Crown Fire Rate of Spread parameters
 CROS_PARAMS_DICT = {1: (11.02, 0.9, 0.19, 0.17)}
-
 
 # ============================================================================
 # BASIC CALCULATIONS
@@ -119,7 +122,9 @@ def calc_fw(wsv: np.ndarray) -> np.ndarray:
     :return: Wind function value
     """
     return mask.where(
-        wsv > 40, 12 * (1 - np.exp(-0.0818 * (wsv - 28))), np.exp(0.05039 * wsv)
+        wsv > 40,
+        12 * (1 - np.exp(-0.0818 * (np.maximum(wsv, 40) - 28))),
+        np.exp(0.05039 * np.minimum(wsv, 40)),
     )
 
 
@@ -244,26 +249,40 @@ def calc_cfi(hros: np.ndarray, cfc: np.ndarray) -> np.ndarray:
     return 300 * hros * cfc
 
 
-def calc_sfi(hros: np.ndarray, sfc: np.ndarray) -> np.ndarray:
+def calc_sfi(hros: np.ndarray, sfc: np.ndarray, *, heat_yield=None) -> np.ndarray:
     """
     Calculate Surface Fire Intensity (kW/m).
 
     :param hros: Head Fire Rate of Spread (m/min)
     :param sfc: Surface Fuel Consumption (kg/m^2)
+    :param heat_yield: Optional kJ/kg; None preserves original arithmetic/dtype.
     :return: Surface Fire Intensity (kW/m)
     """
-    return 300 * hros * sfc
+    if heat_yield is None:
+        return 300 * hros * sfc
+    return (mask.asarray(heat_yield) / 60.) * hros * sfc
 
 
-def calc_hfi(hros: np.ndarray, tfc: np.ndarray) -> np.ndarray:
+def calc_hfi(hros: np.ndarray, tfc: np.ndarray, *, sfc=None, cfc=None, heat_yield=None) -> np.ndarray:
     """
     Calculate Head Fire Intensity (kW/m).
 
     :param hros: Head Fire Rate of Spread (m/min)
     :param tfc: Total Fuel Consumption (kg/m^2)
+    :param sfc: Surface consumption, required with a custom heat yield.
+    :param cfc: Crown consumption, required with a custom heat yield; never
+        recovered by subtracting surface consumption from the total.
+    :param heat_yield: Surface kJ/kg; crowns retain 18,000. None preserves the
+        original total-consumption expression, including its dtype.
+        Custom heat follows NumPy promotion: a float64 heat_yield array with
+        float32 inputs returns float64.
     :return: Head Fire Intensity (kW/m)
     """
-    return mask.where(hros >= 0, 300 * hros * tfc, np.nan)
+    if heat_yield is None:
+        return mask.where(hros >= 0, 300 * hros * tfc, np.nan)
+    if sfc is None or cfc is None:
+        raise ValueError('sfc and cfc are required to split surface/crown heat yield')
+    return mask.where(hros >= 0, hros * (mask.asarray(heat_yield) / 60. * sfc + 300 * cfc), np.nan)
 
 
 def calc_cac(cros_a: np.ndarray, r0: np.ndarray) -> np.ndarray:
@@ -364,8 +383,11 @@ def calc_wsv_raz(
 # SURFACE RATE OF SPREAD (SROS) CALCULATIONS
 # ============================================================================
 
-SROS_MODEL_IDS = frozenset((1, 2, 3, 4, 9, 11, 12, 13, 16, 17, 18, 19, 20, 21))
-SROS_ALIASES = {"9c": 9, "11c": 11, "18c": 18, "r20": 20}
+GRASS_SROS_IDS = (30, 31)
+CHENEY_SROS_IDS = cheney_eqs.CHENEY_SROS_IDS
+SROS_MODEL_IDS = frozenset((1, 2, 3, 4, 9, 11, 12, 13, 16, 17, 18, 19, 20, 21, 30, 31, 32, 33, 34))
+SROS_ALIASES = {"9c": 9, "11c": 11, "18c": 18, "r20": 20,
+                "cheney_natural": 32, "cheney_grazed": 33, "cheney_eaten_out": 34}
 
 
 def calc_sros(
@@ -382,23 +404,30 @@ def calc_sros(
     stand_type: np.ndarray | None = None,
     mc_sa: np.ndarray | None = None,
     mc_ffmc: np.ndarray | None = None,
+    gcf: np.ndarray | None = None,
+    temp: np.ndarray | None = None,
+    rh: np.ndarray | None = None,
+    cheney_mf_override: np.ndarray | None = None,
+    _cheney_mf: np.ndarray | None = None,
 ) -> np.ndarray:
     """Surface ROS in m/min; model 16 needs mc_ffmc, model 17 needs mc_sa.
 
     Wind is in km/h and moisture is percent. Omitted d/e use the model 18c
     registry offsets for compatibility with existing six-argument callers.
     Unused coefficient slots can be supplied as None or NaN.
-    The caller supplies standard ISI for 12/18c and stand-adjusted ISI for
+    The caller supplies standard ISI for 12/18c/30/31 and stand-adjusted ISI for
     9c/11c/13/19; this function does not infer the basis of the supplied index.
 
     :param isi: Dimensionless head-fire Initial Spread Index. Use standard ISI
-        for models 12/18c and stand-adjusted ISI for 9c/11c/13/19. Required as a
-        shape/mask input even for wind-based models that do not use its value.
+        for models 12/18c/30/31 and stand-adjusted ISI for 9c/11c/13/19. Required as a
+        shape/mask input even for legacy wind-based models that do not use its
+        value. Cheney 32–34 uses its shape only and ignores the unused ISI mask.
     :param sfc: Surface fuel consumption in kg/m². Used numerically by models
-        4 and 9c; also participates in output broadcasting and input masking.
+        4 and 9c; also participates in output broadcasting and input masking
+        except for O1 (30/31), which does not consume its value or mask.
     :param sros_model: Model ID or label, scalar or array. Labels 9c, 11c and
         18c map to IDs 9, 11 and 18. Model 20 (alias r20) is the wind heuristic;
-        model 21 is the gray-stage MPB model.
+        model 21 is the gray-stage MPB model; 30/O1a and 31/O1b are FBP grass.
     :param sros_param_a: Model-specific coefficient: asymptote amplitude for
         1/2/3/21, squared-ISI coefficient for 4/9c, oblique-asymptote slope for
         11c/12/13/18c, wind scale for 16/17, or linear ISI coefficient for 19.
@@ -410,14 +439,24 @@ def calc_sros(
         stand code 2 only. Defaults to the model 18c registry value when None.
     :param sros_param_e: Model 18c's additive deciduous/mixedwood offset in
         m/min, applied to stand codes 1/3 only. Defaults to the registry when None.
-    :param wsv: Wind speed in km/h, required by models 16/17/20. Broadcastable
-        to the shape established by the positional inputs.
+    :param wsv: Wind speed in km/h, required by models 16/17/20/32–34. Broadcastable
+        to the shape established by the positional inputs. Cheney consumes
+        nonnegative effective WSV with no finite upper cap.
     :param stand_type: Numeric stand codes, required by 18c: 1 deciduous,
         2 Douglas-fir/PPDF, 3 mixedwood, 4 pine, 5 spruce. Broadcastable to output.
     :param mc_sa: Stand-adjusted fine fuel moisture content in percent,
         required by model 17. Broadcastable to output.
+    :param gcf: Percent curing, required for O1a/O1b and Cheney. Missing consumed
+        values remain masked. O1 finite <=0 becomes 0.1 and >100 becomes 95;
+        Cheney curing outside 20–100 becomes NaN with a warning.
     :param mc_ffmc: FFMC-derived fine fuel moisture content in percent,
         required by model 16. Broadcastable to output.
+    :param temp: Celsius temperature for Cheney AM60 moisture.
+    :param rh: Percent RH for Cheney AM60, clipped 0–100 with a warning.
+    :param cheney_mf_override: Optional standing moisture (%), taking precedence
+        per cell; missing cells use AM60. Shared Mf clips 2–24 with a warning.
+    :param _cheney_mf: Internal class-supplied normalized moisture, avoiding
+        repeated weather normalization. Not a public initializer input.
     :return: Masked array of head-fire surface ROS in m/min. Positional inputs
         broadcast together; masks on fitted coefficients affect only models and
         stands that use them. Consumed nonfinite coefficients are masked before
@@ -443,15 +482,20 @@ def calc_sros(
     values = np.broadcast_arrays(*[x.data for x in inputs])
     index, fuel, codes, a, b, c, d, e = values
     invalid = np.zeros(index.shape, dtype=bool)
-    for x in inputs[:3]:
-        invalid |= np.broadcast_to(mask.getmaskarray(x), index.shape)
+    for position, x in enumerate(inputs[:3]):
+        missing = np.broadcast_to(mask.getmaskarray(x), index.shape)
+        if position == 0:
+            missing = missing & ~np.isin(codes, CHENEY_SROS_IDS)
+        if position == 1:
+            missing = missing & ~np.isin(codes, GRASS_SROS_IDS + CHENEY_SROS_IDS)
+        invalid |= missing
     # A masked/nonfinite fitted parameter invalidates only cells that consume it.
     for parameter, used_by, stand_codes in zip(
         inputs[3:],
         (
-            (1, 2, 3, 4, 9, 11, 12, 13, 16, 17, 18, 19, 21),
-            (1, 2, 3, 4, 9, 11, 12, 13, 16, 17, 18, 21),
-            (1, 2, 3, 11, 12, 13, 16, 17, 18, 21),
+            (1, 2, 3, 4, 9, 11, 12, 13, 16, 17, 18, 19, 21, 30, 31),
+            (1, 2, 3, 4, 9, 11, 12, 13, 16, 17, 18, 21, 30, 31),
+            (1, 2, 3, 11, 12, 13, 16, 17, 18, 21, 30, 31),
             (18,),
             (18,),
         ),
@@ -472,6 +516,18 @@ def calc_sros(
             consumes &= np.isin(stands, stand_codes)
         invalid |= np.broadcast_to(parameter_invalid, index.shape) & consumes
     result = np.full(index.shape, np.nan)
+    all_cheney = np.isin(codes, CHENEY_SROS_IDS) & ~invalid
+    if np.any(all_cheney):
+        def cheney_context(value):
+            return None if value is None else np.broadcast_to(mask.asarray(value, dtype=float).filled(np.nan), index.shape)[all_cheney]
+        if wsv is None or gcf is None:
+            raise ValueError('wsv and gcf are required for Cheney surface spread')
+        moisture = (cheney_context(_cheney_mf) if _cheney_mf is not None else
+                    cheney_eqs.calc_cheney_moisture(cheney_context(temp), cheney_context(rh), cheney_context(cheney_mf_override)))
+        # One Cheney batch keeps wind validation and warnings aggregated rather
+        # than repeating normalization for each selected model.
+        result[all_cheney] = cheney_eqs.calc_cheney_sros(
+            cheney_context(wsv), moisture, cheney_context(gcf), codes[all_cheney])
 
     def context(value, name, selected):
         if value is None:
@@ -483,7 +539,7 @@ def calc_sros(
         ]
         return data[selected]
 
-    for code in np.unique(codes[~invalid]):
+    for code in np.unique(codes[~invalid & ~all_cheney]):
         selected = (codes == code) & ~invalid
         x = index[selected]
         if code in (1, 2, 3, 21):
@@ -527,6 +583,10 @@ def calc_sros(
             result[selected] = a[selected] * x
         elif code == 20:
             result[selected] = 0.2 * context(wsv, "wsv", selected)
+        elif code in GRASS_SROS_IDS:
+            curing = context(None if gcf is None else grass_eqs.calc_grass_curing_factor(gcf),
+                             "gcf", selected)
+            result[selected] = curing * a[selected] * (1 - np.exp(-b[selected] * x)) ** c[selected]
     return mask.masked_invalid(mask.array(result, mask=invalid))
 
 
@@ -540,7 +600,14 @@ def calc_bros(
     sros_param_d: np.ndarray | None = None,
     sros_param_e: np.ndarray | None = None,
     *,
+    wsv: np.ndarray | None = None,
+    surface_ros: np.ndarray | None = None,
     stand_type: np.ndarray | None = None,
+    gcf: np.ndarray | None = None,
+    temp: np.ndarray | None = None,
+    rh: np.ndarray | None = None,
+    cheney_mf_override: np.ndarray | None = None,
+    _cheney_mf: np.ndarray | None = None,
 ) -> np.ndarray:
     """Calculate backing surface ROS in m/min using a backing spread index.
 
@@ -567,6 +634,21 @@ def calc_bros(
         m/min for stand codes 1/3. None selects the registry default.
     :param stand_type: Numeric stand codes, required by 18c: 1 deciduous,
         2 Douglas-fir/PPDF, 3 mixedwood, 4 pine, 5 spruce. Broadcastable to output.
+    :param wsv: Effective wind in km/h, required for Cheney focal-ellipse
+        backing. Pass zero explicitly for calm conditions; unused otherwise.
+        Must broadcast to the output grid established by positional inputs.
+    :param surface_ros: Optional precomputed head surface ROS from calc_sros,
+        in m/min, for Cheney backing. This bypasses head/weather recomputation.
+        Negative values become missing with a counted warning. Do not supply
+        crown-composite HROS. It must come from the same calculation and per-cell
+        WSV, and broadcast to the grid established by positional inputs. This
+        association cannot be verified without recomputing the head. Unused by
+        other backing equations.
+    :param temp: Celsius temperature for Cheney AM60 moisture when not overridden.
+    :param rh: Percent relative humidity for Cheney AM60.
+    :param cheney_mf_override: Optional standing moisture (%) overriding AM60.
+    :param _cheney_mf: Internal normalized class moisture shared with head spread.
+        Cheney backing uses its head rate and selected ellipse, not backing ISI.
     :return: Masked array of backing surface ROS in m/min. Positional inputs
         broadcast together. Coefficient masks/nonfinite values apply only where consumed;
         unsupported models and nonfinite results are masked.
@@ -576,8 +658,11 @@ def calc_bros(
     models = normalize_sros_model(sros_model)
     unsupported = np.isin(models.data, [16, 17, 20])
     # Mask unsupported entries before dispatch so missing wind context is not used.
-    supported = mask.array(models.data, mask=mask.getmaskarray(models) | unsupported)
-    return calc_sros(
+    cheney_selected = np.isin(models.data, CHENEY_SROS_IDS) & ~mask.getmaskarray(models)
+    if np.any(cheney_selected) and wsv is None:
+        raise ValueError('wsv is required for Cheney backing spread; pass 0 explicitly for calm')
+    supported = mask.array(models.data, mask=mask.getmaskarray(models) | unsupported | cheney_selected)
+    result = calc_sros(
         bisi,
         sfc,
         supported,
@@ -587,7 +672,26 @@ def calc_bros(
         sros_param_d,
         sros_param_e,
         stand_type=stand_type,
+        gcf=gcf,
     )
+    if np.any(cheney_selected):
+        shape = result.shape
+        selected = np.broadcast_to(cheney_selected, shape)
+        def selected_context(value):
+            return None if value is None else np.broadcast_to(mask.asarray(value, dtype=float).filled(np.nan), shape)[selected]
+        if surface_ros is not None:
+            backing = cheney_eqs.calc_cheney_bros_from_surface_ros(
+                selected_context(surface_ros), selected_context(wsv))
+        else:
+            mf = (selected_context(_cheney_mf) if _cheney_mf is not None else
+                  cheney_eqs.calc_cheney_moisture(selected_context(temp), selected_context(rh), selected_context(cheney_mf_override)))
+            if gcf is None:
+                raise ValueError('gcf is required for Cheney backing spread')
+            backing = cheney_eqs.calc_cheney_bros(
+                mf, selected_context(gcf), wsv=selected_context(wsv),
+                model=np.broadcast_to(models.data, shape)[selected])
+        result[selected] = mask.masked_invalid(backing)
+    return result
 
 
 def calc_isf(
@@ -639,11 +743,11 @@ def calc_isf(
 
     # Wind-only models have no zero-wind slope-equivalent inverse.
     supported = np.isin(
-        mask.asarray(sros_model).compressed(), [1, 2, 3, 4, 9, 11, 12, 13, 18, 19, 21]
+        mask.asarray(sros_model).compressed(), [1, 2, 3, 4, 9, 11, 12, 13, 18, 19, 21, 30, 31]
     )
     if not np.all(supported):
         raise ValueError("Selected surface model has no terrain inversion")
-    selected = np.isin(model_codes, [1, 2, 3, 21]) & valid_model
+    selected = np.isin(model_codes, [1, 2, 3, 21, 30, 31]) & valid_model
     if np.any(selected):
         # Boolean indexing owns these arrays; masking cannot mutate caller inputs.
         a, b, c, baseline, slope_factor = (
@@ -841,6 +945,8 @@ def normalize_sros_model(value) -> mask.MaskedArray:
     def parse(item):
         if isinstance(item, (str, np.str_)):
             label = item.strip().lower()
+            if label in ('o1a', 'o1b'):
+                return 30 if label == 'o1a' else 31
             if label in SROS_ALIASES:
                 return SROS_ALIASES[label]
             if label.isdigit():
@@ -896,7 +1002,7 @@ def calc_cros_a(
     - Model 1: Cruz et al. (2005)
     - Model 2: Alexander and Cruz (2019)
 
-    :param wsv: Effective wind speed (m/min)
+    :param wsv: Effective wind speed (km/h)
     :param cbd: Canopy Bulk Density (kg/m^3)
     :param mc_sa: Moisture Content Spread Available
     :param cros_model: CROS model code
@@ -1091,9 +1197,12 @@ def calc_logit(
     Calculate the logit for crown fire occurrence.
 
     Supports multiple model types with different parameter configurations.
+    Masks propagate from every consumed input; hidden values are not evaluated.
+    An unused b5 mask does not affect models 1, 2, 4 or 5. Entirely plain inputs
+    retain plain ndarray output; consumed missing entries propagate to the output mask.
 
-    :param wsv: Effective wind speed (m/min)
-    :param fsg: Fire Spread Gradient
+    :param wsv: Effective wind speed (km/h)
+    :param fsg: Fuel Strata Gap (m)
     :param mc_sa: Moisture Content Spread Available
     :param sfc: Surface Fuel Consumption
     :param cfo_model: CFO model code
@@ -1107,8 +1216,38 @@ def calc_logit(
     """
     logit = np.full_like(wsv, np.nan, dtype=np.float64)
 
+    def broadcast_operand(value):
+        raw = mask.asarray(value)
+        if raw.shape == logit.shape:
+            return value
+        data = np.broadcast_to(raw.data, logit.shape)
+        if mask.isMaskedArray(value):
+            return mask.array(data, mask=np.broadcast_to(mask.getmaskarray(raw), logit.shape))
+        return data
+
     # Models 1, 2, 4, 5
-    mask_other = np.isin(cfo_model, [1, 2, 4, 5])
+    codes = mask.getdata(cfo_model)
+    known = np.isin(codes, [1, 2, 3, 4, 5, 10])
+    missing = np.broadcast_to(mask.getmaskarray(cfo_model), logit.shape).copy()
+    for value in (wsv, fsg, mc_sa, sfc, cfi_param_b0, cfi_param_b1,
+                  cfi_param_b2, cfi_param_b3, cfi_param_b4):
+        if mask.isMaskedArray(value) and np.any(value.mask):
+            missing |= mask.getmaskarray(value) & known
+    uses_b5 = np.isin(codes, [3, 10]) & ~missing
+    if np.any(uses_b5) and mask.isMaskedArray(cfi_param_b5):
+        missing |= uses_b5 & mask.getmaskarray(cfi_param_b5)
+    visible = ~missing
+    # Broadcast only operands used by visible model calculations. In particular,
+    # an unused b5 must not impose shape or payload requirements on the result.
+    if np.any(known & visible):
+        (wsv, fsg, mc_sa, sfc, cfi_param_b0, cfi_param_b1, cfi_param_b2,
+         cfi_param_b3, cfi_param_b4) = (
+            broadcast_operand(value) for value in
+            (wsv, fsg, mc_sa, sfc, cfi_param_b0, cfi_param_b1, cfi_param_b2,
+             cfi_param_b3, cfi_param_b4))
+        if np.any(uses_b5 & visible):
+            cfi_param_b5 = broadcast_operand(cfi_param_b5)
+    mask_other = np.isin(mask.getdata(cfo_model), [1, 2, 4, 5]) & visible
     if np.any(mask_other):
         logit_vals = (
             cfi_param_b0[mask_other]
@@ -1119,18 +1258,14 @@ def calc_logit(
         )
         logit[mask_other] = logit_vals
 
-    # Models 3 and 10: SFC-dependent models
-    sfc_lt1_mask = sfc < 1.0
-    sfc_lt2_mask = ~sfc_lt1_mask & (sfc < 2.0)
-    sfc_ge2_mask = sfc >= 2.0
-
     # Model 3
-    mask_model3 = cfo_model == 3
+    mask_model3 = (mask.getdata(cfo_model) == 3) & visible
     if np.any(mask_model3):
-        sfc0 = np.zeros_like(sfc[mask_model3])
-        sfc1 = np.zeros_like(sfc[mask_model3])
-        sfc0[sfc_lt2_mask[mask_model3]] = 1
-        sfc1[sfc_ge2_mask[mask_model3]] = 1
+        selected_sfc = sfc[mask_model3]
+        sfc0 = np.zeros_like(selected_sfc)
+        sfc1 = np.zeros_like(selected_sfc)
+        sfc0[(selected_sfc >= 1.0) & (selected_sfc < 2.0)] = 1
+        sfc1[selected_sfc >= 2.0] = 1
 
         logit_vals = (
             cfi_param_b0[mask_model3]
@@ -1143,12 +1278,13 @@ def calc_logit(
         logit[mask_model3] = logit_vals
 
     # Model 10 (CFIS)
-    mask_model10 = cfo_model == 10
+    mask_model10 = (mask.getdata(cfo_model) == 10) & visible
     if np.any(mask_model10):
-        sfc0 = np.zeros_like(sfc[mask_model10])
-        sfc1 = np.zeros_like(sfc[mask_model10])
-        sfc0[sfc_lt1_mask[mask_model10]] = 1
-        sfc1[sfc_lt2_mask[mask_model10]] = 1
+        selected_sfc = sfc[mask_model10]
+        sfc0 = np.zeros_like(selected_sfc)
+        sfc1 = np.zeros_like(selected_sfc)
+        sfc0[selected_sfc < 1.0] = 1
+        sfc1[(selected_sfc >= 1.0) & (selected_sfc < 2.0)] = 1
 
         logit_vals = (
             cfi_param_b0[mask_model10]
@@ -1160,7 +1296,10 @@ def calc_logit(
         )
         logit[mask_model10] = logit_vals
 
-    return logit.astype(np.float64)
+    result = logit.astype(np.float64)
+    if np.any(missing):
+        result = mask.array(result, mask=mask.getmaskarray(result) | missing)
+    return result
 
 
 def calc_cfo_prob(logit: np.ndarray) -> np.ndarray:
@@ -1170,9 +1309,35 @@ def calc_cfo_prob(logit: np.ndarray) -> np.ndarray:
     :param logit: Logit value
     :return: Crown Fire Occurrence probability (0-1)
     """
-    return mask.where(
-        np.isfinite(logit), mask.exp(logit) / (1.0 + mask.exp(logit)), mask.masked
-    )
+    raw = mask.asarray(logit)
+    if raw.dtype.kind != 'f':
+        # Integer exp can use float16; unsigned negation can wrap. Neither
+        # is suitable for evaluating a logistic probability.
+        raw = raw.astype(np.float64)
+    dtype = raw.dtype
+    exponent_limit = np.log(np.finfo(dtype).max)
+    # log(max) can round to an exponent whose exponential is already infinite.
+    # Probe one scalar, stepping back only when needed; retain all finite values.
+    with np.errstate(over='ignore'):
+        if not np.isfinite(np.exp(exponent_limit)):
+            exponent_limit = np.nextafter(exponent_limit, dtype.type(-np.inf))
+    if (not np.any(raw.mask) and np.all(np.isfinite(raw.data))
+            and np.all(raw.data <= exponent_limit)):
+        # Preserve legacy scalar/array dtype promotion and nomask representation,
+        # without gathered copies or full-size result/mask buffers on this path.
+        exponential = mask.exp(raw)
+        return mask.where(np.isfinite(raw), exponential / (1.0 + exponential), mask.masked)
+
+    valid = ~mask.getmaskarray(raw) & np.isfinite(raw.data)
+    large = valid & (raw.data > exponent_limit)
+    safe = mask.array(np.where(valid & ~large, raw.data, dtype.type(0)), mask=raw.mask)
+    exponential = mask.exp(safe)
+    # Keep the original expression for dtype, mask representation and the zero
+    # payload beneath missing outputs. Never evaluate hidden extreme logits.
+    result = mask.where(np.isfinite(raw), exponential / (1.0 + exponential), mask.masked)
+    if np.any(large):
+        result[large] = 1.0 / (1.0 + mask.exp(-raw.data[large]))
+    return result
 
 
 # ============================================================================

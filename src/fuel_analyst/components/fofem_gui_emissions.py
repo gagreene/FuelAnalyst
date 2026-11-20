@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+from decimal import Decimal
 from typing import Union
 
 import numpy as np
@@ -20,8 +21,9 @@ import tqdm
 import concurrent.futures
 
 from . import fofem_units
+from . import fofem_moisture
 from . import helper
-from . import fwis_moisture_content as mc
+from ._default_configs import default_season_start_dict
 try:
     from tqdm.contrib.concurrent import process_map
     _TQDM_PROCESS_MAP_AVAILABLE = True
@@ -30,13 +32,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Dictionary of seasons for each month in the year
-default_season_start_dict = {
-    'Spring': '0415',
-    'Summer': '0615',
-    'Fall': '0915',
-    'Winter': '1115',
-}
 # Environment variable override for _get_fofem_dir(), for use when the bundled
 # src/fuel_analyst/supporting_data/fofem_694 directory is not present (e.g. an alternate
 # installation of the official FOFEM 6.9.4 batch runtime).
@@ -232,16 +227,12 @@ _BURNUP_PARAMS_694_TEMPLATE = """#MAX_TIMES 3000
 
 def _calc_fuel_moisture_content(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculate fuel moisture content columns and add them to the DataFrame.
+    Prepare fuel moisture for FOFEM emissions.
 
-    :param df: DataFrame with 'mc_sa', 'dmc', and 'dc' columns.
-    :return: DataFrame with 'wfl10HourMoisture', 'DuffMoisture', and 'wfl1000HourMoisture' columns added.
+    :param df: Burning scenarios with fire moisture and weather codes.
+    :return: Copy with FOFEM moisture columns for scenarios that pass the shared limits.
     """
-    df['wfl10HourMoisture'] = df['mc_sa']
-    df['DuffMoisture'] = df['mc_dmc']
-    df['wfl1000HourMoisture'] = mc.dc_mc(dc=df['dc'].to_numpy())
-
-    return df
+    return fofem_moisture.calc_fuel_moisture_content(df, logger)
 
 
 def _convert_consume_row_to_imperial(row_consume_df: pd.DataFrame, emissions_units: str) -> pd.DataFrame:
@@ -328,9 +319,8 @@ def _get_fofem_dir() -> str:
     fof_spp.csv; no Microsoft Visual C++ runtime DLLs - the redistributable is a documented,
     separately-installed Windows prerequisite, not a file this codebase bundles or manages).
 
-    Checked eagerly at the top of process_emissions() rather than lazily per-row. Every
-    candidate must contain the executable and both CSVs, so incomplete installations fail
-    before any row is processed.
+    Checked once before dispatching rows in process_emissions(). Every candidate must contain
+    the executable and both CSVs.
 
     Resolved in order:
       1. The FUEL_ANALYST_FOFEM_DIR environment variable, for an alternate/separately
@@ -427,17 +417,24 @@ def _get_merged_consumption_df(
 
     required_cols = [
         plot_id_col_name, 'wx_date', 'hfi',
-        'flame_res_time_sec', 'instand_ws_mps',
+        'flame_depth_m', 'flame_res_time_sec', 'instand_ws_mps',
         'temp', 'mc_sa', 'mc_dmc', 'dc', 'cfb'
     ]
 
     missing_cols = helper.get_missing_df_columns(plot_fire_df, required_cols)
     if missing_cols:
         raise ValueError(
-            f'Missing required column(s) in weather and fire behavior CSV: {required_cols}'
+            f'Missing required column(s) in weather and fire behavior CSV: {missing_cols}'
         )
 
-    plot_fire_df = plot_fire_df[required_cols]
+    optional_cols = [
+        column for column in ('time', 'surface_fuel_type', 'stand_type', 'dmc', fofem_units.FOFEM_SCENARIO_ID)
+        if column in plot_fire_df
+    ]
+    plot_fire_df = plot_fire_df[required_cols + optional_cols]
+
+    if fofem_units.FOFEM_SCENARIO_ID in plot_fire_df:
+        fofem_units.validate_consume_plot_ids(fofem_consume_df['#PlotId'], plot_fire_df[plot_id_col_name])
 
     merged_df = pd.merge(
         left=fofem_consume_df,
@@ -551,7 +548,7 @@ def _model_emissions(row: dict, out_dir: str, consume_model: str, emissions_unit
     """
     Model emissions for one fire-behavior/weather row via a single isolated runfofem.exe call.
 
-    :param row: Dict of merged DataFrame row containing fire behavior and weather data for a single plot.
+    :param row: Merged fire behavior and weather data for one plot, including prepared ignition intensity.
     :param out_dir: Parent output directory; this row's isolated worker directory is created under it.
     :param consume_model: FOFEM consumption model ('C' or 'S').
     :param emissions_units: Unit system of row's FOFEM consumption values ('SI' or 'Imperial').
@@ -587,7 +584,7 @@ def _model_emissions(row: dict, out_dir: str, consume_model: str, emissions_unit
 
         _write_burnup_params_694(
             out_path=burnup_path,
-            intensity=row['hfi'],
+            intensity=row[fofem_units.BURNUP_IGNITION_INTENSITY_COLUMN],
             ig_time=row['flame_res_time_sec'],
             windspeed=row['instand_ws_mps'],
             depth=row['fuel_bed_depth_m'],
@@ -810,15 +807,26 @@ def _write_burnup_params_694(
     Write a verified 113-switch FOFEM 6.9.4 Burnup parameter file.
 
     :param out_path: Output path for the Burnup parameter file.
-    :param intensity: Heat per unit area (kJ/m^2).
+    :param intensity: Ignition heat release rate per unit area (kW/m²).
     :param ig_time: Ignition (flame residence) time (seconds).
     :param windspeed: In-stand/mid-flame wind speed (m/s).
-    :param depth: Flame depth (m).
+    :param depth: Fuel bed depth (m).
     :param ambient_temp: Ambient temperature (degC).
     :return: None. Writes the parameter file to out_path.
     """
+    intensity_value = float(intensity)
+    minimum, maximum = 40.0, 100_000.0
+    # Native Burnup validates single-precision values. Preserve the range decision for the Python value.
+    rounds_into_range = False
+    if not minimum <= intensity_value <= maximum:
+        with np.errstate(over='ignore'):
+            rounds_into_range = minimum <= np.float32(intensity_value) <= maximum
+    # The parser needs fixed-point text and reads at most 199 bytes per line, including the CRLF.
+    intensity_text = '0' if intensity_value == 0 else format(Decimal(str(intensity_value)), 'f').removesuffix('.0')
+    if rounds_into_range or len(f'#INTENSITY {intensity_text}\r\n') > 199:
+        raise ValueError(f'Burnup: igniting fire intensity out of range (kW/m2): {intensity_value}')
     content = _BURNUP_PARAMS_694_TEMPLATE.format(
-        intensity=_format_burnup_value(intensity),
+        intensity=intensity_text,
         ig_time=_format_burnup_value(ig_time),
         windspeed=_format_burnup_value(windspeed),
         depth=_format_burnup_value(depth),
@@ -919,7 +927,8 @@ def process_emissions(
     :param num_workers: Number of workers for parallel processing.
     :param return_df: Whether to return the final DataFrame with emissions results (True) or not (False).
     :return: None if return_df is False, otherwise the DataFrame containing the merged input data and
-        FOFEM emissions results. A row whose runfofem.exe call failed (e.g. a genuinely
+        FOFEM emissions results. Scenarios without finite Burnup ignition intensity are omitted.
+        A row whose runfofem.exe call failed (e.g. a genuinely
         out-of-range input, such as windspeed exceeding Burnup's documented 0-5 m/s validity
         range) has NaN FOFEM result fields and a non-null 'fofem_gui_error' column naming the
         real cause; each failed plot is also logged once per cause through error_handling, whatever
@@ -930,7 +939,6 @@ def process_emissions(
     emissions_units = fofem_units.validate_fofem_units(emissions_units)
     fofem_units.validate_consume_units(fofem_consume_csv_path, emissions_units)
 
-    fofem_dir = _get_fofem_dir()
     consume_model = 'S' if model_soil_heating else 'C'
 
     merged_df = _get_merged_consumption_df(
@@ -939,11 +947,20 @@ def process_emissions(
         fofem_consume_csv_path=fofem_consume_csv_path,
         consume_model=consume_model,
     )
+    merged_df = fofem_units.prepare_burnup_ignition_inputs(merged_df, plot_id_col_name, logger)
+    merged_df = _calc_fuel_moisture_content(merged_df)
+    if merged_df.empty:
+        helper.export_csv(
+            merged_df.drop(columns=[fofem_units.FOFEM_SCENARIO_ID], errors='ignore'),
+            os.path.join(out_dir, 'fofem_emissions_results.csv'),
+        )
+        return merged_df if return_df else None
+
+    fofem_dir = _get_fofem_dir()
     merged_df, plotid_map = _gen_plot_id(merged_df)
     merged_df = _get_pct_crown_burned(merged_df)
     merged_df = _get_season(merged_df)
     merged_df = merged_df.drop(columns=[plot_id_col_name, 'cfb'])
-    merged_df = _calc_fuel_moisture_content(merged_df)
 
     if num_workers >= 4:
         print(f'\tProcessing Emissions (via official FOFEM 6.9.4 runfofem.exe) in parallel with {num_workers} workers...')
@@ -990,7 +1007,10 @@ def process_emissions(
     helper.export_csv(fofem_results_df, os.path.join(out_dir, 'fofem_results_df_temp.csv'))
 
     merged_df = merged_df.drop(columns=['remove_hereafter'])
-    helper.export_csv(merged_df, os.path.join(out_dir, 'merged_df_temp.csv'))
+    helper.export_csv(
+        merged_df.drop(columns=[fofem_units.FOFEM_SCENARIO_ID], errors='ignore'),
+        os.path.join(out_dir, 'merged_df_temp.csv'),
+    )
 
     final_df = pd.concat([merged_df.reset_index(drop=True), fofem_results_df.reset_index(drop=True)], axis=1)
 
@@ -1017,7 +1037,7 @@ def process_emissions(
     final_df = final_df.sort_values(by=['#PlotId', 'wx_date']).reset_index(drop=True)
 
     csv_out_path = os.path.join(out_dir, 'fofem_emissions_results.csv')
-    helper.export_csv(final_df, csv_out_path)
+    helper.export_csv(final_df.drop(columns=[fofem_units.FOFEM_SCENARIO_ID], errors='ignore'), csv_out_path)
 
     if return_df:
         return final_df

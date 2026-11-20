@@ -1,6 +1,32 @@
+import pandas as pd
 import pytest
 
 from fuel_analyst.components import fofem_units
+
+
+def test_add_burnup_ignition_intensity_accepts_empty_frame_with_inputs():
+    frame = pd.DataFrame(columns=['hfi', 'flame_depth_m', 'other'])
+
+    fofem_units.add_burnup_ignition_intensity(frame)
+
+    assert frame.empty
+    assert frame.columns.tolist() == ['hfi', 'flame_depth_m', 'burnup_ign_intensity_kWpm2', 'other']
+
+
+@pytest.mark.parametrize('missing', [('hfi',), ('flame_depth_m',), ('hfi', 'flame_depth_m')])
+def test_add_burnup_ignition_intensity_names_missing_inputs(missing):
+    frame = pd.DataFrame({'hfi': [30.0], 'flame_depth_m': [0.5]}).drop(columns=list(missing))
+
+    with pytest.raises(ValueError, match='Missing required column.*Burnup ignition intensity') as error:
+        fofem_units.add_burnup_ignition_intensity(frame)
+
+    assert all(column in str(error.value) for column in missing)
+
+
+@pytest.mark.parametrize('values', [[1, 1], [0, None], [0, 0.5]])
+def test_validate_fofem_scenario_ids_rejects_invalid_keys(values):
+    with pytest.raises(ValueError, match='unique non-negative integers'):
+        fofem_units.validate_fofem_scenario_ids(pd.Series(values))
 
 
 def test_validate_fofem_units_accepts_exact_strings():
@@ -40,6 +66,14 @@ def test_infer_consume_units_rejects_old_ambiguous_filename():
 def test_infer_consume_units_rejects_renamed_file():
     with pytest.raises(ValueError, match='Cannot infer FOFEM processing units'):
         fofem_units.infer_consume_units('/out/my_copy_of_the_consume_file.csv')
+
+
+def test_validate_consume_plot_ids_checks_only_plots_in_the_fire_input():
+    consumption_ids = pd.Series(['A', 'A', 'B', None, None])
+    fofem_units.validate_consume_plot_ids(consumption_ids, pd.Series(['B', None]))
+
+    with pytest.raises(ValueError, match='duplicate #PlotId values.*A'):
+        fofem_units.validate_consume_plot_ids(consumption_ids, pd.Series(['A']))
 
 
 def test_validate_consume_units_passes_on_match():

@@ -40,10 +40,8 @@ def test_calc_plot_duff_litter_biomass_uses_resolved_fallback_source(caplog):
 
 
 @pytest.mark.regression
-def test_merge_spp_comp_logs_plot_missing_tree_data_while_siblings_have_it(caplog):
-    """A plot with no stand_spp_comp_woody value, while sibling plots have valid values,
-    previously produced zero warning of any kind - it silently fell out of the tree_data
-    branch with no record of why."""
+def test_merge_spp_comp_does_not_report_unresolved_source_choices(caplog):
+    """Assembly must not claim a fallback before the selected source is resolved."""
     plot_df = pd.DataFrame({
         'unique_id': ['plot-1', 'plot-2'],
         'stand_spp_comp_woody': ['FDI:100', None],
@@ -66,5 +64,4 @@ def test_merge_spp_comp_logs_plot_missing_tree_data_while_siblings_have_it(caplo
         _merge_spp_comp(plot_df, plot_ids, woody_df, manual_df)
 
     matching = [r for r in caplog.records if getattr(r, 'unique_id', None) == 'plot-2']
-    assert len(matching) == 1
-    assert 'falling back' in matching[0].message
+    assert matching == []

@@ -30,6 +30,8 @@ def _make_consumption_input_df():
     """
     return pd.DataFrame({
         'unique_id': ['p1'], 'SPECIES_CD_1': ['PY'], 'dom_substrate': ['HG'],
+        'form_select': ['trees'], '_tree_parent_present': [True],
+        'conpyro_live_trees_present': [True],
         'fofem_shrub_group': [''], 'treatment_type': ['untreated'],
         'ffl_litter_kgpm2': [1.0], 'ffl_duff_kgpm2': [2.0], 'stand_duff_depth_cm': [3.0],
         'woody_kgpm2_fofem_sound_0_635': [0.1], 'woody_kgpm2_fofem_sound_2_54': [0.2],

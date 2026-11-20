@@ -277,6 +277,7 @@ def test_run_conpyro_reports_plots_without_stand_type_in_the_error_csv(tmp_path,
         'stand_density': ['L', None, 'L'], 'stand_type': ['P', None, 'P'],
         'ws': [10.0, 10.0, 10.0], 'wd': [180.0, 180.0, 180.0], 'ffmc': [90.0, 90.0, 90.0],
         'dmc': [40.0, 40.0, 40.0], 'bui': [60.0, 60.0, 60.0],
+        'temp': 20.0, 'rh': 40.0,
     }).to_csv(conpyro_csv_path, index=False)
     modelled = {}
 

@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from typing import Union
 
-from . import error_handling, helper
+from . import error_handling, fofem_units, helper
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +185,12 @@ def process_mortality(
 
     # Load stand fire and tree data
     plot_fire_df = helper.get_df(plot_wx_fire_csv_path)
+    scenario_column = fofem_units.FOFEM_SCENARIO_ID
+    has_scenario_id = scenario_column in plot_fire_df
+    if has_scenario_id:
+        plot_fire_df[scenario_column] = fofem_units.validate_fofem_scenario_ids(plot_fire_df[scenario_column])
+    else:
+        plot_fire_df[scenario_column] = range(len(plot_fire_df))
     tree_df = helper.get_df(fofem_tree_csv_path)
     tree_df = filter_live_trees(tree_df, logger, 'fofem_mortality_missing_status_column')
 
@@ -242,29 +248,24 @@ def process_mortality(
                                                      0)
 
     # Calculate stand-level proportion of basal area killed by fire for each scenario
-    agg_df = merged_tree_df.groupby([
-        plot_id_col_name, 'wx_date', 'hfi', 'fire_type', 'temp', 'instand_ws_mps'
-    ], as_index=False).agg({
+    agg_df = merged_tree_df.groupby(scenario_column, as_index=False).agg({
         'ba_live_ha': 'sum',
         'tree_dead_ba_crnsch': 'sum'
     })
     agg_df['prop_dead_ba_crnsch'] = agg_df['tree_dead_ba_crnsch'] / agg_df['ba_live_ha']
 
     # Merge aggregated results back to original plot_fire_df to preserve all columns
-    plot_fire_df = pd.merge(
-        plot_fire_df,
-        agg_df[[plot_id_col_name, 'wx_date', 'hfi', 'fire_type', 'temp',
-                'instand_ws_mps', 'tree_dead_ba_crnsch', 'prop_dead_ba_crnsch']],
-        on=[plot_id_col_name, 'wx_date', 'hfi', 'fire_type', 'temp', 'instand_ws_mps'],
-        how='left'
+    plot_fire_df = plot_fire_df.merge(
+        agg_df[[scenario_column, 'tree_dead_ba_crnsch', 'prop_dead_ba_crnsch']],
+        on=scenario_column, how='left', validate='one_to_one',
     )
 
     # Calculate stand-level fire severity per Agee (1994)
     plot_fire_df = _calc_severity_class(plot_fire_df)
 
     # Sort DataFrames by plot_id_col_name and wx_date for easier comparison
-    merged_tree_df = merged_tree_df.sort_values(by=[plot_id_col_name, 'wx_date']).reset_index(drop=True)
-    plot_fire_df = plot_fire_df.sort_values(by=[plot_id_col_name, 'wx_date']).reset_index(drop=True)
+    merged_tree_df = merged_tree_df.sort_values(by=[plot_id_col_name, 'wx_date', scenario_column]).reset_index(drop=True)
+    plot_fire_df = plot_fire_df.sort_values(by=[plot_id_col_name, 'wx_date', scenario_column]).reset_index(drop=True)
 
     # Unit-qualify FOFEM-generated physical columns in both final DataFrames/CSVs. Applied here,
     # immediately before export/return, so both returned DataFrames and written CSVs expose the
@@ -277,14 +278,17 @@ def process_mortality(
     os.makedirs(out_dir, exist_ok=True)
     out_tree_csv_path = os.path.join(out_dir, 'fofem_tree_mortality_results.csv')
     out_severity_csv_path = os.path.join(out_dir, 'fofem_severity_results.csv')
+    tree_results = merged_tree_df.drop(columns=scenario_column)
+    severity_results = plot_fire_df.drop(columns=scenario_column)
     print(f'\tSaving tree mortality results to {out_tree_csv_path}...')
-    helper.export_csv(merged_tree_df, out_tree_csv_path)
+    helper.export_csv(tree_results, out_tree_csv_path)
     print(f'\tSaving plot severity results to {out_severity_csv_path}...')
-    helper.export_csv(plot_fire_df, out_severity_csv_path)
+    helper.export_csv(severity_results, out_severity_csv_path)
 
     if return_dfs:
-        # Return the merged tree-fire DataFrame and the stand-level fire severity DataFrame
-        return merged_tree_df, plot_fire_df
+        if has_scenario_id:
+            return merged_tree_df, plot_fire_df
+        return tree_results, severity_results
 
     return None
 

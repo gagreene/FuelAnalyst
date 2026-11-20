@@ -13,35 +13,25 @@ import pandas as pd
 from typing import Union
 
 from . import fofem_units
+from . import fofem_moisture
 from . import helper
-from . import fwis_moisture_content as mc
+from ._default_configs import default_season_start_dict
 from pyfofem import pyfofem as fofem
 
 logger = logging.getLogger(__name__)
 
-
-default_season_start_dict = {
-    'Spring': '0415',
-    'Summer': '0615',
-    'Fall': '0915',
-    'Winter': '1115',
-}
 
 _VALID_EMISSIONS_MODES = {'legacy', 'default', 'expanded'}
 
 
 def _calc_fuel_moisture_content(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculate fuel moisture content columns and add them to the DataFrame.
+    Prepare fuel moisture for FOFEM emissions.
 
-    :param df: DataFrame with 'mc_sa', 'mc_dmc', and 'dc' columns.
-    :return: DataFrame with FOFEM moisture columns added/updated.
+    :param df: Burning scenarios with fire moisture and weather codes.
+    :return: Copy with FOFEM moisture columns for scenarios that pass the shared limits.
     """
-    df['wfl10HourMoisture'] = df['mc_sa']
-    df['DuffMoisture'] = df['mc_dmc']
-    df['wfl1000HourMoisture'] = mc.dc_mc(dc=df['dc'].to_numpy())
-
-    return df
+    return fofem_moisture.calc_fuel_moisture_content(df, logger)
 
 
 def _gen_plot_id(df: pd.DataFrame):
@@ -91,7 +81,7 @@ def _get_merged_consumption_df(
 
     required_fire_cols = [
         plot_id_col_name, 'wx_date', 'hfi',
-        'flame_res_time_sec', 'instand_ws_mps',
+        'flame_depth_m', 'flame_res_time_sec', 'instand_ws_mps',
         'temp', 'mc_sa', 'mc_dmc', 'dc', 'cfb'
     ]
     missing_cols = helper.get_missing_df_columns(plot_fire_df, required_fire_cols)
@@ -101,7 +91,14 @@ def _get_merged_consumption_df(
     if '#PlotId' not in fofem_consume_df.columns:
         raise ValueError('Missing required column "#PlotId" in FOFEM consumption CSV.')
 
-    plot_fire_df = plot_fire_df[required_fire_cols]
+    optional_cols = [
+        column for column in ('time', 'surface_fuel_type', 'stand_type', 'dmc', fofem_units.FOFEM_SCENARIO_ID)
+        if column in plot_fire_df
+    ]
+    plot_fire_df = plot_fire_df[required_fire_cols + optional_cols]
+
+    if fofem_units.FOFEM_SCENARIO_ID in plot_fire_df:
+        fofem_units.validate_consume_plot_ids(fofem_consume_df['#PlotId'], plot_fire_df[plot_id_col_name])
 
     merged_df = pd.merge(
         left=fofem_consume_df,
@@ -239,7 +236,7 @@ def process_emissions(
         and CSV (see fofem_units.emissions_result_rename_map()).
     :param num_workers: Number of workers for pyfofem burnup processing.
     :param return_df: If True, return final emissions DataFrame.
-    :return: None or final DataFrame.
+    :return: None or final DataFrame, omitting scenarios without finite Burnup ignition intensity.
     """
     os.makedirs(out_dir, exist_ok=True)
 
@@ -262,10 +259,18 @@ def process_emissions(
         fofem_consume_csv_path=fofem_consume_csv_path,
     )
 
+    merged_df = fofem_units.prepare_burnup_ignition_inputs(merged_df, plot_id_col_name, logger)
+    merged_df = _calc_fuel_moisture_content(merged_df)
+    if merged_df.empty:
+        helper.export_csv(
+            merged_df.drop(columns=[fofem_units.FOFEM_SCENARIO_ID], errors='ignore'),
+            os.path.join(out_dir, 'fofem_emissions_results.csv'),
+        )
+        return merged_df if return_df else None
+
     merged_df, plotid_map = _gen_plot_id(merged_df)
     merged_df = _get_pct_crown_burned(merged_df)
     merged_df = _get_season(merged_df)
-    merged_df = _calc_fuel_moisture_content(merged_df)
 
     model_df = merged_df.drop(columns=[plot_id_col_name, 'cfb'], errors='ignore').copy()
 
@@ -314,7 +319,8 @@ def process_emissions(
         dw6_9r=_to_float_arr(model_df, 'wfl6_9R'),
         dw9_20r=_to_float_arr(model_df, 'wfl9_20R'),
         dw20r=_to_float_arr(model_df, 'wfl20plusR'),
-        hfi=_to_float_arr(model_df, 'hfi'),
+        # PyFOFEM 0.1.2 passes hfi straight through to Burnup in kW per square metre.
+        hfi=model_df[fofem_units.BURNUP_IGNITION_INTENSITY_COLUMN].to_numpy(),
         flame_res_time=_to_float_arr(model_df, 'flame_res_time_sec'),
         fuel_bed_depth=_to_float_arr(model_df, 'fuel_bed_depth_m', default=0.3),
         ambient_temp=_to_float_arr(model_df, 'temp', default=27.0),
@@ -336,7 +342,10 @@ def process_emissions(
     helper.export_csv(fofem_results_df, os.path.join(out_dir, 'fofem_results_df_temp.csv'))
 
     model_df = model_df.drop(columns=['remove_hereafter'], errors='ignore')
-    helper.export_csv(model_df, os.path.join(out_dir, 'merged_df_temp.csv'))
+    helper.export_csv(
+        model_df.drop(columns=[fofem_units.FOFEM_SCENARIO_ID], errors='ignore'),
+        os.path.join(out_dir, 'merged_df_temp.csv'),
+    )
 
     final_df = pd.concat([model_df.reset_index(drop=True), fofem_results_df.reset_index(drop=True)], axis=1)
     # Unit-qualify pyfofem's raw physical result column names in the final analyst-facing
@@ -346,7 +355,7 @@ def process_emissions(
     final_df = final_df.sort_values(by=['#PlotId', 'wx_date']).reset_index(drop=True)
 
     csv_out_path = os.path.join(out_dir, 'fofem_emissions_results.csv')
-    helper.export_csv(final_df, csv_out_path)
+    helper.export_csv(final_df.drop(columns=[fofem_units.FOFEM_SCENARIO_ID], errors='ignore'), csv_out_path)
 
     if return_df:
         return final_df
