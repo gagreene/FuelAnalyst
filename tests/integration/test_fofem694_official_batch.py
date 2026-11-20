@@ -284,6 +284,32 @@ def test_process_emissions_checks_burnup_cutoffs_before_native_rounding(tmp_path
         assert 'igniting fire intensity out of range' in result.loc[0, 'fofem_gui_error']
 
 
+@pytest.mark.parametrize('field, value, accepted', [
+    ('DuffMoisture', 9.99, False), ('DuffMoisture', 10., True),
+    ('DuffMoisture', 197.19, True), ('DuffMoisture', 197.19998, True),
+    ('DuffMoisture', 197.19999, False), ('DuffMoisture', 197.2, False), ('DuffMoisture', 197.21, False),
+    ('wfl10HourMoisture', 2.99, False), ('wfl10HourMoisture', 3., True),
+    ('wfl10HourMoisture', 298., True), ('wfl10HourMoisture', 298.01, False),
+    ('wfl1000HourMoisture', 0.99, False), ('wfl1000HourMoisture', 1., True),
+    ('wfl1000HourMoisture', 300., True), ('wfl1000HourMoisture', 300.01, False),
+])
+@pytest.mark.parametrize('consume_model', ['C', 'S'])
+def test_run_runfofem_enforces_native_moisture_limits(tmp_path, field, value, accepted, consume_model):
+    # Call the native worker without shared moisture screening so the executable decides each case.
+    row = dict(_CONSUME_ROW, flame_res_time_sec=60., instand_ws_mps=2., temp=20., PercentCrownBurned=10.,
+               burnup_ign_intensity_kWpm2=600.)
+    row[field] = value
+    result = fofem_gui_emissions._model_emissions(
+        row, str(tmp_path), consume_model, 'SI', fofem_gui_emissions._get_fofem_dir(),
+    )
+
+    if accepted:
+        assert 'fofem_gui_error' not in result
+        assert result['LitPre'] > 0
+    else:
+        assert 'moisture' in result['fofem_gui_error'].lower()
+
+
 def test_run_runfofem_invalid_input_raises_with_batch_error_message(tmp_path):
     fofem_dir = fofem_gui_emissions._get_fofem_dir()
     input_path = tmp_path / 'garbage_input.txt'
