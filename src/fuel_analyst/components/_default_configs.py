@@ -462,7 +462,7 @@ default_fire_modelling_dict = {
         'input_params': {
             'cfo_model': 5,    # Options: 1, 2, 3, 4, 5, 10, or string "use_csv" (assumes cfo_model column in csv)
             'grass_curing': 60,  # Grass curing percentage passed to ConPyro as gcf
-            'sros_model': 'use_csv',  # Options: 1-4, 9, 11, 12, 13, 16-21, 30/31 (O1a/O1b), labels "9c", "11c", "18c", "r20", or "use_csv"
+            'sros_model': 'use_csv',  # Options: 1-4, 9, 11, 12, 13, 16-21, 30/31 (O1a/O1b), 32-34 (Cheney grass), model aliases, or "use_csv"
                                # (assumes sros_model column in csv). 16, 17, and 20 need model_terrain_effects_on_wind
                                # False; 21 is the legacy mountain pine beetle curve (it was 20 before ConPyro 0.2.0)
             'cros_model': 1,   # Options: 1, 2, or string "use_csv" (assumes cros_model column in csv)
@@ -476,7 +476,7 @@ default_fire_modelling_dict = {
             'fmc': None,            # Options: float, integer, None (default)
                                     #     fmc overrides wx_date for foliar MC calculations
             'season': None,         # Options: None (default), "Sp", "Sp-Su", "T", "Su", "F", "use_csv";
-                                    #     season overrides wx_date for fine dead fuel MC calculations
+                                    #     None derives the season from wx_date when available
             'time': None,           # Options: Integer in format HHMM, None (default), or string "use_csv"
                                     #     time is only needed for CFIS (cfo_model == 10) to calculate
                                     #     Rothermel dead fuel moisture content at a specific time of day

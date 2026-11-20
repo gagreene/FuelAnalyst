@@ -814,24 +814,24 @@ notebook = [
 requires-dist = [
     { name = "flame-components", specifier = ">=0.1.1,<0.2" },
     { name = "fuel-analyst", extras = ["fofem", "photoload", "parquet"], marker = "extra == 'all'" },
-    { name = "geopandas", specifier = ">=0.13" },
-    { name = "matplotlib", marker = "extra == 'photoload'", specifier = ">=3.6" },
-    { name = "numpy", specifier = ">=1.23.2" },
+    { name = "geopandas", specifier = ">=0.14.4" },
+    { name = "matplotlib", marker = "extra == 'photoload'", specifier = ">=3.8.4" },
+    { name = "numpy", specifier = ">=2.0" },
     { name = "openpyxl", specifier = ">=3.1.5" },
-    { name = "pandas", specifier = ">=2.2,<4" },
+    { name = "pandas", specifier = ">=2.2.2,<4" },
     { name = "pillow", marker = "extra == 'photoload'", specifier = ">=9.2" },
-    { name = "pyarrow", marker = "extra == 'parquet'", specifier = ">=14.0" },
-    { name = "pyarrow", marker = "extra == 'test'", specifier = ">=14.0" },
+    { name = "pyarrow", marker = "extra == 'parquet'", specifier = ">=16.0" },
+    { name = "pyarrow", marker = "extra == 'test'", specifier = ">=16.0" },
     { name = "pyfofem-fire-effects", marker = "extra == 'fofem'", specifier = "==0.1.2" },
     { name = "pymupdf", marker = "extra == 'photoload'", specifier = ">=1.24.3" },
-    { name = "pyogrio", specifier = ">=0.7.2" },
+    { name = "pyogrio", specifier = ">=0.8" },
     { name = "pyproj", specifier = ">=3.4" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=7.0" },
     { name = "python-dateutil", specifier = ">=2.8.2" },
-    { name = "rasterio", specifier = ">=1.3.5" },
-    { name = "scikit-image", marker = "extra == 'photoload'", specifier = ">=0.20" },
-    { name = "scipy", specifier = ">=1.10" },
-    { name = "shapely", specifier = ">=2.0" },
+    { name = "rasterio", specifier = ">=1.3.10" },
+    { name = "scikit-image", marker = "extra == 'photoload'", specifier = ">=0.23.1" },
+    { name = "scipy", specifier = ">=1.13" },
+    { name = "shapely", specifier = ">=2.0.6" },
     { name = "tqdm", specifier = ">=4.64" },
 ]
 provides-extras = ["test", "photoload", "fofem", "parquet", "all"]
@@ -845,7 +845,7 @@ dev = [
 notebook = [
     { name = "ipykernel" },
     { name = "ipywidgets" },
-    { name = "matplotlib", specifier = ">=3.6" },
+    { name = "matplotlib", specifier = ">=3.8.4" },
 ]
 
 [[package]]

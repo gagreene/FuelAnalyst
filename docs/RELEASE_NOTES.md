@@ -4,11 +4,13 @@
 
 - Both FOFEM emissions backends now divide head fireline intensity by horizontal flame depth for Burnup ignition. The fire results include `burnup_ign_intensity_kWpm2`. Burnup eligibility, consumption, and emissions can change.
 - FOFEM mortality and emissions keep each fire result matched to its original scenario. Fresh fire results record explicitly selected weather dates and times.
+- Refresh vendored ConPyro to v0.3.0. The engine adds Cheney grass and wheat spread models and revises forest moisture handling when stand or weather context is incomplete. FuelAnalyst derives the default moisture season from the weather date.
 
 ### Breaking changes and action needed
 
 - **Supply flame depth for FOFEM emissions.** Custom fire-results CSVs must include `flame_depth_m` in metres. Regenerate fire results if this column is missing.
 - **Use PyFOFEM 0.1.2 with the `fofem` extra.** FuelAnalyst pins this version because its `hfi` argument forwards the supplied areal intensity to Burnup.
+- **Use NumPy 2.0 or later.** ConPyro 0.3.0 requires it. Update environments that still use NumPy 1.x and install compatible builds of the scientific dependencies.
 
 ## 0.5.0
 

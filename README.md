@@ -206,7 +206,7 @@ FuelAnalyst/
 - Git, if cloning the repository
 - A Survey123 export matching the expected form and repeat-table structure
 
-The base installation includes NumPy, pandas, SciPy, GeoPandas, Rasterio, PyProj, Shapely, python-dateutil, tqdm, openpyxl, pyogrio, and flame-components. ConPyro is vendored in the package. Matplotlib is not a base dependency: the `photoload` extra installs it, and the tutorial notebook needs it (see its setup guide).
+The base installation includes NumPy 2.0 or later, pandas, SciPy, GeoPandas, Rasterio, PyProj, Shapely, python-dateutil, tqdm, openpyxl, pyogrio, and flame-components. ConPyro is vendored in the package. Matplotlib is not a base dependency: the `photoload` extra installs it, and the tutorial notebook needs it (see its setup guide).
 
 FOFEM execution requires the optional `fofem` extra. It is not required to process Survey123 data or generate model-preparation CSVs.
 

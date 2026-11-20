@@ -873,9 +873,15 @@ work. Their code snippets and planned filenames may describe an earlier state;
 this file, the README, tests, and production code define current behavior.
 
 
+### ConPyro 0.3.0 vendor update
+
+The active vendor pin is ConPyro `v0.3.0` at `b388db795b654c7ade80cf3ed342eb6e976ede67`. Run `scripts/update_vendors.sh --only conpyro` with `CONPYRO_SRC` pointing to a clean checkout of that tag to reproduce it. ConPyro 0.3 requires NumPy 2.0 or later.
+
+`_single_run_fire_behavior()` supplies the date-derived season when the FuelAnalyst season setting is `None` and a weather date is available. ConPyro 0.3 otherwise treats missing season as missing forest moisture context and uses FFMC moisture. The wrapper passes explicit seasons and CSV selections through to the engine.
+
 ### ConPyro upstream refresh (2026-11-06)
 
-ConPyro is pinned to `b5d98e873402b86037ef8a2229b76888fc1cfbb3`; upstream still reports package version `0.2.0`. The generated package matches upstream `src/conpyro` with tests/caches excluded. Real `run_conpyro()` regressions cover zero-CBD surface-only outputs for crown models 1 and 2; existing default-model, CFIS and other documented surface-model tests remain in use. All 19 default comparison CSVs, including 51,968 fire rows, were byte-identical to the previous pin. Optional FOFEM execution was disabled in that comparison.
+The 2026-11-06 refresh pinned ConPyro 0.2.0 at `b5d98e873402b86037ef8a2229b76888fc1cfbb3`. The generated package matches upstream `src/conpyro` with tests/caches excluded. Real `run_conpyro()` regressions cover zero-CBD surface-only outputs for crown models 1 and 2; existing default-model, CFIS and other documented surface-model tests remain in use. All 19 default comparison CSVs, including 51,968 fire rows, were byte-identical to the previous pin. Optional FOFEM execution was disabled in that comparison.
 
 The engine's O1 grass models require `gcf`, now supplied by `grass_curing` (default 60 percent). Unknown nonempty stand labels can now follow the upstream inferred-non-fuel policy; missing classes still hit FuelAnalyst's existing skip gate. The subsequent grass integration adds automatic surface-model assignment from live-tree presence and dominant substrate, described below; the original forest `gfl` mapping is preserved. See Technical Reference section 4.2 and the Unreleased notes.
 

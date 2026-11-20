@@ -11,6 +11,7 @@ import math
 import numbers
 import os
 from contextlib import nullcontext
+from datetime import date
 from numpy import array, column_stack, full, isfinite, ma, nan
 import pandas as pd
 from tempfile import TemporaryDirectory
@@ -24,6 +25,7 @@ from .components import helper
 # Re-export the public fire-modelling defaults.
 from .components._default_configs import FLAME_COMPONENT_COLUMNS, default_fire_modelling_dict
 from ._vendor.conpyro import conpyro
+from ._vendor.conpyro.components.equations.moisture_eqs import calc_season
 from ._vendor.conpyro.components.surface_fuel_consumption import SFC
 import flame_components as fc
 import tqdm
@@ -381,7 +383,7 @@ def _get_stand_codes(values: pd.Series):
     """
     result = values.astype(object).copy()
     numeric = pd.to_numeric(values, errors='coerce')
-    recognized = numeric.isin([0, 1, 2, 3, 4, 5, 10])
+    recognized = numeric.isin([0, 1, 2, 3, 4, 5, 10, 20, 21, 22])
     result.loc[recognized] = numeric.loc[recognized].astype(int)
     return result.to_numpy()
 
@@ -612,6 +614,17 @@ def _single_run_fire_behavior(args, use_fuel_type: Optional[bool] = None):
     if time is not None and input_params['time'] != 'use_csv':
         subset_df['time'] = time
     cp = conpyro.ConPyro()
+    season = input_params['season']
+    if season == 'use_csv':
+        season = subset_df['season'].to_numpy(dtype=str)
+    elif season is None and wx_date is not None:
+        # ConPyro 0.3 uses FFMC-only moisture when season is absent.
+        # Preserve FuelAnalyst's date-based default for a supplied weather date.
+        try:
+            wx_day = date.fromisoformat(str(wx_date))
+        except ValueError as error:
+            raise ValueError('wx_date must be formatted as: YYYYMMDD') from error
+        season = calc_season(array(0), wx_day.month * 100 + wx_day.day, cp.season_cutoff_dates_dict).item()
     grass_load = subset_df['herbaceous_fuel_load'].copy()
     surface_type = subset_df.get('surface_fuel_type', pd.Series('', index=subset_df.index))
     shrub_proxy = surface_type.eq('shrubs')
@@ -624,7 +637,7 @@ def _single_run_fire_behavior(args, use_fuel_type: Optional[bool] = None):
         model_terrain_effects_on_wind=bool(input_params['model_terrain_effects_on_wind']),
         model_terrain_effects_on_ffmc=bool(input_params['model_terrain_effects_on_ffmc']),
         process_ladder=input_params['process_ladder'],
-        season=(input_params['season'] if input_params['season'] != 'use_csv' else subset_df['season'].to_numpy(dtype=str)),
+        season=season,
         density=subset_df['stand_density'].to_numpy(dtype=str),
         stand_type=_get_stand_codes(subset_df['stand_type']),
         cbd=subset_df['cbd_ovrstry'].values,
@@ -1005,22 +1018,21 @@ def run_conpyro(
 
         # Validate that required columns are present before running ConPyro.
         # Core weather columns must be merged in advance via extract_nrcan_wx -> merge_wx_data.
-        # temp and rh are only required when cfo_model == 10 (CFIS model).
+        # The wrapper forwards temp and rh for each run. CFIS and Cheney use their values.
         # Additional columns are required for any input_params value set to 'use_csv'.
         required_cols = ['ws', 'wd', 'ffmc', 'dmc', 'bui']
         use_csv_params = ['wx_date', 'season', 'time', 'fmc', 'cfo_model', 'sros_model', 'cros_model']
         for param in use_csv_params:
             if input_params.get(param) == 'use_csv':
                 required_cols.append(param)
-        if input_params.get('cfo_model') == 10:
+        if not df.empty or input_params.get('cfo_model') == 10:
             required_cols.extend(['temp', 'rh'])
         missing_cols = helper.get_missing_df_columns(df, required_cols)
         if missing_cols:
             raise ValueError(
                 f'Columns required by ConPyro are missing from the input CSV: {missing_cols}. '
-                f'Weather columns (ws, wd, ffmc, dmc, bui) require running '
+                f'Weather columns (ws, wd, ffmc, dmc, bui, temp, rh) require running '
                 f'extract_nrcan_wx -> merge_wx_data first. '
-                f'temp and rh are additionally required when cfo_model == 10 (CFIS). '
                 f'Columns corresponding to input_params set to "use_csv" must also be present. '
                 f'For sros_model, regenerate the ConPyro input and weather merge, or select an explicit scalar model.'
             )
