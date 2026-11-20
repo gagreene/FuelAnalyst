@@ -10,8 +10,10 @@ import logging
 import math
 import numbers
 import os
+from contextlib import nullcontext
 from numpy import array, column_stack, full, isfinite, ma, nan
 import pandas as pd
+from tempfile import TemporaryDirectory
 from typing import Optional
 
 from .components import error_handling
@@ -20,7 +22,7 @@ from .components import fofem_moisture
 from .components import helper
 
 # Re-export the public fire-modelling defaults.
-from .components._default_configs import default_fire_modelling_dict
+from .components._default_configs import FLAME_COMPONENT_COLUMNS, default_fire_modelling_dict
 from ._vendor.conpyro import conpyro
 from ._vendor.conpyro.components.surface_fuel_consumption import SFC
 import flame_components as fc
@@ -346,7 +348,7 @@ def _get_fofem_fire_csv(fire_csv_path: str, out_dir: str, plot_id_col: str) -> O
         return None
     if 'fire_type' not in fire_df.columns:
         return fire_csv_path
-    nonburning = fire_df['fire_type'].eq(0)
+    nonburning = fire_df['fire_type'].eq(0).fillna(False)
     if not nonburning.any():
         return fire_csv_path
 
@@ -361,8 +363,13 @@ def _get_fofem_fire_csv(fire_csv_path: str, out_dir: str, plot_id_col: str) -> O
     if burning_df.empty:
         return None
     filtered_path = os.path.join(out_dir, 'conpyro_burning_scenarios.csv')
-    helper.export_csv(burning_df, filtered_path)
-    return filtered_path
+    scenario_column = fofem_units.FOFEM_SCENARIO_ID
+    helper.export_csv(burning_df.drop(columns=scenario_column, errors='ignore'), filtered_path)
+    if scenario_column not in burning_df:
+        return filtered_path
+    stage_input = os.path.join(os.path.dirname(fire_csv_path), f'{os.path.basename(out_dir)}_burning.csv')
+    helper.export_csv(burning_df, stage_input)
+    return stage_input
 
 
 def _get_stand_codes(values: pd.Series):
@@ -377,6 +384,16 @@ def _get_stand_codes(values: pd.Series):
     recognized = numeric.isin([0, 1, 2, 3, 4, 5, 10])
     result.loc[recognized] = numeric.loc[recognized].astype(int)
     return result.to_numpy()
+
+
+def _has_burning_scenarios(df: pd.DataFrame) -> bool:
+    """
+    Check whether there are scenarios eligible for fire-effects modelling.
+
+    :param df: Fire results, optionally including the ConPyro fire type.
+    :return: True when any row is present and not explicitly non-burning.
+    """
+    return not df.empty and ('fire_type' not in df or not df['fire_type'].eq(0).fillna(False).all())
 
 
 def _log_cfis_fuel_type_issues(df: pd.DataFrame, input_params: dict, plot_id_col: str = 'unique_id') -> None:
@@ -541,6 +558,23 @@ def _log_skipped_empty_stand_plots(
         )
 
 
+def _merge_fofem_scenarios(df: pd.DataFrame, effects: pd.DataFrame) -> pd.DataFrame:
+    """
+    Attach fire-effects results to the scenario that produced them.
+
+    :param df: Fire results with a unique FOFEM scenario identifier per row.
+    :param effects: Mortality or emissions results for the scenarios modelled.
+    :return: Fire results with the newly calculated effects columns.
+    """
+    scenario_column = fofem_units.FOFEM_SCENARIO_ID
+    if scenario_column not in effects:
+        raise ValueError('FOFEM results are missing their scenario identifiers.')
+    scenario_ids = fofem_units.validate_fofem_scenario_ids(effects[scenario_column])
+    result_columns = [column for column in effects if column not in df]
+    results = effects[result_columns].assign(**{scenario_column: scenario_ids})
+    return df.merge(results, on=scenario_column, how='left', validate='one_to_one')
+
+
 def _single_run_fire_behavior(args, use_fuel_type: Optional[bool] = None):
     """
     Run one ConPyro fire-behavior calculation for a weather date and time.
@@ -573,6 +607,10 @@ def _single_run_fire_behavior(args, use_fuel_type: Optional[bool] = None):
     if input_params['sros_model'] != 'use_csv':
         subset_df = subset_df.copy()
         subset_df['sros_model'] = input_params['sros_model']
+    if wx_date is not None and input_params['wx_date'] != 'use_csv':
+        subset_df['wx_date'] = wx_date
+    if time is not None and input_params['time'] != 'use_csv':
+        subset_df['time'] = time
     cp = conpyro.ConPyro()
     grass_load = subset_df['herbaceous_fuel_load'].copy()
     surface_type = subset_df.get('surface_fuel_type', pd.Series('', index=subset_df.index))
@@ -669,7 +707,10 @@ def _model_fire_behavior(
     :return: DataFrame with ConPyro results.
     """
     if df.empty:
-        return df.reindex(columns=list(dict.fromkeys([*df.columns, *conpyro_out_list])))
+        scenario_columns = [column for column in ('sros_model', 'wx_date', 'time') if input_params[column] is not None]
+        input_columns = dict.fromkeys([*df.columns, *scenario_columns])
+        columns = [column for column in input_columns if column not in conpyro_out_list] + conpyro_out_list
+        return df.reindex(columns=columns)
 
     # Prepare all combinations
     wx_dates = (
@@ -712,20 +753,19 @@ def _model_fire_behavior(
 
 def _model_flame_components(
         df: pd.DataFrame,
-        flame_comp_out_list: list,
         force_flame_res_time_limits: bool = True,
 ) -> pd.DataFrame:
     """
     Model flame components using ConPyro output fire behavior parameters.
 
     :param df: DataFrame with ConPyro output parameters.
-    :param flame_comp_out_list: List of flame component variables to calculate and add to the DataFrame.
     :param force_flame_res_time_limits: Passed through to :func:`_calc_flame_res_time`.
     :return: DataFrame with additional flame component columns. Non-burning rows
         retain their ConPyro metrics and have missing, inapplicable flame quantities.
     """
     if df.empty:
-        return df.reindex(columns=list(dict.fromkeys([*df.columns, *flame_comp_out_list])))
+        columns = list(dict.fromkeys([*df.columns, *FLAME_COMPONENT_COLUMNS]))
+        return df.reindex(columns=columns)
 
     # FLAME models accept burning types 1-3, not ConPyro's non-burning type 0.
     # Temporarily mask the consumed fire metrics, then restore the engine outputs.
@@ -765,6 +805,7 @@ def _model_flame_components(
     # Calculate flame depth
     print('\tCalculating flame depth...')
     df = _calc_flame_depth(df)
+    fofem_units.add_burnup_ignition_intensity(df)
 
     if original_fire is not None:
         df[original_fire.columns] = original_fire
@@ -852,26 +893,7 @@ def _model_fofem_emissions(
     # Run FOFEM emissions modelling with the plot-level fire behavior results from ConPyro
     emiss_df = fe.process_emissions(**process_emissions_kwargs)
 
-    # Keep non-burning scenarios out of the merge, including those sharing a plot/date
-    # with a burning scenario. They must never inherit that scenario's fire effects.
-    nonburning = df.get('fire_type', pd.Series(index=df.index, dtype=float)).eq(0)
-    nonburning_df = df.loc[nonburning]
-    # Merge emissions results back to original plot_fire_df to preserve all columns
-    df = pd.merge(
-        df.loc[~nonburning],
-        emiss_df,
-        left_on=[conpyro_params['plot_id_col_name'], 'wx_date'],
-        right_on=['#PlotId', 'wx_date'],
-        how='left',
-        suffixes=('', '_fofem_emissions'),
-    )
-
-    # Drop columns with "_fofem_emissions" suffix
-    df = df.drop(columns=['#PlotId'] + [col for col in df.columns if col.endswith('_fofem_emissions')])
-    if not nonburning_df.empty:
-        df = pd.concat([df, nonburning_df], ignore_index=True)
-
-    return df
+    return _merge_fofem_scenarios(df, emiss_df.drop(columns='#PlotId', errors='ignore'))
 
 
 def _model_fofem_mortality(
@@ -917,26 +939,7 @@ def _model_fofem_mortality(
     )
     del tree_mort_df
 
-    # Keep non-burning scenarios out of the merge, including those sharing a plot/date
-    # with a burning scenario. They must never inherit that scenario's fire effects.
-    nonburning = df.get('fire_type', pd.Series(index=df.index, dtype=float)).eq(0)
-    nonburning_df = df.loc[nonburning]
-    # Merge severity results back to original plot_fire_df to preserve all columns
-    df = pd.merge(
-        df.loc[~nonburning],
-        severity_df,
-        left_on=[conpyro_params['plot_id_col_name'], 'wx_date'],
-        right_on=[fofem_mortality_params['plot_id_col_name'], 'wx_date'],
-        how='left',
-        suffixes=('', '_fofem_mortality'),
-    )
-
-    # Drop columns with "_fofem_mortality" suffix
-    df = df.drop(columns=[col for col in df.columns if col.endswith('_fofem_mortality')])
-    if not nonburning_df.empty:
-        df = pd.concat([df, nonburning_df], ignore_index=True)
-
-    return df
+    return _merge_fofem_scenarios(df, severity_df)
 
 
 @error_handling.run_guard
@@ -977,7 +980,6 @@ def run_conpyro(
     # Get modelling parameters
     input_params = conpyro_params['input_params']
     conpyro_out_list = conpyro_params['output_params']['out_request']
-    flame_comp_out_list = conpyro_params['output_params']['flame_comp_out_list']
 
     skipped_df = pd.DataFrame()  # plots left out of the ConPyro input because of empty stand columns
     if conpyro_params['run_model']:
@@ -1053,7 +1055,6 @@ def run_conpyro(
         print('\n>>>> Modelling flame components with ConPyro output...')
         df = _model_flame_components(
             df,
-            flame_comp_out_list,
             force_flame_res_time_limits=fofem_emissions_params.get('force_flame_res_time_limits', True),
         )
 
@@ -1066,54 +1067,70 @@ def run_conpyro(
             print(f'\nLoading existing ConPyro results from {in_conpyro_csv_path}...')
             df = pd.read_csv(in_conpyro_csv_path, low_memory=False)
             fire_csv_path = in_conpyro_csv_path
+            missing_ignition = helper.get_missing_df_columns(df, ['hfi', 'flame_depth_m'])
+            if missing_ignition and fofem_emissions_params['run_model'] and _has_burning_scenarios(df):
+                raise ValueError(
+                    f'Existing ConPyro results are missing Burnup columns: {missing_ignition}. '
+                    'Regenerate fire behaviour results before running FOFEM emissions.'
+                )
             df = fofem_moisture.derive_grass_duff_moisture(df)
+            if not missing_ignition:
+                fofem_units.add_burnup_ignition_intensity(df)
         else:
             raise FileNotFoundError(f'ConPyro results CSV not found at {in_conpyro_csv_path}.'
                                     f'Please run ConPyro model first or provide existing results CSV.')
 
-    fofem_ext = ''
-    # ### MODEL FOFEM MORTALITY (IF ENABLED) ###
-    if fofem_mortality_params['run_model']:
-        print('\n>>>> Running FOFEM mortality modelling...')
-        if in_tree_csv_path is not None:
-            df = _model_fofem_mortality(
-                df=df,
-                fire_csv_path=fire_csv_path,
-                in_tree_csv_path=in_tree_csv_path,
-                out_dir=out_dir,
-                fofem_mortality_params=fofem_mortality_params,
-                conpyro_params=conpyro_params,
-            )
-            fofem_ext += '_mortality'
-        else:
+    run_mortality = fofem_mortality_params['run_model']
+    run_emissions = fofem_emissions_params['run_model']
+    if run_mortality or run_emissions:
+        if run_mortality and in_tree_csv_path is None:
             raise ValueError('The in_tree_csv_path parameter was not provided. '
                              'Unable to run FOFEM mortality modelling')
-
-    # ### MODEL FOFEM EMISSIONS (IF ENABLED) ###
-    if fofem_emissions_params['run_model']:
-        print('\n>>>> Running FOFEM emissions modelling...')
-        if in_fofem_consume_csv_path is not None:
-            df = _model_fofem_emissions(
-                df=df,
-                fire_csv_path=fire_csv_path,
-                fofem_emissions_params=fofem_emissions_params,
-                in_fofem_consume_csv_path=in_fofem_consume_csv_path,
-                out_dir=out_dir,
-                conpyro_params=conpyro_params,
-                num_workers=num_workers,
-            )
-            fofem_ext += '_emissions'
-        else:
+        if run_emissions and in_fofem_consume_csv_path is None:
             raise ValueError('The in_fofem_consume_csv_path parameter was not provided. '
                              'Unable to run FOFEM emissions modelling')
 
-    # ### SAVE FINAL RESULTS TO CSV ###
-    if fofem_mortality_params['run_model'] or fofem_emissions_params['run_model']:
+        fofem_ext = ''
+        scenario_column = fofem_units.FOFEM_SCENARIO_ID
+        df[scenario_column] = range(len(df))
+        os.makedirs(out_dir, exist_ok=True)
+        temporary_input = (
+            TemporaryDirectory(prefix='fofem-input-', dir=out_dir, ignore_cleanup_errors=True)
+            if _has_burning_scenarios(df) else nullcontext()
+        )
+        with temporary_input as input_dir:
+            stage_input = fire_csv_path
+            if input_dir is not None:
+                stage_input = os.path.join(input_dir, 'fire_scenarios.csv')
+                helper.export_csv(df, stage_input)
+            if run_mortality:
+                print('\n>>>> Running FOFEM mortality modelling...')
+                df = _model_fofem_mortality(
+                    df=df,
+                    fire_csv_path=stage_input,
+                    in_tree_csv_path=in_tree_csv_path,
+                    out_dir=out_dir,
+                    fofem_mortality_params=fofem_mortality_params,
+                    conpyro_params=conpyro_params,
+                )
+                fofem_ext += '_mortality'
+            if run_emissions:
+                print('\n>>>> Running FOFEM emissions modelling...')
+                df = _model_fofem_emissions(
+                    df=df,
+                    fire_csv_path=stage_input,
+                    fofem_emissions_params=fofem_emissions_params,
+                    in_fofem_consume_csv_path=in_fofem_consume_csv_path,
+                    out_dir=out_dir,
+                    conpyro_params=conpyro_params,
+                    num_workers=num_workers,
+                )
+                fofem_ext += '_emissions'
+
         out_csv_path = os.path.join(out_dir, f'conpyro{fofem_ext}_results.csv')
         print(f'\nSaving final modelling results to {out_csv_path}...')
-        # Sort by plot_id_col_name and wx_date
-        df = df.sort_values(by=[conpyro_params['plot_id_col_name'], 'wx_date']).reset_index(drop=True)
-        # Save final DataFrame to CSV
+        df = df.sort_values(by=[conpyro_params['plot_id_col_name'], 'wx_date', scenario_column])
+        df = df.drop(columns=scenario_column).reset_index(drop=True)
         helper.export_csv(df, out_csv_path)
 
     error_report_path = os.path.join(out_dir, 'run_conpyro_errors.csv')
