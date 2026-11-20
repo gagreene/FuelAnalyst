@@ -93,8 +93,14 @@ _LABELS = {
 # 0, 0 can read back as about 5.7e-14), so they are snapped to exactly zero.
 _COORDINATE_NOISE = 1e-9
 
+_LiteralTextColumns = tuple[str, ...] | dict[str, str]
 
-def _as_csv_would(frame: pd.DataFrame, literal_text_columns: tuple = ()) -> pd.DataFrame:
+
+def _as_csv_would(
+        frame: pd.DataFrame,
+        literal_text_columns: _LiteralTextColumns = (),
+        parse_dates: bool = False
+) -> pd.DataFrame:
     """
     Give non-date columns the dtypes and missing-value handling that ``pd.read_csv`` would.
 
@@ -105,12 +111,13 @@ def _as_csv_would(frame: pd.DataFrame, literal_text_columns: tuple = ()) -> pd.D
     retain their source strings, including leading zeros and tokens such as NA.
 
     :param frame: DataFrame read from a spreadsheet, database, or table file.
-    :param literal_text_columns: Columns preserved as text without numeric or missing-token inference.
-    :return: DataFrame with the same columns and column order.
+    :param literal_text_columns: Fields preserved as text in place, or mapped to separate columns.
+    :param parse_dates: Whether to normalize text dates after capturing literal fields.
+    :return: DataFrame with normalized source fields and any requested literal copies.
     """
-    frame = frame.copy()
     literal = {column: frame[column].astype('string')
                for column in literal_text_columns if column in frame.columns}
+    frame = _parse_date_text(frame, literal_text_columns) if parse_dates else frame.copy()
     for column in frame.columns:
         if isinstance(frame[column].dtype, pd.DatetimeTZDtype):
             frame[column] = frame[column].dt.tz_convert('UTC').dt.tz_localize(None)
@@ -121,9 +128,7 @@ def _as_csv_would(frame: pd.DataFrame, literal_text_columns: tuple = ()) -> pd.D
     result = pd.read_csv(buffer, header=0, index_col=False, low_memory=False)
     for column in date_columns:
         result[column] = frame[column].to_numpy()
-    for column, values in literal.items():
-        result[column] = pd.Series(values.array, index=result.index)
-    return result[list(frame.columns)]
+    return _store_literal_text(result[list(frame.columns)], literal, literal_text_columns)
 
 
 def _clean_guid(value):
@@ -315,7 +320,7 @@ def _match_name(names: tuple, stem: str) -> Optional[str]:
 def _normalize_ogr_frame(
         layer_df: pd.DataFrame,
         parse_dates: bool = False,
-        literal_text_columns: tuple = ()
+        literal_text_columns: _LiteralTextColumns = ()
 ) -> pd.DataFrame:
     """
     Turn a geodatabase or GeoPackage layer into the table the CSV download of the same form holds.
@@ -355,9 +360,7 @@ def _normalize_ogr_frame(
             for axis in ('x', 'y'):
                 values = getattr(geometry, axis).to_numpy(dtype=float)
                 frame[axis] = np.where(np.abs(values) < _COORDINATE_NOISE, 0.0, values)
-    if parse_dates:
-        frame = _parse_date_text(frame, literal_text_columns)
-    return _as_csv_would(frame, literal_text_columns)
+    return _as_csv_would(frame, literal_text_columns, parse_dates=parse_dates)
 
 
 def _ogr_layer_names(path: str) -> tuple:
@@ -385,7 +388,7 @@ def _ogr_table_exists(source: FormSource, stem: str) -> bool:
     return _match_name(source.tables, stem) is not None
 
 
-def _parse_date_text(frame: pd.DataFrame, literal_text_columns: tuple = ()) -> pd.DataFrame:
+def _parse_date_text(frame: pd.DataFrame, literal_text_columns: _LiteralTextColumns = ()) -> pd.DataFrame:
     """
     Parse text in the date columns (``_date``, ``CreationDate``, ``EditDate``) into datetimes.
 
@@ -398,7 +401,7 @@ def _parse_date_text(frame: pd.DataFrame, literal_text_columns: tuple = ()) -> p
     """
     frame = frame.copy()
     for column in _DATE_COLUMNS:
-        if (column in frame.columns and column not in literal_text_columns
+        if (column in frame.columns and (isinstance(literal_text_columns, dict) or column not in literal_text_columns)
                 and not pd.api.types.is_datetime64_any_dtype(frame[column])):
             frame[column] = pd.to_datetime(frame[column], format='mixed', errors='coerce', utc=True)
     return frame
@@ -421,7 +424,7 @@ def _quiet_openpyxl():
 def _read_file_table(
         source: FormSource,
         stem: str,
-        literal_text_columns: tuple = ()
+        literal_text_columns: _LiteralTextColumns = ()
 ) -> pd.DataFrame:
     """
     Read one table from a one-file-per-table source (CSV, Parquet, Feather, or GeoJSON).
@@ -451,8 +454,7 @@ def _read_file_table(
                 path, usecols=lambda name: name in literal_text_columns,
                 dtype=str, keep_default_na=False, na_filter=False,
             )
-            for column in literal:
-                frame[column] = literal[column]
+            return _store_literal_text(frame, literal, literal_text_columns)
         return frame
     if source.kind == _GEOJSON_FOLDER:
         return _read_geojson_file(path, literal_text_columns)
@@ -471,7 +473,7 @@ def _read_file_table(
     return _as_csv_would(frame, literal_text_columns)
 
 
-def _read_geojson_file(path: str, literal_text_columns: tuple = ()) -> pd.DataFrame:
+def _read_geojson_file(path: str, literal_text_columns: _LiteralTextColumns = ()) -> pd.DataFrame:
     """
     Read one GeoJSON table file.
 
@@ -498,7 +500,7 @@ def _read_geojson_file(path: str, literal_text_columns: tuple = ()) -> pd.DataFr
 def _read_ogr_table(
         source: FormSource,
         stem: str,
-        literal_text_columns: tuple = ()
+        literal_text_columns: _LiteralTextColumns = ()
 ) -> pd.DataFrame:
     """
     Read one table (layer) from a geodatabase or GeoPackage source.
@@ -537,7 +539,7 @@ def _read_ogr_table(
 def _read_sqlite_table(
         source: FormSource,
         stem: str,
-        literal_text_columns: tuple = ()
+        literal_text_columns: _LiteralTextColumns = ()
 ) -> pd.DataFrame:
     """
     Read one table from a plain SQLite source.
@@ -571,13 +573,13 @@ def _read_sqlite_table(
             frame = pd.read_sql_query('select * from "' + name.replace('"', '""') + '"', connection)
     except Exception as exc:
         raise ValueError(f"Cannot read table '{name}' from {path}: {exc}") from exc
-    return _as_csv_would(_parse_date_text(frame, literal_text_columns), literal_text_columns)
+    return _as_csv_would(frame, literal_text_columns, parse_dates=True)
 
 
 def _read_workbook_table(
         source: FormSource,
         stem: str,
-        literal_text_columns: tuple = ()
+        literal_text_columns: _LiteralTextColumns = ()
 ) -> pd.DataFrame:
     """
     Read one table (sheet) from a workbook source.
@@ -606,6 +608,7 @@ def _read_workbook_table(
         )
     path, name = holders[0]
     print(f"\tGetting DataFrame from Excel sheet '{name}' at: {path}")
+    literal = {}
     try:
         with _quiet_openpyxl():
             frame = pd.read_excel(path, sheet_name=name, header=0, engine='openpyxl')
@@ -615,11 +618,9 @@ def _read_workbook_table(
                     usecols=lambda column: column in literal_text_columns,
                     dtype=str, keep_default_na=False, na_filter=False,
                 )
-                for column in literal:
-                    frame[column] = literal[column]
     except Exception as exc:
         raise ValueError(f"Cannot read sheet '{name}' from {path}: {exc}") from exc
-    return _as_csv_would(frame, literal_text_columns)
+    return _store_literal_text(_as_csv_would(frame), literal, literal_text_columns)
 
 
 def _sheet_names(workbook: str) -> tuple:
@@ -667,6 +668,25 @@ def _sqlite_table_names(path: str) -> tuple:
     except sqlite3.Error as exc:
         raise ValueError(f'Cannot open SQLite file {path}: {exc}') from exc
     return tuple(row[0] for row in rows)
+
+
+def _store_literal_text(
+        frame: pd.DataFrame,
+        literal: pd.DataFrame | dict[str, pd.Series],
+        columns: _LiteralTextColumns
+) -> pd.DataFrame:
+    """
+    Store exact source text in the original fields or in separately named columns.
+
+    :param frame: Table with ordinary format-specific parsing already applied.
+    :param literal: Source text fields read in the same row order as the table.
+    :param columns: Field names to replace, or mapping from source name to a separate output name.
+    :return: Table with the literal text fields attached.
+    """
+    for column in literal:
+        name = columns[column] if isinstance(columns, dict) else column
+        frame[name] = literal[column].astype('string').array
+    return frame
 
 
 def _table_files(source: FormSource, stem: str) -> list:
@@ -788,7 +808,7 @@ def read_table(
         source: Union[str, FormSource],
         stem: str,
         required: bool = True,
-        literal_text_columns: tuple = ()
+        literal_text_columns: _LiteralTextColumns = ()
 ) -> Optional[pd.DataFrame]:
     """
     Read one table of a Survey123 form.
@@ -796,7 +816,7 @@ def read_table(
     :param source: A resolved FormSource, or the path to a form folder.
     :param stem: Table name without extension (for example 'survey_0').
     :param required: If True, a missing table raises FileNotFoundError; if False, None is returned.
-    :param literal_text_columns: Columns preserved as text without numeric or missing-token inference.
+    :param literal_text_columns: Fields preserved as text in place, or a mapping to separate output columns.
     :return: DataFrame with the table data, or None when the table is absent and not required.
     """
     source = ensure_form_source(source)

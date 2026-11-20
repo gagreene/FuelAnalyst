@@ -3,6 +3,7 @@ from copy import deepcopy
 import importlib
 import logging
 from pathlib import Path
+import shutil
 
 import pandas as pd
 import pytest
@@ -103,6 +104,55 @@ def test_fofem_consumption_uses_private_evidence_without_exported_conpyro_fields
     assert 'conpyro_live_trees_present' not in source
 
 
+@pytest.mark.parametrize(('parent_case', 'diagnostic'), [
+    ('missing_folder', 'Input folder'),
+    ('missing_table', 'parent table is missing'),
+    ('empty_table', 'parent table is empty'),
+    ('other_parent', 'parent row is missing'),
+    ('matched_parent', 'parent row is missing'),
+])
+def test_inventory_reports_selected_plots_without_tree_parent(tmp_path, caplog, parent_case, diagnostic):
+    api = importlib.import_module('fuel_analyst.fuel_analyst')
+    examples = Path(__file__).resolve().parents[2] / 'examples/data/Survey123_Data'
+    source = tmp_path / 'source'
+    plot_folder = source / '1_Plot_Attributes'
+    plot_folder.mkdir(parents=True)
+    plots = pd.read_csv(examples / '1_Plot_Attributes/survey_0.csv').iloc[:3].copy()
+    plots['form_select'] = ['trees', 'trees', '']
+    plots.to_csv(plot_folder / 'survey_0.csv', index=False)
+    expected = helper.get_unique_id(plots).unique_id.tolist()[:2]
+    if parent_case != 'missing_folder':
+        tree_folder = source / '3_Trees'
+        shutil.copytree(examples / '3_Trees', tree_folder)
+        parent_path = tree_folder / 'survey_0.csv'
+        parents = pd.read_csv(parent_path)
+        if parent_case == 'missing_table':
+            parent_path.unlink()
+        elif parent_case == 'empty_table':
+            parents.iloc[:0].to_csv(parent_path, index=False)
+        elif parent_case == 'other_parent':
+            parents.iloc[[2]].to_csv(parent_path, index=False)
+        else:
+            parents.iloc[[0]].to_csv(parent_path, index=False)
+            for repeat_path in tree_folder.glob('*.csv'):
+                if repeat_path != parent_path:
+                    repeats = pd.read_csv(repeat_path)
+                    repeats.loc[repeats['ParentGlobalID'].eq(parents.GlobalID.iloc[0])].to_csv(repeat_path, index=False)
+            expected = expected[1:]
+    output = tmp_path / 'out'
+    api.fuel_analyst(str(source), str(output), 'Byram')
+    codes = {'form_folder_missing', 'id_missing_from_form', 'fofem_gui_missing_tree_parent'}
+    issues = [r for r in caplog.records if getattr(r, 'issue_code', '') in codes]
+    assert [r.unique_id for r in issues] == expected
+    assert all(r.levelno == logging.WARNING and diagnostic in r.message for r in issues)
+    code = 'form_folder_missing' if parent_case == 'missing_folder' else 'id_missing_from_form'
+    assert all(r.issue_code == code for r in issues)
+    if parent_case == 'matched_parent':
+        master = pd.read_csv(output / 'master_tree_df.csv')
+        assert set(master['unique_id']) == set(helper.get_unique_id(plots).unique_id.iloc[:1])
+        assert master['dens_ha'].notna().any()
+
+
 def test_legacy_density_remains_usable_without_form_select_or_presence_marker():
     source = _model_frame()
     expected, _ = ca.gen_conpyro_df(source, deepcopy(default_conpyro_dict))
@@ -140,7 +190,6 @@ def test_partial_tree_parent_coverage_keeps_gui_warning_with_model_outputs(monke
 
 
 def test_pre_read_parent_is_passed_once_with_literal_protocol(monkeypatch, tmp_path):
-    import shutil
     api = importlib.import_module('fuel_analyst.fuel_analyst')
     source = tmp_path / 'source'
     tree_source = Path(__file__).resolve().parents[2] / 'examples/data/Survey123_Data/3_Trees'
@@ -163,7 +212,7 @@ def test_pre_read_parent_is_passed_once_with_literal_protocol(monkeypatch, tmp_p
     monkeypatch.setattr(api.table_reader, 'read_table', counted)
     config = {'protocol_column': 'sampling_protocol', 'protocol_overrides': {'001': {}}}
     api.fuel_analyst(str(source), str(tmp_path / 'out'), 'Byram', tree_sampling_params=config)
-    assert reads == [('sampling_protocol',)]
+    assert len(reads) == 1 and 'sampling_protocol' in reads[0]
     master = pd.read_csv(tmp_path / 'out/master_fuel_df.csv')
     assert not {'conpyro_live_trees_present', 'conpyro_live_tree_density'} & set(master.columns)
     assert master.filter(regex='stand_dens_').notna().any(axis=None)
