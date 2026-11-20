@@ -22,6 +22,25 @@ def _run(module, tmp_path, rows, curing=60, sros='use_csv'):
     return pd.read_csv(tmp_path / 'out/fire_behavior/conpyro_results.csv').set_index('unique_id')
 
 
+@pytest.mark.parametrize('column', ['temp', 'rh'])
+def test_cheney_requires_air_temperature_and_humidity_columns(run_conpyro_module, tmp_path, column):
+    row = _open_row(model=32)
+    del row[column]
+
+    with pytest.raises(ValueError, match=f'Columns required by ConPyro.*{column}'):
+        _run(run_conpyro_module, tmp_path, [row])
+
+
+@pytest.mark.parametrize('model', [32, 33, 34])
+def test_cheney_surface_models_run_on_grass(run_conpyro_module, tmp_path, model):
+    result = _run(run_conpyro_module, tmp_path, [_open_row(model=model)]).loc['grass_herbs']
+
+    assert result['sros_model'] == model
+    assert result['fire_type'] == 1
+    assert np.isfinite(result['sros']) and result['sros'] > 0
+    assert np.isfinite(result['hfi']) and result['hfi'] > 0
+
+
 @pytest.mark.parametrize('curing', [True, None, -1, 101, float('nan'), 'bad'])
 def test_grass_curing_rejects_invalid_settings(run_conpyro_module, tmp_path, curing):
     with pytest.raises(ValueError, match='grass_curing'):
@@ -144,3 +163,13 @@ def test_unassigned_surface_models_write_empty_results_and_report(run_conpyro_mo
     assert result.empty
     report = pd.read_csv(tmp_path / 'out/run_conpyro_errors.csv')
     assert report.unique_id.tolist() == ['unclassified']
+
+
+@pytest.mark.parametrize('stand_code, model', [(20, 32), (21, 33), (22, 34)])
+def test_wheat_stand_codes_survive_mixed_stand_csv_input(run_conpyro_module, tmp_path, stand_code, model):
+    forest = dict(ROW, sros_model=13)
+    wheat = dict(_open_row(category='wheat', model=model), stand_type=stand_code)
+    result = _run(run_conpyro_module, tmp_path, [forest, wheat]).loc['wheat']
+
+    assert result['fire_type'] == 1
+    assert np.isfinite(result['sros']) and result['sros'] > 0

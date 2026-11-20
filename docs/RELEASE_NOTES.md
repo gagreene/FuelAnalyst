@@ -1,5 +1,13 @@
 # Release notes
 
+## Unreleased
+
+- Refresh vendored ConPyro to v0.3.0. The engine adds Cheney grass and wheat spread models and revises forest moisture handling when stand or weather context is incomplete. FuelAnalyst derives the default moisture season from the weather date.
+
+### Breaking changes and action needed
+
+- **Use NumPy 2.0 or later.** ConPyro 0.3.0 requires it. Update environments that still use NumPy 1.x and install compatible builds of the scientific dependencies.
+
 ## 0.5.0
 
 This is a minor release: protocol-aware tree sampling, automatic surface-model selection, the ConPyro update, and Trees form metadata change inputs, results, and documented behaviour. Review the migration steps and model assumptions before reusing existing inputs or comparing results with earlier releases.
