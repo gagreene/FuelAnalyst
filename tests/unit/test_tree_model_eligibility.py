@@ -84,6 +84,20 @@ def test_fofem_drops_unknown_but_keeps_confirmed_absence_with_sampling_issue():
     assert result.iloc[1][['CrownFoliage', 'CrownBranch']].eq(0).all()
 
 
+def test_fofem_retains_measured_canopy_when_live_tree_density_is_zero():
+    frame = pd.concat([_make_consumption_input_df()] * 4, ignore_index=True)
+    frame['unique_id'] = ['live', 'dead', 'empty', 'unticked']
+    frame['form_select'] = ['trees', 'trees', 'trees', 'plants woody']
+    frame['_tree_parent_present'] = True
+    frame['conpyro_live_trees_present'] = [True, False, False, True]
+    frame['_trees_confirmed_absent'] = [False, False, True, False]
+    settings = {'region': 'West', 'season': 'Summer', 'moisture_regime': 'Dry',
+                'soil_heating': {'use_soil_heating': False}}
+    result = gen_fofem_consumption_df(frame, settings).set_index('#PlotId')
+    assert result['CrownBranch'].to_dict() == {'live': 0.5, 'dead': 0.5, 'empty': 0., 'unticked': 0.}
+    assert result['CrownFoliage'].to_dict() == {'live': 0.4, 'dead': 0.4, 'empty': 0., 'unticked': 0.}
+
+
 @pytest.mark.parametrize('flags', [('N', 'N', 'N'), ('Y', 'N', 'N')])
 def test_sampling_exclusion_respects_explicit_absence(flags):
     parents = pd.DataFrame({'GlobalID': ['p'], 'unique_id': ['plot'],
@@ -107,19 +121,20 @@ def test_tree_processor_preserves_absence_with_invalid_protocol_and_masks_unknow
     from pathlib import Path
     from fuel_analyst.fuel_analyst import default_stand_summary_dict
     schema = Path(__file__).resolve().parents[2] / 'examples/data/Survey123_Data/3_Trees'
-    parents = pd.concat([pd.read_csv(schema / 'survey_0.csv').iloc[[0]]] * 3, ignore_index=True)
-    parents['GlobalID'] = ['live', 'absent', 'unknown']
-    parents['plot_id'] = [1, 2, 3]
+    parents = pd.concat([pd.read_csv(schema / 'survey_0.csv').iloc[[0]]] * 4, ignore_index=True)
+    parents['GlobalID'] = ['live', 'absent', 'unknown', 'retained']
+    parents['plot_id'] = [1, 2, 3, 4]
     parents['form_select'] = 'trees'
-    parents['sampling_protocol'] = ['CWC', 'invalid', 'invalid']
-    parents['tree_large_present'] = ['Y', 'N', 'Y']
+    parents['sampling_protocol'] = ['CWC', 'invalid', 'invalid', 'CWC']
+    parents['tree_large_present'] = ['Y', 'N', 'Y', 'N']
     parents['tree_small_present'] = 'N'
     parents['sapling_present'] = 'N'
-    direct = pd.concat([pd.read_csv(schema / 'tree_plot_2.csv').iloc[[0]]] * 2, ignore_index=True)
-    direct['GlobalID'] = ['r1', 'r2']
-    direct['ParentGlobalID'] = ['live', 'unknown']
+    direct = pd.concat([pd.read_csv(schema / 'tree_plot_2.csv').iloc[[0]]] * 3, ignore_index=True)
+    direct['GlobalID'] = ['r1', 'r2', 'r3']
+    direct['ParentGlobalID'] = ['live', 'unknown', 'retained']
     direct['tree_species'] = 'FDI'
-    direct['tree_status'] = 'L'
+    direct['tree_status'] = ['L', 'L', 'D']
+    direct['tree_dcy_class_cnfr'] = [1, 1, 3]
     direct['tree_dbh'] = 20.
     direct['tree_ht'] = 10.
     direct['tree_cbh'] = 2.
@@ -129,7 +144,8 @@ def test_tree_processor_preserves_absence_with_invalid_protocol_and_masks_unknow
     direct.to_csv(source / 'tree_plot_2.csv', index=False)
     pd.read_csv(schema / 'sapling_1.csv').iloc[:0].to_csv(source / 'sapling_1.csv', index=False)
     settings = {'protocol_column': 'sampling_protocol', 'protocol_overrides': {'CWC': {}}}
-    selected_ids = set(helper.get_unique_id(parents.copy()).unique_id.iloc[:2]) if uncollected_record else None
+    selected_ids = (set(helper.get_unique_id(parents.copy()).unique_id.iloc[[0, 1, 3]])
+                    if uncollected_record else None)
     with caplog.at_level(logging.ERROR):
         result, columns, _ = trees.process_trees(str(source), str(tmp_path / 'out'), 'Byram',
                                                  deepcopy(default_stand_summary_dict), export_conpyro, settings, selected_plot_ids=selected_ids)
@@ -138,10 +154,12 @@ def test_tree_processor_preserves_absence_with_invalid_protocol_and_masks_unknow
     assert bool(result.loc[1, presence_column])
     assert result.loc[2, presence_column] == False
     assert result.loc[2, '_trees_confirmed_absent']
+    assert result.loc[4, presence_column] == False
+    assert not result.loc[4, '_trees_confirmed_absent']
     assert pd.isna(result.loc[3, presence_column])
     assert result.loc[3, [c for c in columns if c in result]].isna().all()
     eligible, _ = helper.get_tree_model_eligibility(result)
-    assert eligible.tolist() == [True, True, False]
+    assert eligible.tolist() == [True, True, False, True]
     issues = [r for r in caplog.records if getattr(r, 'issue_code', '') == 'tree_sampling_invalid_protocol']
     assert len(issues) == (0 if uncollected_record else 1)
 

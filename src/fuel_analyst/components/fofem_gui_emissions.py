@@ -227,12 +227,10 @@ _BURNUP_PARAMS_694_TEMPLATE = """#MAX_TIMES 3000
 
 def _calc_fuel_moisture_content(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculate fuel moisture content columns and add them to the DataFrame.
+    Prepare fuel moisture for FOFEM emissions.
 
-    :param df: DataFrame with 'mc_sa', 'mc_dmc', and 'dc' columns; optional weather 'dmc'
-        and surface-type fields allow missing grass/shrub duff moisture to be derived.
-    :return: Copy with FOFEM moisture columns; grass/shrub rows without usable duff moisture
-        or weather DMC are omitted and logged by plot.
+    :param df: Burning scenarios with fire moisture and weather codes.
+    :return: Copy with FOFEM moisture columns for scenarios that pass the shared limits.
     """
     return fofem_moisture.calc_fuel_moisture_content(df, logger)
 

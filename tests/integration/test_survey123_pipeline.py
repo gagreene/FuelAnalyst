@@ -1,3 +1,4 @@
+import shutil
 import warnings
 from pathlib import Path
 
@@ -5,6 +6,7 @@ import pandas as pd
 import pytest
 
 from fuel_analyst.fuel_analyst import fuel_analyst
+from fuel_analyst.components import helper
 
 
 @pytest.mark.integration
@@ -44,7 +46,6 @@ def test_complete_survey123_pipeline_generates_owned_output_contracts(tmp_path):
     fofem_trees = pd.read_csv(output_dir / 'fofem_gui_app_tree_mortality_df.csv', low_memory=False)
 
     assert master['unique_id'].is_unique
-    from fuel_analyst.components import helper
     source_plots = helper.get_unique_id(pd.read_csv(input_dir / '1_Plot_Attributes/survey_0.csv'))
     unchecked_ids = set(source_plots.loc[~source_plots['form_select'].str.contains('trees', na=False), 'unique_id'])
     eligible = master['conpyro_live_trees_present'].notna() | master['unique_id'].isin(unchecked_ids)
@@ -93,3 +94,59 @@ def test_complete_survey123_pipeline_generates_owned_output_contracts(tmp_path):
     plot_rows = errors.loc[errors['unique_id'] != 'General Error']
     assert not plot_rows.empty
     assert plot_rows['plot_id'].notna().any()
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_rerun_retires_managed_tree_outputs_when_trees_are_unticked(tmp_path, monkeypatch):
+    input_dir = Path(__file__).resolve().parents[2] / 'examples/data/Survey123_Data'
+    reused_output = tmp_path / 'reused'
+    fresh_output = tmp_path / 'fresh'
+    second_input = tmp_path / 'without_trees'
+    shutil.copytree(input_dir, second_input, ignore=shutil.ignore_patterns('3_Trees'))
+    plots_path = second_input / '1_Plot_Attributes/survey_0.csv'
+    plots = pd.read_csv(plots_path)
+    plots['form_select'] = plots['form_select'].str.replace(r'\btrees\b', '', regex=True)
+    plots.to_csv(plots_path, index=False)
+    options = dict(surface_fire_intensity_model='Byram', gen_conpyro_df=True, gen_fofem_consume_df=True)
+
+    fuel_analyst(str(input_dir), str(reused_output), gen_fofem_gui_app_tree_df=True, **options)
+    master_name = 'master_tree_df.csv'
+    mortality_name = 'fofem_gui_app_tree_mortality_df.csv'
+    assert not pd.read_csv(reused_output / master_name).empty
+    assert not pd.read_csv(reused_output / mortality_name).empty
+    previous_master = (reused_output / master_name).read_bytes()
+    previous_mortality = (reused_output / mortality_name).read_bytes()
+    sentinel = reused_output / 'notes.txt'
+    sentinel.write_text('Keep analyst notes.', encoding='utf-8')
+
+    export_csv = helper.export_csv
+
+    def fail_consumption_export(df, path, *args, **kwargs):
+        if Path(path).name == 'fofem_consume_si_df.csv':
+            raise OSError('Consumption export failed')
+        return export_csv(df, path, *args, **kwargs)
+
+    with monkeypatch.context() as failure:
+        failure.setattr(helper, 'export_csv', fail_consumption_export)
+        with pytest.raises(OSError, match='Consumption export failed'):
+            fuel_analyst(str(second_input), str(reused_output), gen_fofem_gui_app_tree_df=True, **options)
+    assert (reused_output / master_name).read_bytes() == previous_master
+    assert (reused_output / mortality_name).read_bytes() == previous_mortality
+
+    for output_dir in (reused_output, fresh_output):
+        fuel_analyst(str(second_input), str(output_dir), gen_fofem_gui_app_tree_df=True, **options)
+        assert not (output_dir / master_name).exists()
+        assert not (output_dir / mortality_name).exists()
+
+    (reused_output / master_name).write_bytes(previous_master)
+    (reused_output / mortality_name).write_bytes(previous_mortality)
+    fuel_analyst(str(second_input), str(reused_output), gen_fofem_gui_app_tree_df=False, **options)
+    assert not (reused_output / master_name).exists()
+    assert (reused_output / mortality_name).read_bytes() == previous_mortality
+
+    assert sentinel.read_text(encoding='utf-8') == 'Keep analyst notes.'
+    reused = pd.read_csv(reused_output / 'conpyro_df.csv')
+    fresh = pd.read_csv(fresh_output / 'conpyro_df.csv')
+    assert not fresh.empty
+    pd.testing.assert_frame_equal(reused, fresh)

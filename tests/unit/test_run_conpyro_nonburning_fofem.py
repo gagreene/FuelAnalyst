@@ -91,6 +91,83 @@ def test_effects_keep_same_date_scenarios_distinct(run_conpyro_module, tmp_path,
         assert '_fofem_scenario_id' not in csv.read_text().partition('\n')[0]
 
 
+@pytest.mark.parametrize('backend', ['pyfofem', 'fof_gui'])
+def test_effects_preserve_burning_fire_rows_with_invalid_moisture(run_conpyro_module, tmp_path, monkeypatch, caplog, backend):
+    module = run_conpyro_module
+    source = tmp_path / 'fire.csv'
+    common = {'wx_date': 20240609, 'fire_type': 1, 'hfi': 60., 'flame_depth_m': 0.5,
+              'flame_res_time_sec': 60., 'instand_ws_mps': 2., 'temp': 20., 'cfb': 0.1}
+    fire = pd.DataFrame([
+        dict(common, unique_id='forest', stand_type='P', time=1100, ffmc=92.3, dmc=None, mc_dmc=None, mc_sa=10., dc=100.),
+        dict(common, unique_id='forest', stand_type='P', time=1200, ffmc=92.3, dmc=40., mc_dmc=20., mc_sa=10., dc=100.),
+        dict(common, unique_id='cheney grass', stand_type=10, time=1100, ffmc=None, dmc=40., mc_dmc=120., mc_sa=None, dc=100.),
+        dict(common, unique_id='cheney grass', stand_type=10, time=1200, ffmc=92.3, dmc=40., mc_dmc=120., mc_sa=10., dc=100.),
+        dict(common, unique_id='wheat', stand_type='wheat_baled', time=1100, dmc=15., mc_dmc=None, mc_sa=0., dc=-1.),
+        dict(common, unique_id='wheat', stand_type='wheat_baled', time=1110, dmc=15., mc_dmc=None, mc_sa=0., dc=-1.),
+        dict(common, unique_id='wheat', stand_type='wheat_baled', time=1200, dmc=28.493, mc_dmc=None, mc_sa=10., dc=0.),
+    ])
+    fire.to_csv(source, index=False)
+    consumption = tmp_path / module.fofem_units.consume_filename('SI')
+    pd.DataFrame([{
+        **dict.fromkeys(module.fofem_units.FOFEM_LOAD_COLUMNS, 0.),
+        '#PlotId': plot, 'DuffDepth': 0., 'fuel_bed_depth_m': 0.25,
+        'Region': 'InteriorWest', 'CoverGroup': 'GrassGroup', 'FuelCategory': 'Natural',
+        'Season': 'Summer', 'remove_hereafter': None,
+    } for plot in fire['unique_id'].unique()]).to_csv(consumption, index=False)
+
+    dispatches = []
+    if backend == 'pyfofem':
+        if 'pyfofem' not in sys.modules:
+            stub = types.ModuleType('pyfofem')
+            stub.pyfofem = types.SimpleNamespace()
+            monkeypatch.setitem(sys.modules, 'pyfofem', stub)
+        emissions = importlib.import_module('fuel_analyst.components.fofem_emissions')
+
+        def record_emissions(**kwargs):
+            dispatches.extend(kwargs['duff_moist'])
+            return {'test_emissions': kwargs['duff_moist']}
+
+        monkeypatch.setattr(emissions.fofem, 'run_fofem_emissions', record_emissions, raising=False)
+    else:
+        emissions = importlib.import_module('fuel_analyst.components.fofem_gui_emissions')
+
+        def record_emissions(row, out_dir, consume_model, emissions_units, fofem_dir):
+            dispatches.append(row['DuffMoisture'])
+            return {'test_emissions': row['DuffMoisture']}
+
+        monkeypatch.setattr(emissions, '_get_fofem_dir', lambda: str(tmp_path))
+        monkeypatch.setattr(emissions, '_model_emissions', record_emissions)
+
+    settings = make_params(module)
+    settings['conpyro']['run_model'] = False
+    settings['fofem_emissions'].update(run_model=True, model_select=backend, emissions_units='SI')
+    output = tmp_path / 'out'
+    module.run_conpyro(str(output), str(source), in_fofem_consume_csv_path=str(consumption), fire_modelling_params=settings)
+
+    result = pd.read_csv(output / 'conpyro_emissions_results.csv').set_index(['unique_id', 'time'])
+    assert len(result) == 7
+    assert result['hfi'].eq(60.).all()
+    assert pd.isna(result.loc[('forest', 1100), 'mc_dmc'])
+    assert pd.isna(result.loc[('cheney grass', 1100), 'mc_sa'])
+    assert result.loc[('wheat', 1100), 'mc_dmc'] == pytest.approx(218.230653)
+    assert result['test_emissions'].dropna().to_dict() == pytest.approx({
+        ('forest', 1200): 20., ('cheney grass', 1200): 120., ('wheat', 1200): 165.292276,
+    })
+    assert sorted(dispatches) == pytest.approx([20., 120., 165.292276])
+    warnings = [(r.unique_id, r.issue_code, r.getMessage()) for r in caplog.records if r.levelname == 'WARNING']
+    duff = ('FOFEM emissions skipped for affected scenarios. DuffMoisture must be finite and within 10–197.2%, '
+            'and its converted Burnup fraction must be within 0.1–1.972. Check mc_dmc or the weather DMC used to derive it.')
+    fine = ('FOFEM emissions skipped for affected scenarios. Final 10-hour moisture (mc_sa) must be finite and '
+            'within 3–298%. Check the modelled moisture or the supplied fire results.')
+    coarse = ('FOFEM emissions skipped for affected scenarios. Weather DC must be finite and nonnegative and must '
+              'yield 1000-hour moisture within 1–300%.')
+    assert sorted(warnings) == sorted([
+        ('forest', 'fofem_duff_moisture_invalid', duff), ('wheat', 'fofem_duff_moisture_invalid', duff),
+        ('cheney grass', 'fofem_10h_moisture_invalid', fine), ('wheat', 'fofem_10h_moisture_invalid', fine),
+        ('wheat', 'fofem_1000h_moisture_invalid', coarse),
+    ])
+
+
 def test_effects_remove_temporary_input_when_emissions_raises(run_conpyro_module, tmp_path, monkeypatch):
     module = run_conpyro_module
     source = tmp_path / 'fire.csv'

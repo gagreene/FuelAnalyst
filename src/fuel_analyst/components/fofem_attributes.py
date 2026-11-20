@@ -143,8 +143,8 @@ def gen_fofem_consumption_df(
     values are returned at full float precision; rounding is left to the specific consumer
     (e.g. the fof_gui batch-file writer) that actually requires it.
 
-    :param df: Plot data with collected Trees-parent and observation markers. Unknown
-        tree observations are omitted; confirmed all-N absence retains surface fuels.
+    :param df: Plot data with Trees observation markers. Eligible plots with dead trees
+        retain measured branch loads. Unknown tree inputs are omitted.
     :param fofem_consume_params: Dictionary of FOFEM consumption parameters, including region, season,
         moisture regime, soil heating options, and 'fofem_processing_units' ('SI' or 'Imperial';
         defaults to 'SI' when the key is absent).

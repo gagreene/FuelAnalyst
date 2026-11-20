@@ -12,7 +12,10 @@ import re
 import shutil
 import pandas as pd
 
-# Internal species/protocol exclusion marker set by trees.process_trees(); not exported to CSV.
+# The source columns that identify a plot within a survey year.
+PLOT_IDENTIFIER_COLUMNS = ('treatment_area', 'treatment_unit', 'treatment_type', 'plot_id')
+
+# Internal calculation exclusion marker set by trees.process_trees(); not exported to CSV.
 TREES_EXCLUDED_COLUMN = '_trees_excluded'
 
 
@@ -164,14 +167,14 @@ def get_repo_root(start_dir: str) -> str:
 
 def get_tree_excluded_plots(df: pd.DataFrame) -> pd.Series:
     """
-    Flag effective species/protocol exclusions after the explicit-absence exception.
+    Flag effective tree calculation exclusions after the explicit-absence exception.
 
     Trees marks calculation exclusions internally. Confirmed all-N absence bypasses a sampling exclusion,
     but never an unlisted-species exclusion. Unknown inputs must not become zero stand fuels.
 
     :param df: Plot-level DataFrame, which may carry the marker column from process_trees().
-    :return: Boolean Series aligned with df. True identifies a species exclusion or a sampling
-        exclusion without all-N absence; missing observations are classified separately.
+    :return: Boolean Series aligned with df. True identifies a species exclusion or an
+        exclusion without confirmed empty inventory; missing observations are classified separately.
     """
     if TREES_EXCLUDED_COLUMN not in df.columns:
         return pd.Series(False, index=df.index, dtype=bool)
@@ -200,19 +203,19 @@ def get_tree_model_eligibility(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     reason.loc[~eligible] = 'sampled tree observations do not establish live presence or covered zero-live absence'
     evidence = df.get('_tree_model_unknown_reason', pd.Series('', index=df.index)).fillna('')
     reason.loc[~eligible & evidence.ne('')] = evidence.loc[~eligible & evidence.ne('')]
-    reason.loc[excluded & selected] = 'tree inputs were excluded for a species or sampling issue'
+    reason.loc[excluded & selected] = 'tree inputs were excluded after a data validation error'
     reason.loc[~parent & selected & evidence.eq('')] = 'Trees parent row is missing'
     reason.loc[eligible] = ''
     return eligible, reason
 
 
-def get_unique_id(df: pd.DataFrame) -> pd.DataFrame:
+def get_unique_id(df: pd.DataFrame, keep_latest: bool = True) -> pd.DataFrame:
     """
     Build canonical plot identifiers and retain the latest duplicate survey record.
 
     :param df: Survey123 parent-form DataFrame containing identity and date fields.
-    :return: DataFrame with survey years, canonical unique IDs, and all but the
-        latest record for each duplicate ID removed.
+    :param keep_latest: Whether to discard older records for duplicate canonical IDs.
+    :return: DataFrame with survey years and canonical IDs, sorted by survey timestamp.
     """
     # Parse _date to datetime; try both known formats
     parsed = pd.to_datetime(df['_date'], format='%m/%d/%Y %H:%M', errors='coerce')
@@ -231,19 +234,19 @@ def get_unique_id(df: pd.DataFrame) -> pd.DataFrame:
         )
 
     df['year'] = parsed.dt.year
-    df['unique_id'] = df[['treatment_area', 'treatment_unit', 'treatment_type', 'plot_id', 'year']].apply(
+    df['unique_id'] = df[[*PLOT_IDENTIFIER_COLUMNS, 'year']].apply(
         lambda x: '_'.join(x.astype(str)), axis=1)
 
     # Sort by parsed datetime (not raw string) so keep='last' correctly retains most recent
-    df = df.assign(_date_parsed=parsed).sort_values(by='_date_parsed').drop_duplicates(subset='unique_id', keep='last')
-    df = df.drop(columns=['_date_parsed'])
-
-    return df
+    df = df.assign(_date_parsed=parsed).sort_values(by='_date_parsed')
+    if keep_latest:
+        df = df.drop_duplicates(subset='unique_id', keep='last')
+    return df.drop(columns=['_date_parsed'])
 
 
 def log_tree_model_issues(df: pd.DataFrame, eligible: pd.Series, reasons: pd.Series) -> None:
     """
-    Report unresolved sampled Trees once, retaining existing species/protocol errors.
+    Report unresolved sampled Trees once, retaining existing calculation errors.
 
     :param df: Model-source rows containing canonical plot identities.
     :param eligible: Boolean eligibility mask aligned with df.
@@ -267,8 +270,8 @@ def prepare_tree_model_inputs(df: pd.DataFrame, log_issues: bool = True) -> pd.D
 
     :param df: Merged plot data; the original inventory is never modified.
     :param log_issues: Whether to report unknown observations omitted by this preparation.
-    :return: Model copy with unknown sampled Trees omitted and surface-only tree
-        attributes set to zero. Unticked Trees ignores all stale tree values.
+    :return: Model copy with unknown sampled Trees omitted and surface-only fire behavior
+        attributes set to zero. Consumption retains measured crown loads when Trees is selected.
     """
     from . import error_handling
 
@@ -305,12 +308,18 @@ def prepare_tree_model_inputs(df: pd.DataFrame, log_issues: bool = True) -> pd.D
         'conpyro_cfl_midstry', 'conpyro_cbd_midstry', 'conpyro_dead_branch_fl_midstry',
         'conpyro_ht_ovrstry_live', 'conpyro_ht_midstry_live', 'conpyro_ht_midstry_dead',
         'conpyro_cbh_ovrstry', 'conpyro_cbh_midstry', 'conpyro_fsg',
-        'stand_foliage_fofem_kgpm2_sum', 'stand_branches_fofem_kgpm2_sum',
     ]
     for column in fields:
         if column not in result:
             result[column] = pd.Series(float('nan'), index=result.index)
         result.loc[surface, column] = 0.
+    canopy_absent = ignored | result.get(
+        '_trees_confirmed_absent', pd.Series(False, index=result.index),
+    ).fillna(False).astype(bool)
+    for column in ['stand_foliage_fofem_kgpm2_sum', 'stand_branches_fofem_kgpm2_sum']:
+        if column not in result:
+            result[column] = pd.Series(float('nan'), index=result.index)
+        result.loc[canopy_absent, column] = 0.
     for index in range(1, 7):
         code, percent = f'SPECIES_CD_{index}', f'SPECIES_PCT_{index}'
         if code not in result:
@@ -342,4 +351,3 @@ def sort_list(lst: list) -> list:
                 for text in re.split(r'(\d+)', key)]
 
     return sorted(lst, key=alphanum_key)
-

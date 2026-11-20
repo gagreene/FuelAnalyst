@@ -7,6 +7,7 @@ Created on Tue May 28, 15:00:00 2025
 __author__ = ['Gregory A. Greene']
 
 import os
+from pathlib import Path
 import pandas as pd
 from typing import Optional
 
@@ -137,18 +138,27 @@ def _find_id_mismatches(plot_ids, form_ids) -> tuple[list, list]:
     return missing_from_form, extra_in_form
 
 
-def _log_missing_tree_mortality_inputs(plot_ids: list, reason: str) -> None:
+def _log_missing_tree_parents(plot_ids: list, reason: str, report_gui: bool, report_inventory: bool) -> None:
     """
-    Report requested GUI mortality inputs that lack a matching Trees parent.
+    Report selected plots that lack a matching Trees parent.
 
     :param plot_ids: Canonical plot identities that selected Trees.
     :param reason: Missing, empty, or unmatched parent-table explanation.
-    :return: None. Logs one warning per affected plot before skipping GUI input generation.
+    :param report_gui: Whether the run requested FOFEM GUI tree mortality inputs.
+    :param report_inventory: Whether the run requested inventory only.
+    :return: None. Logs one Trees warning per affected plot for GUI or inventory requests.
     """
+    if report_gui:
+        message = 'FOFEM GUI tree-mortality input was not generated: %s.'
+        code = 'fofem_gui_missing_tree_parent'
+    elif report_inventory:
+        message = '%s; the selected plot will have no Trees data.'
+        code = 'id_missing_from_form'
+    else:
+        return
     for unique_id in dict.fromkeys(plot_ids):
         error_handling.get_logger('trees').warning(
-            'FOFEM GUI tree-mortality input was not generated: %s.', reason,
-            extra={'unique_id': unique_id, 'issue_code': 'fofem_gui_missing_tree_parent'},
+            message, reason, extra={'unique_id': unique_id, 'issue_code': code},
         )
 
 
@@ -370,6 +380,7 @@ def fuel_analyst(
     keep_columns.extend(add_columns)
 
     report_gui_parent_issues = gen_fofem_gui_app_tree_df
+    inventory_only = not (gen_conpyro_df or gen_fofem_consume_df or report_gui_parent_issues)
 
     # Process selected forms
     for form in form_select_list:
@@ -390,7 +401,7 @@ def fuel_analyst(
         form_source = get_form_source(form)
         if form_source is None:
             if form == 'trees' and report_gui_parent_issues:
-                _log_missing_tree_mortality_inputs(id_list, 'Trees parent folder is missing')
+                _log_missing_tree_parents(id_list, 'Trees parent folder is missing', True, False)
                 continue
             if form == 'trees' and (gen_conpyro_df or gen_fofem_consume_df):
                 continue  # The shared model-eligibility check reports missing Trees once per plot.
@@ -407,21 +418,19 @@ def fuel_analyst(
             if form == 'plants':
                 form_df, add_columns = pr.process_plants_regen(form_source, out_path)
             elif form == 'trees':
-                if not table_reader.has_table(form_source, 'survey_0'):
-                    if report_gui_parent_issues:
-                        _log_missing_tree_mortality_inputs(id_list, 'Trees parent table is missing')
-                    continue
                 protocol_column = tree_sampling_params['protocol_column']
-                literal_columns = (protocol_column,) if protocol_column is not None else ()
-                tree_parents = table_reader.read_table(form_source, 'survey_0', literal_text_columns=literal_columns)
-                if tree_parents.empty:
-                    if report_gui_parent_issues:
-                        _log_missing_tree_mortality_inputs(id_list, 'Trees parent table is empty')
+                tree_parents = trees.read_tree_parents(form_source, protocol_column, required=False)
+                if tree_parents is None:
+                    _log_missing_tree_parents(id_list, 'Trees parent table is missing', report_gui_parent_issues, inventory_only)
                     continue
-                parent_ids = helper.get_unique_id(tree_parents)['unique_id']
+                if tree_parents.empty:
+                    _log_missing_tree_parents(id_list, 'Trees parent table is empty', report_gui_parent_issues, inventory_only)
+                    continue
+                parent_ids = trees.identify_tree_parents(tree_parents)['unique_id']
                 if not parent_ids.isin(id_list).any():
-                    if report_gui_parent_issues:
-                        _log_missing_tree_mortality_inputs(id_list, 'Trees parent identifiers do not match the selected plots')
+                    reason = ('Trees parent identifiers do not match the selected plots' if report_gui_parent_issues
+                              else 'Trees parent row is missing')
+                    _log_missing_tree_parents(id_list, reason, report_gui_parent_issues, inventory_only)
                     continue
                 (form_df, add_columns,
                  master_tree_df) = trees.process_trees(form_source,
@@ -451,12 +460,12 @@ def fuel_analyst(
             )
             if missing_from_form or extra_in_form:
                 print(f'\tWarning:')
+                if form == 'trees':
+                    _log_missing_tree_parents(
+                        missing_from_form, 'Trees parent row is missing', report_gui_parent_issues, inventory_only,
+                    )
+                    missing_from_form = []
                 for missing_id in missing_from_form:
-                    if form == 'trees' and report_gui_parent_issues:
-                        _log_missing_tree_mortality_inputs([missing_id], 'Trees parent row is missing')
-                        continue
-                    if form == 'trees' and (gen_conpyro_df or gen_fofem_consume_df):
-                        continue
                     error_handling.get_logger(form).warning(
                         f'Plot is in the Plot Attributes dataset but not in {form_dict[form]}.',
                         extra={'unique_id': missing_id, 'issue_code': 'id_missing_from_form'},
@@ -510,8 +519,8 @@ def fuel_analyst(
     error_handling.write_report(error_report_path, plot_df=plot_df)
 
     # Save the Master Tree DataFrame to the output folder if it exists
+    master_tree_df_path = os.path.join(out_dir, 'master_tree_df.csv')
     if master_tree_df is not None:
-        master_tree_df_path = os.path.join(out_dir, 'master_tree_df.csv')
         print(f'Saving the Master Tree DataFrame to: {master_tree_df_path}')
         helper.export_csv(master_tree_df, master_tree_df_path)
 
@@ -527,8 +536,8 @@ def fuel_analyst(
         helper.export_csv(fbp_prep_df, fbp_df_path)
 
     # Save the FOFEM GUI App Tree Mortality DataFrame to the output folder if it exists
+    fofem_tree_df_path = os.path.join(out_dir, 'fofem_gui_app_tree_mortality_df.csv')
     if fofem_tree_df is not None:
-        fofem_tree_df_path = os.path.join(out_dir, 'fofem_gui_app_tree_mortality_df.csv')
         print(f'Saving the FOFEM GUI App Tree Mortality DataFrame to: {fofem_tree_df_path}')
         helper.export_csv(fofem_tree_df, fofem_tree_df_path)
 
@@ -537,6 +546,12 @@ def fuel_analyst(
         fofem_consume_df_path = os.path.join(out_dir, fofem_units.consume_filename(fofem_processing_units))
         print(f'Saving the FOFEM Consumption DataFrame to: {fofem_consume_df_path}')
         helper.export_csv(fofem_consume_df, fofem_consume_df_path)
+
+    # Retire outputs that a successful run with these options would omit.
+    if master_tree_df is None:
+        Path(master_tree_df_path).unlink(missing_ok=True)
+    if gen_fofem_gui_app_tree_df and fofem_tree_df is None:
+        Path(fofem_tree_df_path).unlink(missing_ok=True)
 
     return
 

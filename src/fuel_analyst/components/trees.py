@@ -546,7 +546,26 @@ def _calc_stand_attributes(
 
     # Initialize a list of keep columns for the final master DataFrame
     keep_columns = []
-    confirmed_absence = _get_tree_absence(df).all(axis=1)
+    retained = _get_retained_dead_mask(tree_df)
+    has_retained = retained.any()
+    confirmed_absence = _get_tree_absence(df).all(axis=1) & ~df['GlobalID'].isin(tree_df.loc[retained, 'ParentGlobalID'])
+    live_presence = df.get('_tree_live_trees_present', pd.Series(pd.NA, index=df.index))
+    no_live_trees = live_presence.eq(False).fillna(False)
+    additive = {'dens', 'ba', 'cfl', 'foliage', 'branches', 'wood', 'bark', 'foliage_fofem', 'branches_fofem'}
+
+    def sum_stand_values(records: pd.DataFrame, column: str) -> pd.Series:
+        """
+        Sum observations and preserve missing contributions from retained dead stems.
+
+        :param records: Tree records matching the current summary and size class.
+        :param column: Per-area measurement to sum.
+        :return: Per-parent totals, missing when a retained stem's contribution is unknown.
+        """
+        value = records.groupby('ParentGlobalID')[column].sum()
+        if has_retained:
+            missing = retained.loc[records.index] & records[column].isna()
+            value = value.mask(value.index.isin(records.loc[missing, 'ParentGlobalID']))
+        return value
 
     for att_name, att_dict in stand_summary_params.items():
         att = att_dict.get('att_source', att_name)
@@ -575,11 +594,14 @@ def _calc_stand_attributes(
         summary_permutations = get_permutations(summary_list, summary_permutation)
         for summary in summary_permutations:
             summary_mask = get_summary_mask(tree_df, summary)
+            zero_sum = confirmed_absence
+            if att in {'dens', 'ba'} and 'live' in summary.split('_'):
+                zero_sum = confirmed_absence | no_live_trees
             if att != 'cbd':
                 for metric in metrics:
                     unweight = False
                     if metric == 'sum':
-                        value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].sum()
+                        value = sum_stand_values(tree_df[summary_mask], f'tree_{att}{ext}')
                     elif metric == 'min':
                         if att in attribute_weighting_dict.keys():
                             value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_{att}'].min()
@@ -591,7 +613,7 @@ def _calc_stand_attributes(
                         else:
                             value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].max()
                     elif metric == 'mean':
-                        value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].sum()
+                        value = sum_stand_values(tree_df[summary_mask], f'tree_{att}{ext}')
                         unweight = True
                     else:
                         continue
@@ -606,8 +628,8 @@ def _calc_stand_attributes(
                     else:
                         colname = f'stand_{att_name}{units}_{summary}_{metric}'.replace('_total', '')
                     new_columns[colname] = df.GlobalID.map(value)
-                    if metric == 'sum' and att in ['dens', 'ba', 'cfl', 'foliage', 'branches', 'wood', 'bark']:
-                        new_columns[colname] = new_columns[colname].mask(confirmed_absence, 0.)
+                    if metric == 'sum' and att in additive:
+                        new_columns[colname] = new_columns[colname].mask(zero_sum, 0.)
             else:
                 # Get sum of cfl values by plot
                 value = tree_df[summary_mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum()
@@ -638,7 +660,7 @@ def _calc_stand_attributes(
                         for metric in metrics:
                             unweight = False
                             if metric == 'sum':
-                                value = tree_df[mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].sum()
+                                value = sum_stand_values(tree_df[mask], f'tree_{att}{ext}')
                             elif metric == 'min':
                                 if att in attribute_weighting_dict.keys():
                                     value = tree_df[mask].groupby('ParentGlobalID')[f'tree_{att}'].min()
@@ -650,7 +672,7 @@ def _calc_stand_attributes(
                                 else:
                                     value = tree_df[mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].max()
                             elif metric == 'mean':
-                                value = tree_df[mask].groupby('ParentGlobalID')[f'tree_{att}{ext}'].sum()
+                                value = sum_stand_values(tree_df[mask], f'tree_{att}{ext}')
                                 unweight = True
                             else:
                                 continue
@@ -665,8 +687,8 @@ def _calc_stand_attributes(
                             else:
                                 colname = f'stand_{att_name}{units}_{summary}_{class_label}_{metric}'.replace('_total', '')
                             new_columns[colname] = df.GlobalID.map(value)
-                            if metric == 'sum' and att in ['dens', 'ba', 'cfl', 'foliage', 'branches', 'wood', 'bark']:
-                                new_columns[colname] = new_columns[colname].mask(confirmed_absence, 0.)
+                            if metric == 'sum' and att in additive:
+                                new_columns[colname] = new_columns[colname].mask(zero_sum, 0.)
                     else:
                         value = tree_df[mask].groupby('ParentGlobalID')[f'tree_cfl_cnbe_ha'].sum()
                         # Unweight values
@@ -888,8 +910,8 @@ def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> p
 
     For each species and component, applies the appropriate decay reduction factor and allometric parameters.
     Uses measured height for live/less decayed trees, and modeled height for dead/more decayed trees.
-    A tree missing DBH or the applicable height (measured for live/less decayed, modeled for
-    dead/more decayed) is excluded entirely and contributes zero biomass for every component.
+    Unquantifiable biomass stays missing for retained dead stems. Other trees missing DBH or
+    the applicable height keep the ordinary zero contribution.
 
     :param tree_df: DataFrame with tree attributes, including species, DBH, height, density, and decay class.
     :param tree_params_df: DataFrame with species-specific allometric parameters.
@@ -897,9 +919,9 @@ def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> p
     """
     print('\tCalculating tree biomass (wood, bark, branches, foliage) using '
           'the Canadian National Biomass Equations (CNBE)')
-    # Initialize biomass columns to zero
-    for col in ['tree_wood_cnbe_ha', 'tree_bark_cnbe_ha', 'tree_branches_cnbe_ha', 'tree_foliage_cnbe_ha']:
-        tree_df[col] = 0.0
+    retained = _get_retained_dead_mask(tree_df)
+    for component in tree_component_list:
+        tree_df[f'tree_{component}_cnbe_ha'] = np.where(retained, np.nan, 0.)
 
     spp_list = [n for n in tree_df['tree_species'].unique() if not pd.isnull(n)]
 
@@ -917,6 +939,9 @@ def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> p
     for spp in spp_list:
         # Select decay class dictionary based on species type
         decay_dict = tree_conifer_decay_class_dict if spp in conifer_species else tree_broadleaf_decay_class_dict
+        valid_decay = tree_df['tree_dcy_class'].isin(decay_dict)
+        valid_retained_live = ~retained | (valid_decay & np.isfinite(tree_df['tree_ht']))
+        valid_retained_dead = ~retained | (valid_decay & np.isfinite(tree_df['tree_ht_modeled']))
         for component in tree_component_list:
             comp_idx = tree_component_index_dict[component]
             param1 = tree_params_df.loc[spp, f'BIOMASS_CNBE_DBH-HT_B{component}1']
@@ -936,7 +961,7 @@ def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> p
                 ((tree_df.tree_dcy_class_cnfr < _DEAD_DECAY_THRESHOLD_CONIFER) |
                  (tree_df.tree_dcy_class_brdlf < _DEAD_DECAY_THRESHOLD_BROADLEAF)) &
                 (tree_df.tree_dbh > 0) &
-                (tree_df.tree_ht > 0)
+                (tree_df.tree_ht > 0) & valid_retained_live
             )
             mask_dead = (
                 (tree_df.tree_species == spp) &
@@ -944,7 +969,7 @@ def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> p
                 ((tree_df.tree_dcy_class_cnfr >= _DEAD_DECAY_THRESHOLD_CONIFER) |
                  (tree_df.tree_dcy_class_brdlf >= _DEAD_DECAY_THRESHOLD_BROADLEAF)) &
                 (tree_df.tree_dbh > 0) &
-                (tree_df.tree_ht_modeled > 0)
+                (tree_df.tree_ht_modeled > 0) & valid_retained_dead
             )
 
             # Calculate biomass for live/less decayed trees
@@ -967,6 +992,9 @@ def _calc_tree_biomass(tree_df: pd.DataFrame, tree_params_df: pd.DataFrame) -> p
                     tree_df.loc[mask_dead, 'tree_ht_modeled'] ** param3
                 ) / 10000
 
+    for component in tree_component_list:
+        column = f'tree_{component}_cnbe_ha'
+        tree_df.loc[retained & ~np.isfinite(tree_df[column]), column] = np.nan
     return tree_df
 
 
@@ -1403,9 +1431,9 @@ def _calc_tree_fofem_attributes(tree_df: pd.DataFrame, tree_params_df: pd.DataFr
     # Map FOFEM species code
     tree_df['tree_species_fofem'] = tree_df['tree_species'].map(spp_map)
 
-    # Calculate bark thickness where tree density is valid, else NaN
+    # Retained dead stems have enough information for bark thickness even without a sampling radius.
     tree_df['tree_bark_thick'] = np.where(
-        tree_df['tree_dens_ha'] >= 0,
+        (tree_df['tree_dens_ha'] >= 0) | _get_retained_dead_mask(tree_df),
         tree_df['tree_dbh'] * tree_df['tree_species'].map(bark_map),
         np.nan
     )
@@ -1420,6 +1448,7 @@ def _calc_tree_fofem_attributes(tree_df: pd.DataFrame, tree_params_df: pd.DataFr
     # Assign foliage and branch biomass to FOFEM columns
     tree_df['tree_foliage_fofem'] = 0
     tree_df['tree_foliage_fofem'] = tree_df[foliage_map]['tree_foliage_cnbe_ha']
+    tree_df.loc[_get_retained_dead_mask(tree_df), 'tree_foliage_fofem'] = 0.
     tree_df['tree_branches_fofem'] = 0
     tree_df['tree_branches_fofem'] = tree_df[branch_map]['tree_branches_cnbe_ha']
 
@@ -1617,6 +1646,48 @@ def _classify_numeric_input(raw: pd.Series, numeric: pd.Series, prefix: str, all
     return issue
 
 
+def _exclude_parent_id_collisions(
+        df: pd.DataFrame,
+        literal_parents: pd.DataFrame,
+        selected_plot_ids: set[str] | None
+) -> tuple[set[str], set[str]]:
+    """
+    Identify distinct survey parents whose literal plot keys collapse to a single canonical ID.
+
+    :param df: Canonically identified Trees parent records before deduplication.
+    :param literal_parents: Trees parent records with source plot keys preserved and the same row index.
+    :param selected_plot_ids: Plot IDs selecting Trees, or None to report all collisions.
+    :return: Sets of ambiguous plot IDs and linked parent GlobalIDs. Logs one error per selected collision.
+    """
+    keys = list(helper.PLOT_IDENTIFIER_COLUMNS)
+    source_keys = {
+        key: f'_trees_literal_{key}' if f'_trees_literal_{key}' in literal_parents else key
+        for key in keys
+    }
+    valid_parent_id = df['GlobalID'].astype('string').str.strip().ne('').fillna(False)
+    duplicate = df['unique_id'].duplicated(keep=False) & valid_parent_id
+    plot_ids, parent_ids = set(), set()
+    for unique_id, group in df.loc[duplicate].groupby('unique_id', sort=False):
+        literals = literal_parents.loc[group.index, list(source_keys.values())].set_axis(keys, axis=1)
+        if group['GlobalID'].nunique() < 2 or len(literals.drop_duplicates()) < 2:
+            continue
+        plot_ids.add(unique_id)
+        parent_ids.update(group['GlobalID'])
+        if selected_plot_ids is None or unique_id in selected_plot_ids:
+            varying_keys = [key for key in keys if literals[key].nunique(dropna=False) > 1]
+            details = []
+            for parent, values in zip(group['GlobalID'], literals[varying_keys].itertuples(index=False, name=None)):
+                fields = ', '.join(f'{key}={value!r}' for key, value in zip(varying_keys, values))
+                details.append(f'{parent!r} ({fields})')
+            error_handling.get_logger('trees').error(
+                'Trees parent identifiers collide after canonical parsing: %s. '
+                'Affected parents and their tree records are omitted from the inventory and model inputs.',
+                ', '.join(dict.fromkeys(details)),
+                extra={'unique_id': unique_id, 'issue_code': 'tree_parent_id_collision'},
+            )
+    return plot_ids, parent_ids
+
+
 def _exclude_unlisted_species(
         df: pd.DataFrame,
         tree_df: pd.DataFrame,
@@ -1692,7 +1763,8 @@ def _filter_tree_presence(
         df: pd.DataFrame,
         tree_df: pd.DataFrame,
         sapling_df: pd.DataFrame,
-        tree_sampling_params: dict | None
+        tree_sampling_params: dict | None,
+        known_tree_species: pd.Index | None = None
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Skip records belonging to sampling classes explicitly marked absent.
@@ -1701,7 +1773,8 @@ def _filter_tree_presence(
     :param tree_df: Direct tree records before species or measurement validation.
     :param sapling_df: Aggregated sapling records before validation.
     :param tree_sampling_params: DBH thresholds and optional protocol overrides.
-    :return: Copies without absent-class records; logs conflicting records in Trees.
+    :param known_tree_species: Species codes that can enter ordinary tree calculations.
+    :return: Filtered records retaining measured dead stems on all-N parents. Logs conflicts in Trees.
     """
     absence = _get_tree_absence(df)
     if not absence.any(axis=None):
@@ -1712,23 +1785,27 @@ def _filter_tree_presence(
          for name, values in flags.items()}, index=tree_df.index,
     )
     # All three classes must be absent to skip direct records without usable DBH or protocol.
-    skip_tree = direct_flags.all(axis=1)
+    all_absent = direct_flags.all(axis=1)
     eligible = df.loc[
         df['GlobalID'].notna() & ~df['GlobalID'].duplicated(keep=False)
         & ~df.get('_parent_id_ambiguous', pd.Series(False, index=df.index)).fillna(False).astype(bool)
-        & df['GlobalID'].isin(tree_df.loc[~skip_tree, 'ParentGlobalID'])
+        & df['GlobalID'].isin(tree_df.loc[~all_absent, 'ParentGlobalID'])
     ]
     thresholds = tree_sampling.resolve_tree_sampling_thresholds(eligible, tree_sampling_params)
     thresholds.index = eligible['GlobalID']
     dbh = pd.to_numeric(tree_df['tree_dbh'], errors='coerce').round(1)
+    retained = pd.Series(False, index=tree_df.index, dtype=bool)
+    if known_tree_species is not None and all_absent.any():
+        retained = all_absent & tree_df['tree_status'].eq('D') & tree_df['tree_species'].isin(known_tree_species)
+        retained &= dbh.gt(0) & np.isfinite(dbh)
     small = tree_df['ParentGlobalID'].map(thresholds['small_tree_min'])
     large = tree_df['ParentGlobalID'].map(thresholds['large_tree_min'])
     valid = dbh.gt(0) & np.isfinite(dbh) & small.notna() & large.notna()
-    skip_tree |= valid & (
+    skip_tree = all_absent | (valid & (
         (dbh.ge(large) & direct_flags['lgtree'])
         | (dbh.ge(small) & dbh.lt(large) & direct_flags['smtree'])
         | (dbh.lt(small) & direct_flags['sapling'])
-    )
+    ))
     skip_sapling = sapling_df['ParentGlobalID'].map(flags['sapling']).fillna(False).astype(bool)
     for label, records, mask in (
             ('tree_plot_2', tree_df, skip_tree), ('sapling_1', sapling_df, skip_sapling)
@@ -1744,13 +1821,28 @@ def _filter_tree_presence(
             skipped = skipped.loc[~placeholder]
         plot_ids = _resolve_parent_unique_ids(df, skipped['ParentGlobalID'])
         for unique_id, group in skipped.assign(_plot=plot_ids.values).groupby('_plot', dropna=False):
+            extra = {'unique_id': unique_id, 'issue_code': 'tree_presence_conflict'}
+            if label == 'tree_plot_2' and retained.loc[group.index].any():
+                keep = retained.loc[group.index]
+                kept_ids = ', '.join(group.loc[keep, 'GlobalID'].dropna().astype(str))
+                skipped_ids = ', '.join(group.loc[~keep, 'GlobalID'].dropna().astype(str))
+                logger.warning(
+                    'Direct tree records in %s conflict with all three presence flags N. '
+                    'Retained dead record IDs: %s. Skipped record IDs: %s.',
+                    label, kept_ids or '(no ID recorded)',
+                    skipped_ids or ('(no ID recorded)' if (~keep).any() else 'none'), extra=extra,
+                )
+                continue
             ids = group.get('GlobalID', pd.Series(dtype='object')).dropna().astype(str).tolist()
             logger.warning(
                 f'{len(group)} record(s) in {label} were skipped because their sampling class '
                 f'is marked absent (presence flag N); record IDs: {", ".join(ids)}.',
-                extra={'unique_id': unique_id, 'issue_code': 'tree_presence_conflict'},
+                extra=extra,
             )
-    return tree_df.loc[~skip_tree].copy(), sapling_df.loc[~skip_sapling].copy()
+    kept_trees = tree_df.loc[~skip_tree | retained].copy()
+    if retained.any():
+        kept_trees['_retained_dead_tree'] = retained.loc[kept_trees.index].astype('boolean')
+    return kept_trees, sapling_df.loc[~skip_sapling].copy()
 
 
 def _gen_master_tree_df(df: pd.DataFrame, tree_df: pd.DataFrame) -> pd.DataFrame:
@@ -1825,6 +1917,16 @@ def _get_burned_plot_ids(df: pd.DataFrame) -> set | None:
         return None
     treatment = df['treatment_type'].astype('string').str.strip().str.lower()
     return set(df.loc[treatment.eq('burned').fillna(False), 'GlobalID'].dropna())
+
+
+def _get_retained_dead_mask(tree_df: pd.DataFrame) -> pd.Series:
+    """
+    Identify direct dead-tree records retained despite absence flags for all sampling classes.
+
+    :param tree_df: Individual tree records, possibly merged with aggregated saplings.
+    :return: Boolean mask of dead stems retained by the tree presence filter.
+    """
+    return tree_df.get('_retained_dead_tree', pd.Series(False, index=tree_df.index)).fillna(False).astype(bool)
 
 
 def _get_temesgen_tree_height(
@@ -1954,6 +2056,26 @@ def _log_decayed_tree_height_issues(df: pd.DataFrame, tree_df: pd.DataFrame) -> 
             log(f'{subject} {text}{detail}', extra={'unique_id': unique_id, 'issue_code': code})
 
 
+def _log_retained_dead_biomass_issues(df: pd.DataFrame, records: pd.DataFrame) -> None:
+    """
+    Report retained dead stems whose branch load cannot be calculated from the tree inputs.
+
+    :param df: Parent records with plot and Survey123 identities.
+    :param records: Retained stems with measurable density and missing branch load.
+    :return: None. Logs one Trees error per plot, with the affected record IDs.
+    """
+    for parent_id, group in records.groupby('ParentGlobalID', sort=False):
+        unique_id = df.loc[df['GlobalID'].eq(parent_id), 'unique_id'].iloc[0]
+        record_ids = ', '.join(group['tree_density_source_record_id'].dropna().astype(str))
+        logger.error(
+            'Cannot calculate biomass for retained dead tree records %s. Check decay class, height, and species '
+            'parameters. Unquantifiable per-area fuel loads left missing. Plot omitted from ConPyro and FOFEM '
+            'consumption because tree inputs are unknown.',
+            record_ids or '(no ID recorded)',
+            extra={'unique_id': unique_id, 'issue_code': 'tree_retained_dead_biomass_unavailable'},
+        )
+
+
 def _log_tree_density_issues(
         df: pd.DataFrame,
         sapling_df: pd.DataFrame,
@@ -1979,6 +2101,7 @@ def _log_tree_density_issues(
     duplicate_ids.update(df.loc[ambiguous_marker, 'GlobalID'].dropna())
     valid_parents = df.loc[~df['GlobalID'].isin(duplicate_ids)].drop_duplicates('GlobalID')
     parent_by_id = valid_parents.set_index('GlobalID')
+    retained = _get_retained_dead_mask(tree_df)
 
     partial_log = []
 
@@ -1998,16 +2121,18 @@ def _log_tree_density_issues(
             issue_code,
             results_partial,
             detail=None,
-            density_missing=False
+            density_missing=False,
+            retained_dead=False
     ):
         """
         Log one tree-density issue and retain partial-result errors for the summary.
 
         :param parent_id: Survey123 parent record identifier.
         :param issue_code: Stable machine-readable issue code.
-        :param results_partial: Whether the issue caused density to be assigned zero.
+        :param results_partial: Whether the issue affected calculated density.
         :param detail: Optional human-readable issue detail.
         :param density_missing: Whether protocol failure kept the density missing instead of zero.
+        :param retained_dead: Whether the affected density belongs to a retained dead stem.
         :return: None.
         """
         unique_id = resolve_unique_id(parent_id)
@@ -2018,28 +2143,34 @@ def _log_tree_density_issues(
         if results_partial:
             outcome = 'left missing' if density_missing else 'assigned zero'
             full_message = f'{message}; affected density {outcome}'
+            if retained_dead:
+                full_message = (
+                    f'{message}; affected density, basal area, and dependent per-area loads left missing; '
+                    'plot omitted from ConPyro and FOFEM consumption because retained dead tree inputs are unknown.'
+                )
             logger.error(full_message, extra=extra)
             partial_log.append((unique_id, full_message))
         else:
             logger.warning(message, extra=extra)
 
-    # Explicitly absent classes do not require a sampling radius.
+    # Retained dead trees still require the radius for their sampling class.
     absence = _get_tree_absence(df).set_axis(df['GlobalID']).to_dict()
     # Parent-level radius issues are reported even when no tree used the radius.
     for _, plot in df.iterrows():
         for radius_class in _PLOT_RADIUS_FIELDS:
-            if pd.notna(plot.get('GlobalID')) and absence[radius_class].get(plot['GlobalID'], False):
+            same_class = (
+                tree_df['ParentGlobalID'].eq(plot.get('GlobalID'))
+                & tree_df['tree_density_radius_class'].eq(radius_class)
+            )
+            if (pd.notna(plot.get('GlobalID')) and absence[radius_class].get(plot['GlobalID'], False)
+                    and not (same_class & retained).any()):
                 continue
             issue_code = plot.get(f'_plot_{radius_class}_radius_issue', '')
             if not issue_code:
                 continue
-            affected_count = len(tree_df[
-                tree_df['ParentGlobalID'].eq(plot.get('GlobalID'))
-                & tree_df['tree_density_radius_class'].eq(radius_class)
-                & tree_df['tree_density_affected']
-            ])
-            log_issue(plot.get('GlobalID'), issue_code, results_partial=affected_count > 0,
-                      detail=radius_class)
+            affected = same_class & tree_df['tree_density_affected']
+            log_issue(plot.get('GlobalID'), issue_code, results_partial=affected.any(),
+                      detail=radius_class, retained_dead=(affected & retained).any())
 
     radius_issue_codes = {
         'missing_plot_radius', 'non_numeric_plot_radius',
@@ -2053,7 +2184,7 @@ def _log_tree_density_issues(
     # number) for direct tree_plot_2.csv records, or the sapling-merged
     # record's source table/id when tree_id isn't applicable (saplings are
     # tallied by species, not individually tagged).
-    for _, tree in tree_df.iterrows():
+    for row_index, tree in tree_df.iterrows():
         codes = [code for code in str(tree.get('tree_density_issue_codes', '')).split('|') if code]
         if not codes:
             continue
@@ -2076,6 +2207,7 @@ def _log_tree_density_issues(
             log_issue(
                 tree.get('ParentGlobalID'), code, results_partial=partial, detail=tree_detail,
                 density_missing=bool(tree.get('_tree_sampling_issue_code', '')),
+                retained_dead=retained.loc[row_index],
             )
 
     # Invalid sapling counts cannot be synthesized into tree rows, so report
@@ -2122,7 +2254,8 @@ def _log_tree_sampling_issues(df: pd.DataFrame, tree_df: pd.DataFrame) -> set[st
     """
     issue = tree_df.get('_tree_sampling_issue_code', pd.Series('', index=tree_df.index))
     absence = _get_tree_absence(df).all(axis=1)
-    absent_parents = set(df.loc[absence, 'GlobalID'])
+    retained_parents = set(tree_df.loc[_get_retained_dead_mask(tree_df), 'ParentGlobalID'])
+    absent_parents = set(df.loc[absence & ~df['GlobalID'].isin(retained_parents), 'GlobalID'])
     affected = tree_df.loc[issue.eq('tree_sampling_invalid_protocol') & ~tree_df['ParentGlobalID'].isin(absent_parents)]
     excluded = set()
     for parent_id, records in affected.groupby('ParentGlobalID'):
@@ -2131,9 +2264,11 @@ def _log_tree_sampling_issues(df: pd.DataFrame, tree_df: pd.DataFrame) -> set[st
             continue
         unique_id = parent.iloc[0]['unique_id']
         column = records['_tree_sampling_protocol_column'].iloc[0]
+        missing = ('density, basal area, and dependent per-area loads' if parent_id in retained_parents
+                   else 'tree-derived results')
         logger.error(
             f"Invalid or missing tree sampling protocol in column '{column}' for parent {parent_id}; "
-            'tree-derived results left missing; plot omitted from ConPyro and FOFEM consumption because tree inputs are unknown.',
+            f'{missing} left missing; plot omitted from ConPyro and FOFEM consumption because tree inputs are unknown.',
             extra={'unique_id': unique_id, 'issue_code': 'tree_sampling_invalid_protocol'},
         )
         excluded.add(unique_id)
@@ -2277,7 +2412,7 @@ def _normalize_sapling_inputs(sapling_df: pd.DataFrame) -> pd.DataFrame:
 
 def _normalize_tree_inputs(tree_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Normalize direct-tree DBH before rounding and density classification.
+    Normalize direct-tree measurements needed for density and retained dead biomass.
 
     :param tree_df: Raw direct-tree records.
     :return: Tree records with normalized DBH values and validation fields.
@@ -2295,6 +2430,10 @@ def _normalize_tree_inputs(tree_df: pd.DataFrame) -> pd.DataFrame:
     tree_df['tree_density_source_record_id'] = tree_df.get('GlobalID', pd.Series(index=tree_df.index, dtype='object'))
     tree_df['tree_density_required'] = True
     tree_df['tree_count'] = 1.0
+    if _get_retained_dead_mask(tree_df).any():
+        # A malformed cell can make the entire column textual, including valid neighboring records.
+        for field in ('tree_ht', 'tree_dcy_class_cnfr', 'tree_dcy_class_brdlf'):
+            tree_df[field] = pd.to_numeric(tree_df[field], errors='coerce')
     return tree_df
 
 
@@ -2323,16 +2462,21 @@ def _print_tree_density_summary(partial_log: list[tuple]) -> None:
     print('\tSee the run-level error report (fuelanalyst_errors.csv) for full details.')
 
 
-def _read_tree_repeats(source: table_reader.FormSource, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+def _read_tree_repeats(
+        source: table_reader.FormSource,
+        df: pd.DataFrame,
+        allow_empty_parents: bool = False
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Read tree repeats, allowing omitted tables only for explicitly absent classes.
 
     :param source: Resolved Trees form source.
     :param df: Retained plot parents with optional presence flags.
+    :param allow_empty_parents: Whether parent collisions can leave no parents to process.
     :return: Direct-tree and sapling frames, including typed empty repeat schemas
         when absence permits an omitted table. Empty parents and required missing tables raise.
     """
-    if df.empty:
+    if df.empty and not allow_empty_parents:
         raise ValueError("Trees parent table 'survey_0' has no plot records.")
     absence = _get_tree_absence(df)
     # These are the fields consumed by the calculation pipeline for an empty repeat.
@@ -2418,6 +2562,18 @@ def _round_tree_data(tree_df: pd.DataFrame) -> pd.DataFrame:
     return tree_df
 
 
+def identify_tree_parents(parents: pd.DataFrame) -> pd.DataFrame:
+    """
+    Build Trees plot identifiers using the same type inference as the other forms.
+
+    :param parents: Trees parents with ordinarily parsed identifiers and optional literal text copies.
+    :return: Canonically identified records sorted by timestamp, including duplicate plot IDs.
+    """
+    literal_columns = [column for column in parents if isinstance(column, str) and column.startswith('_trees_literal_')]
+    canonical = parents.drop(columns=literal_columns)
+    return helper.get_unique_id(canonical, keep_latest=False)
+
+
 def process_trees(
         in_folder: 'str | table_reader.FormSource',
         out_folder: str,
@@ -2439,8 +2595,8 @@ def process_trees(
     :param gen_conpyro_df: Boolean indicating whether to generate ConPyro DataFrame.
     :param tree_sampling_params: Sampling thresholds and optional parent protocol overrides.
     :param selected_plot_ids: Canonical IDs selecting Trees in Plot Attributes; None processes all parents.
-    :param parent_df: Optional raw parent table already read with the configured protocol column
-        preserved as literal text.
+    :param parent_df: Optional raw parent table from read_tree_parents(), with source plot keys
+        and the configured protocol column preserved as literal text.
     :return: Tuple containing:
         - Updated DataFrame with plot-level attributes.
         - List of columns to keep in the final DataFrame.
@@ -2462,16 +2618,18 @@ def process_trees(
     # Get plot dataframe and retain ambiguous parent IDs before survey
     # deduplication selects the latest record.
     protocol_column = tree_sampling_params['protocol_column']
-    literal_columns = (protocol_column,) if protocol_column is not None else ()
-    df = (table_reader.read_table(in_folder, 'survey_0', literal_text_columns=literal_columns)
-          if parent_df is None else parent_df.copy(deep=True))
-    if df.empty:
+    literal_parents = read_tree_parents(in_folder, protocol_column) if parent_df is None else parent_df
+    if literal_parents.empty:
         raise ValueError("Trees parent table 'survey_0' has no plot records.")
     ambiguous_parent_ids = set(
-        df.loc[df['GlobalID'].notna() & df['GlobalID'].duplicated(keep=False), 'GlobalID']
+        literal_parents.loc[literal_parents['GlobalID'].duplicated(keep=False), 'GlobalID'].dropna()
     )
-    # Generate a unique ID for each plot
-    df = helper.get_unique_id(df)
+    df = identify_tree_parents(literal_parents)
+    colliding_plots, colliding_parents = _exclude_parent_id_collisions(df, literal_parents, selected_plot_ids)
+    df = df.loc[~df['unique_id'].isin(colliding_plots)].drop_duplicates(subset='unique_id', keep='last').copy()
+    literal_protocol = f'_trees_literal_{protocol_column}'
+    if protocol_column is not None and literal_protocol in literal_parents:
+        df[protocol_column] = literal_parents.loc[df.index, literal_protocol]
     df['_parent_id_ambiguous'] = df['GlobalID'].isin(ambiguous_parent_ids)
     selected = (pd.Series(True, index=df.index) if selected_plot_ids is None
                 else df['unique_id'].isin(selected_plot_ids))
@@ -2481,13 +2639,14 @@ def process_trees(
 
     # Read the sapling and tree tables, and leave out the plots that record a species that is not in
     # tree_parameters.csv (each is logged), so that the other plots are still calculated
-    tree_df, sapling_df = _read_tree_repeats(in_folder, df.loc[selected])
+    tree_df, sapling_df = _read_tree_repeats(in_folder, df.loc[selected], allow_empty_parents=bool(colliding_plots))
     valid_parent_id = df['GlobalID'].notna() & df['GlobalID'].astype('string').str.strip().ne('').fillna(False)
     ignored_parents = (set(df.loc[~selected & valid_parent_id, 'GlobalID'])
                        - set(df.loc[selected & valid_parent_id, 'GlobalID']))
+    ignored_parents.update(colliding_parents)
     tree_df = tree_df.loc[~tree_df['ParentGlobalID'].isin(ignored_parents)].copy()
     sapling_df = sapling_df.loc[~sapling_df['ParentGlobalID'].isin(ignored_parents)].copy()
-    tree_df, sapling_df = _filter_tree_presence(df, tree_df, sapling_df, tree_sampling_params)
+    tree_df, sapling_df = _filter_tree_presence(df, tree_df, sapling_df, tree_sampling_params, tree_params_df.index)
     tree_df, sapling_df, excluded_plot_ids = _exclude_unlisted_species(df, tree_df, sapling_df, tree_params_df)
     species_excluded = set(excluded_plot_ids)
 
@@ -2512,6 +2671,10 @@ def process_trees(
     tree_df = _calc_tree_decay_classes(tree_df)
     tree_df = _calc_tree_type(tree_df, tree_params_df)
     tree_df = _calc_tree_density(df, tree_df, tree_sampling_params=tree_sampling_params)
+    retained = _get_retained_dead_mask(tree_df)
+    retained_parents = set(tree_df.loc[retained, 'ParentGlobalID'])
+    unexpanded = retained & tree_df['tree_density_affected']
+    tree_df.loc[unexpanded, 'tree_dens_ha'] = np.nan
     sampling_excluded = _log_tree_sampling_issues(df, tree_df)
     excluded_plot_ids = set(excluded_plot_ids) | sampling_excluded
     partial_log = _log_tree_density_issues(df, sapling_df, tree_df)
@@ -2525,6 +2688,10 @@ def process_trees(
     tree_df = _calc_tree_crown_fuels(tree_df, tree_params_df)
     # Calculate FOFEM tree attributes
     tree_df = _calc_tree_fofem_attributes(tree_df, tree_params_df)
+    unknown_branches = retained & ~unexpanded & tree_df['tree_branches_fofem'].isna()
+    _log_retained_dead_biomass_issues(df, tree_df.loc[unknown_branches])
+    unquantified_parents = tree_df.loc[unexpanded | unknown_branches, 'ParentGlobalID']
+    excluded_plot_ids.update(df.loc[df['GlobalID'].isin(unquantified_parents), 'unique_id'])
     # Calculate fire behavior attributes
     burned_plot_ids = _get_burned_plot_ids(df)
     tree_df = _calc_tree_fire_attributes(tree_df, surface_fire_intensity_model, burned_plot_ids)
@@ -2535,11 +2702,11 @@ def process_trees(
     # Master generation also adds live density/BA columns to the diagnostic tree frame.
     master_tree_df = _gen_master_tree_df(df, tree_df)
     # Mask afterwards so dead trees cannot turn unknown live-area values into zero.
-    sampling_invalid = tree_df['_tree_sampling_issue_code'].ne('')
+    sampling_invalid = tree_df['_tree_sampling_issue_code'].ne('') & ~retained
     area_columns = [column for column in tree_df if column.endswith('_ha')]
     tree_df.loc[sampling_invalid, area_columns] = np.nan
     master_tree_df.loc[
-        master_tree_df['unique_id'].isin(sampling_excluded),
+        master_tree_df['unique_id'].isin(sampling_excluded) & ~retained.to_numpy(),
         ['dens_live_ha', 'dens_ha', 'ba_live_ha', 'ba_ha'],
     ] = np.nan
 
@@ -2547,7 +2714,9 @@ def process_trees(
     # Presence is required for both model-input writers, even without ConPyro export.
     df = _calc_conpyro_live_density(df, tree_df, sapling_df)
     excluded = df['unique_id'].isin(excluded_plot_ids)
-    df.loc[excluded | ~selected, ['conpyro_live_tree_density', 'conpyro_live_trees_present']] = np.nan
+    retained_plots = df['GlobalID'].isin(retained_parents)
+    clear_stand_results = excluded & ~retained_plots
+    df.loc[clear_stand_results | ~selected, ['conpyro_live_tree_density', 'conpyro_live_trees_present']] = np.nan
     df['_tree_live_tree_density'] = df['conpyro_live_tree_density']
     df['_tree_live_trees_present'] = df['conpyro_live_trees_present']
     if gen_conpyro_df:
@@ -2563,8 +2732,8 @@ def process_trees(
     lookup = summary_parents.set_index('unique_id')
     df = helper.attach_columns(df, {column: df['unique_id'].map(lookup[column]) for column in add_columns})
     keep_columns.extend(add_columns)
-    # Species/protocol data failures still invalidate their affected stand calculations.
-    df[add_columns] = df[add_columns].mask(excluded, axis=0)
+    # Preserve measured stand quantities for retained dead stems even when another input is unavailable.
+    df[add_columns] = df[add_columns].mask(clear_stand_results, axis=0)
 
     # ### SAVE DATASETS TO OUTPUT FOLDER
     os.makedirs(out_folder, exist_ok=True)
@@ -2587,12 +2756,39 @@ def process_trees(
         'unique_id': df['unique_id'],
         helper.TREES_EXCLUDED_COLUMN: df['unique_id'].isin(excluded_plot_ids),
         '_trees_species_excluded': df['unique_id'].isin(species_excluded),
-        '_trees_confirmed_absent': _get_tree_absence(df).all(axis=1) & ~df['unique_id'].isin(species_excluded) & selected,
+        '_trees_confirmed_absent': _get_tree_absence(df).all(axis=1) & ~retained_plots & ~df['unique_id'].isin(species_excluded) & selected,
         '_tree_parent_present': selected,
         '_tree_live_tree_density': df['_tree_live_tree_density'],
         '_tree_live_trees_present': df['_tree_live_trees_present'],
         '_tree_model_unknown_reason': df['_tree_model_unknown_reason'],
     }, index=df.index)
     df = _attach_tree_observation_markers(export_df, markers)
+    if colliding_plots:
+        # Return the exclusion signal for the plot merge without selecting a survey parent to export.
+        df = pd.concat([df, pd.DataFrame({
+            'unique_id': sorted(colliding_plots),
+            helper.TREES_EXCLUDED_COLUMN: True,
+            '_tree_parent_present': False,
+            '_trees_confirmed_absent': False,
+        })], ignore_index=True)
 
     return df, helper.sort_list(keep_columns), master_tree_df
+
+
+def read_tree_parents(
+        source: table_reader.FormSource,
+        protocol_column: str | None,
+        required: bool = True
+) -> pd.DataFrame | None:
+    """
+    Read the Trees parent table with source plot keys and protocol text intact.
+
+    :param source: Resolved Trees form source.
+    :param protocol_column: Optional field containing literal survey protocol labels.
+    :param required: Whether to raise when the parent table is missing.
+    :return: Raw parent records, or None when no table exists and it is optional.
+    """
+    literal_columns = {key: f'_trees_literal_{key}' for key in helper.PLOT_IDENTIFIER_COLUMNS}
+    if protocol_column is not None:
+        literal_columns[protocol_column] = f'_trees_literal_{protocol_column}'
+    return table_reader.read_table(source, 'survey_0', required=required, literal_text_columns=literal_columns)

@@ -98,11 +98,11 @@ def test_grass_emissions_uses_weather_moisture_and_reports_missing_dmc(tmp_path,
     if dmc is None:
         assert result.empty
         assert not recorded
-        assert {r.unique_id for r in caplog.records if r.issue_code.startswith('fofem_grass')} == {'plot with space'}
+        assert {r.unique_id for r in caplog.records if r.issue_code == 'fofem_duff_moisture_invalid'} == {'plot with space'}
     else:
         import math
         assert recorded['duff_moist'].tolist() == pytest.approx([20 + math.exp((244.72 - 40) / 43.43)])
-        assert not [r for r in caplog.records if getattr(r, 'issue_code', '').startswith('fofem_grass')]
+        assert not [r for r in caplog.records if getattr(r, 'issue_code', '') == 'fofem_duff_moisture_invalid']
 
 
 def test_process_emissions_passes_areal_intensity_and_skips_invalid_depth(tmp_path, monkeypatch, caplog):
