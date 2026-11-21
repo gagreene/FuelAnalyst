@@ -2,19 +2,11 @@
 
 [![Tests](https://github.com/gagreene/FuelAnalyst/actions/workflows/tests.yml/badge.svg)](https://github.com/gagreene/FuelAnalyst/actions/workflows/tests.yml)
 
-FuelAnalyst is a Python package for converting forest-fuel inventory data exported from ArcGIS Survey123 into analysis-ready plot, tree, fuel-load, and fire-model input tables. It was developed for forest fuel characterization and wildfire analysis in Canada and the Northwestern United States.
+FuelAnalyst is an open-source Python package that calculates fuel loads and fire model inputs from forest fuel inventory data. From plot, tree, understory vegetation, canopy cover, and woody debris measurements, FuelAnalyst estimates stand structure, tree biomass, canopy fuel attributes, and woody debris, shrub, herb, duff, and litter loads. The results are formatted as inputs to the Conifer Pyrometrics (ConPyro), Crown Fire Initiation and Spread (CFIS), and First Order Fire Effects (FOFEM) models. FuelAnalyst can also run these models to estimate fire behaviour, fuel consumption, smoke emissions, and tree mortality under a range of weather conditions.
 
-The core pipeline processes five related Survey123 forms:
+Optional tools assign Canadian Fire Behaviour Prediction (FBP) System fuel types in British Columbia and extract fire weather from Natural Resources Canada rasters. FuelAnalyst was developed for fuel and wildfire research in Canada and the northwestern United States.
 
-- Plot attributes
-- Plants and regeneration
-- Trees and saplings
-- Canopy cover
-- Woody debris and forest-floor measurements
-
-FuelAnalyst also:
-- Prepares inputs for the Canadian Forest Fire Behaviour Prediction (FBP) System, ConPyro, and FOFEM, and can connect plot data to gridded NRCAN weather data.
-- Models fire behaviour and fire effects with ConPyro and FOFEM, including tree mortality and smoke emissions.
+Input data are tables in a documented layout, stored as CSV, Excel, GeoPackage, SQLite, GeoJSON, Parquet, Feather, or file geodatabase. The layout follows the ArcGIS Survey123 export convention. Matching field protocols, Survey123 forms, and paper data entry forms are in [`docs/survey123/`](docs/survey123/), but tables built by other means work if they follow the same layout (see [Input data](#input-data)).
 
 > FuelAnalyst is research software under active development. Review input schemas, units, model assumptions, and output quality before using results operationally.
 
@@ -366,6 +358,17 @@ calibration, and output contracts.
 ## How to use FuelAnalyst
 
 ### Input data
+
+The input data are organized as five related forms:
+
+- Plot attributes
+- Plants and regeneration
+- Trees and saplings
+- Canopy cover
+- Woody debris and forest-floor measurements
+
+Plot attributes are always read. The other four forms are processed for the plots that select them (see
+[Form selection](#form-selection)).
 
 #### Required directory layout
 
