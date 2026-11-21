@@ -46,13 +46,13 @@ def calc_fuel_moisture_content(df: pd.DataFrame, logger: logging.Logger) -> pd.D
 
     checks = (
         (valid_duff, 'fofem_duff_moisture_invalid',
-         'DuffMoisture must be finite and within 10–197.2%, and its converted Burnup fraction must be within '
-         '0.1–1.972. Check mc_dmc or the weather DMC used to derive it.'),
+         'DuffMoisture must be finite and within 10-197.2%, and its converted Burnup fraction must be within '
+         '0.1-1.972. Check mc_dmc or the weather DMC used to derive it.'),
         (valid_ten_hour, 'fofem_10h_moisture_invalid',
-         'Final 10-hour moisture (mc_sa) must be finite and within 3–298%. Check the modelled moisture or '
+         'Final 10-hour moisture (mc_sa) must be finite and within 3-298%. Check the modelled moisture or '
          'the supplied fire results.'),
         (valid_thousand_hour, 'fofem_1000h_moisture_invalid',
-         'Weather DC must be finite and nonnegative and must yield 1000-hour moisture within 1–300%.'),
+         'Weather DC must be finite and nonnegative and must yield 1000-hour moisture within 1-300%.'),
     )
     identifiers = result.get('#PlotId', pd.Series(None, index=result.index))
     for valid, issue_code, message in checks:
