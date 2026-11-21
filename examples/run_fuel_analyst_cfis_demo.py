@@ -52,8 +52,9 @@ CONPYRO_DIR = os.path.join(EXAMPLES_DIR, 'results', 'conpyro_cfis')
 FBP_PREP_DF_PATH = os.path.join(EXAMPLES_DIR, 'data', 'fbp_fuel_typing', 'fbp_prep_df.csv')
 
 #: Checked-in, already weather-merged demo input (real 2005-2024 NRCAN weather for this
-#: dataset's 20 plots). Its own fbp_fuel_type column is unpopulated (FBP typing wasn't
-#: part of the pipeline that produced it) - overwritten with real values in step 3 below.
+#: dataset's 20 plots). Its plot columns are stale (its fbp_fuel_type is unpopulated and it
+#: has no sros_model or surface_fuel_type), so step 3 below replaces them with the fresh
+#: FBP-typed ConPyro table and keeps only its weather columns.
 #: Regenerate via examples/weather_pipeline/run_weather_conpyro_pipeline.py's `--stage
 #: weather --stage merge` and copy the resulting output here.
 WEATHER_MERGED_PATH = os.path.join(EXAMPLES_DIR, 'data', 'weather', 'conpyro_df_wx.csv')
@@ -62,6 +63,30 @@ WEATHER_MERGED_PATH = os.path.join(EXAMPLES_DIR, 'data', 'weather', 'conpyro_df_
 # observations. The weather data are representative of 12 noon LST.
 #: 1200 (12pm)
 CFIS_TIME_HHMM = 1200
+
+
+def _refresh_weather_inputs(weather_path: str, fuel_path: str, output_path: str) -> None:
+    """
+    Attach current plot attributes, model assignments, and FBP fuel types to committed example weather.
+
+    The committed weather file predates automatic surface-model assignment, so its plot columns (including
+    the sros_model and surface_fuel_type columns that run_conpyro() needs by default) are replaced with
+    those of the freshly typed ConPyro table.
+
+    :param weather_path: Existing weather-merged example CSV.
+    :param fuel_path: Fresh FBP-typed ConPyro table (conpyro_df_fbp.csv) generated from the example data.
+    :param output_path: Destination CSV used by the fire-model stage.
+    :return: None. Writes refreshed plot/weather rows to output_path without modifying either input file.
+    """
+    weather = pd.read_csv(weather_path, low_memory=False)
+    fuels = pd.read_csv(fuel_path, low_memory=False)
+    missing = set(weather['unique_id']) - set(fuels['unique_id'])
+    if missing:
+        raise ValueError(f'Weather rows have no current fuel inputs for plots: {sorted(missing)}')
+    weather = weather.drop(columns=[column for column in fuels if column != 'unique_id' and column in weather])
+    merged = weather.merge(fuels, on='unique_id', how='left', validate='many_to_one')
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    merged.to_csv(output_path, index=False)
 
 
 def main() -> None:
@@ -97,16 +122,11 @@ def main() -> None:
         season='growing',
     )
 
-    print('\n=== Step 3: apply real FBP fuel types to the committed weather-merged dataset ===')
-    fbp_typed_df = pd.read_csv(os.path.join(FBP_FUEL_TYPING_DIR, 'conpyro_df_fbp.csv'))
-    fuel_type_by_plot = fbp_typed_df.set_index('unique_id')['fbp_fuel_type'].to_dict()
-
-    weather_df = pd.read_csv(WEATHER_MERGED_PATH, low_memory=False)
-    weather_df['fbp_fuel_type'] = weather_df['unique_id'].map(fuel_type_by_plot)
-
-    os.makedirs(CONPYRO_DIR, exist_ok=True)
+    print('\n=== Step 3: attach current plot inputs and FBP fuel types to the committed weather ===')
     cfis_input_path = os.path.join(CONPYRO_DIR, 'conpyro_df_wx_fbp.csv')
-    weather_df.to_csv(cfis_input_path, index=False)
+    _refresh_weather_inputs(
+        WEATHER_MERGED_PATH, os.path.join(FBP_FUEL_TYPING_DIR, 'conpyro_df_fbp.csv'), cfis_input_path
+    )
 
     print('\n=== Step 4: run_conpyro() with CFIS (cfo_model=10) ===')
     fire_modelling_params = copy.deepcopy(default_fire_modelling_dict)

@@ -1,5 +1,10 @@
 # Release notes
 
+## Unreleased
+
+- **CFIS example fixed.** `examples/run_fuel_analyst_cfis_demo.py` failed under 0.5.0 with a `ValueError` because the committed weather file has no `sros_model` column, which the default `sros_model='use_csv'` requires. The demo now replaces the committed file's plot columns with the freshly generated, FBP-typed ConPyro table (as the default demo does), so it carries `sros_model`, `surface_fuel_type`, and the FBP fuel types.
+- **Correction to the 0.5.0 notes.** Since 0.5.0, `run_conpyro()` requires `temp` and `rh` for every non-empty run, not only for CFIS (`cfo_model=10`); they feed CFIS and the Cheney grass models. Weather merges without these columns raise a `ValueError` before modelling.
+
 ## 0.5.0
 
 This is a minor release: protocol-aware tree sampling, automatic surface-model selection, the ConPyro update, and Trees form metadata change inputs, results, and documented behaviour. Review the migration steps and model assumptions before reusing existing inputs or comparing results with earlier releases.
