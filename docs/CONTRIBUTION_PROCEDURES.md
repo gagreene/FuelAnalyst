@@ -59,8 +59,8 @@ functional group, which FuelAnalyst uses to estimate the biomass, or a user can 
 A tree or sapling species code that is not in `tree_parameters.csv` cannot be calculated, so `fuel_analyst()` leaves
 that plot out of the tree calculations, logs an error that names the code and the table it came from, and
 continues with the other plots. The error appears in the Trees column of `fuelanalyst_errors.csv`, and the plot's
-tree results are empty. That plot is also left out of the ConPyro modelling input (its stand type and density are
-empty) and of the FOFEM consumption file, since its canopy fuels were never calculated. A code in `SPECIES_CD_1` to
+tree results are empty. When Trees is ticked in `form_select`, that plot also has no row in the ConPyro modelling
+input or the FOFEM consumption file, since its canopy fuels were never calculated. A code in `SPECIES_CD_1` to
 `SPECIES_CD_6` of the plot table that is not in the file is
 reported in the ConPyro Attributes column, and that plot's stand type is empty. To add a species:
 

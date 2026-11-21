@@ -1,9 +1,10 @@
 # References
 
-`Appendix 1 Results Data Frames Field Names Description.xlsx` documents fields
-in the generated FuelAnalyst result tables. Because some outputs use
-model-required U.S. units while the core calculations are primarily metric,
-consult the workbook before downstream analysis.
+`Appendix 1 Results Data Frames Field Names Description.xlsx` is a historical
+description of the result-table fields and has not been updated since
+September 2026; it lacks newer columns and some units. The current output
+variables, with their units, are described in Section 3 of the
+[Technical Reference](../TECHNICAL_REFERENCE.md#3-fuelanalyst-variable-descriptions).
 
 The [Keane and Dickinson (2007) PhotoLoad report](https://doi.org/10.2737/RMRS-GTR-190)
 is the source publication for the production PhotoLoad workflow in

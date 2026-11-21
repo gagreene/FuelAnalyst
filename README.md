@@ -2,19 +2,11 @@
 
 [![Tests](https://github.com/gagreene/FuelAnalyst/actions/workflows/tests.yml/badge.svg)](https://github.com/gagreene/FuelAnalyst/actions/workflows/tests.yml)
 
-FuelAnalyst is a Python package for converting forest-fuel inventory data exported from ArcGIS Survey123 into analysis-ready plot, tree, fuel-load, and fire-model input tables. It was developed for forest fuel characterization and wildfire analysis in Canada and the Northwestern United States.
+FuelAnalyst is an open-source Python package that calculates fuel loads and fire model inputs from forest fuel inventory data. From plot, tree, understory vegetation, canopy cover, and woody debris measurements, FuelAnalyst estimates stand structure, tree biomass, canopy fuel attributes, and woody debris, shrub, herb, duff, and litter loads. The results are formatted as inputs to the Conifer Pyrometrics (ConPyro), Crown Fire Initiation and Spread (CFIS), and First Order Fire Effects (FOFEM) models. FuelAnalyst can also run these models to estimate fire behaviour, fuel consumption, smoke emissions, and tree mortality under a range of weather conditions.
 
-The core pipeline processes five related Survey123 forms:
+Optional tools assign Canadian Fire Behaviour Prediction (FBP) System fuel types in British Columbia and extract fire weather from Natural Resources Canada rasters. FuelAnalyst was developed for fuel and wildfire research in Canada and the northwestern United States.
 
-- Plot attributes
-- Plants and regeneration
-- Trees and saplings
-- Canopy cover
-- Woody debris and forest-floor measurements
-
-FuelAnalyst also:
-- Prepares inputs for the Canadian Forest Fire Behaviour Prediction (FBP) System, ConPyro, and FOFEM, and can connect plot data to gridded NRCAN weather data.
-- Models fire behaviour and fire effects with ConPyro and FOFEM, including tree mortality and smoke emissions.
+Input data are tables in a documented layout, stored as CSV, Excel, GeoPackage, SQLite, GeoJSON, Parquet, Feather, or file geodatabase. The layout follows the ArcGIS Survey123 export convention. Matching field protocols, Survey123 forms, and paper data entry forms are in [`docs/survey123/`](docs/survey123/), but tables built by other means work if they follow the same layout (see [Input data](#input-data)).
 
 > FuelAnalyst is research software under active development. Review input schemas, units, model assumptions, and output quality before using results operationally.
 
@@ -174,6 +166,7 @@ FuelAnalyst/
 |   |   |-- fofem_attributes.py      FOFEM input preparation
 |   |   |-- fofem_emissions.py       pyFOFEM emissions
 |   |   |-- fofem_gui_emissions.py   FOFEM batch backend
+|   |   |-- fofem_moisture.py        FOFEM fuel moisture derivation and validation
 |   |   |-- fofem_mortality.py       pyFOFEM tree mortality
 |   |   |-- fofem_units.py           FOFEM unit handling
 |   |   |-- fwis_moisture_content.py FWI-based fuel moisture
@@ -181,6 +174,7 @@ FuelAnalyst/
 |   |   |-- plants_regen.py          Plants and regeneration
 |   |   |-- plot_attributes.py       Plot attributes
 |   |   |-- table_reader.py          Survey123 input readers (eight formats)
+|   |   |-- tree_sampling.py         Tree sampling protocols and DBH cutoffs
 |   |   |-- trees.py                 Trees, saplings, and stand metrics
 |   |   `-- woody_debris.py          Woody and forest-floor fuels
 |   |-- _vendor/             Vendored BCWFT2018 module and ConPyro package
@@ -367,6 +361,17 @@ calibration, and output contracts.
 
 ### Input data
 
+The input data are organized as five related forms:
+
+- Plot attributes
+- Plants and regeneration
+- Trees and saplings
+- Canopy cover
+- Woody debris and forest-floor measurements
+
+Plot attributes are always read. The other four forms are processed for the plots that select them (see
+[Form selection](#form-selection)).
+
 #### Required directory layout
 
 FuelAnalyst recognizes the following directory and file names:
@@ -448,7 +453,7 @@ to the git-ignored `examples/results/survey123_formats/`, one complete input fol
 It reads the committed CSV examples in `examples/data/Survey123_Data` and never changes them. Choose formats with `--formats` (for
 example `--formats gpkg sqlite`), skip the bundle with `--no-bundle`, and pick the output folder with `--out`.
 
-The included [example dataset](examples/data/Survey123_Data) is the best schema reference for a complete run. The spreadsheet in [docs/reference](docs/reference) describes result fields.
+The included [example dataset](examples/data/Survey123_Data) is the best schema reference for a complete run. Output variables are described in Section 3 of the [Technical Reference](docs/TECHNICAL_REFERENCE.md#3-fuelanalyst-variable-descriptions).
 
 #### Common identity fields
 
@@ -747,7 +752,7 @@ run_conpyro(
 )
 ```
 
-The default modelling configuration runs ConPyro, FOFEM mortality, and pyFOFEM emissions. Install the `fofem` extra before using this default. ConPyro input must already include required weather fields such as `ws`, `wd`, `ffmc`, `dmc`, and `bui`; some model choices additionally require `temp`, `rh`, `wx_date`, `time`, or model-selection columns.
+The default modelling configuration runs ConPyro, FOFEM mortality, and pyFOFEM emissions. Install the `fofem` extra before using this default. ConPyro input must already include the weather fields `ws`, `wd`, `ffmc`, `dmc`, `bui`, `temp`, `rh`, and `wx_date` (and `dc` for FOFEM emissions), plus the `sros_model` and `surface_fuel_type` columns written by `fuel_analyst()`. `sros_model` is required under the runner default `sros_model='use_csv'`; `surface_fuel_type` is not checked, but without it the forest-floor (BY) consumption and the shrub contribution to the grass fuel load are silently skipped, so keep both when merging; `time` or other model-selection columns are needed only for the settings that use them.
 
 `in_fofem_consume_csv_path` must be one of `fuel_analyst()`'s two unit-bearing filenames, and
 must match `default_fire_modelling_dict['fofem_emissions']['emissions_units']` (default `'SI'`);
@@ -756,7 +761,7 @@ error on a mismatch rather than silently misinterpreting the file.
 
 Every completed `run_conpyro()` call also writes `run_conpyro_errors.csv`, with one column per reporting source.
 A CFIS run (`cfo_model` 10) on plots without an FBP fuel type, and each plot left out of the run because its
-`stand_density` or `stand_type` is empty, is logged per plot in its ConPyro Fire Behavior column; the run continues. Any numeric `stand_type=0` is treated as nonfuel and retained with a missing SROS model; missing density is filled with `L`. Substrate-only `BY` (the bryoid dominant-substrate class, including mosses and lichens) is the main generated case. Unresolved tree status on Trees-ticked plots is omitted upstream and never receives stand zero.
+`stand_density` or `stand_type` is empty, is logged per plot in its ConPyro Fire Behavior column; the run continues. Under `sros_model='use_csv'`, rows with no assigned surface model (other than stand type 0) are also skipped and logged as `conpyro_missing_surface_model`. Any numeric `stand_type=0` is treated as nonfuel and retained with a missing SROS model; missing density is filled with `L`. Substrate-only `BY` (the bryoid dominant-substrate class, including mosses and lichens) is the main generated case. Unresolved tree status on Trees-ticked plots is omitted upstream and never receives stand zero.
 
 The refreshed engine produces surface-only fire metrics for valid forest scenarios with zero canopy bulk density.
 Explicit non-burning scenarios (`fire_type=0`) retain zero fire metrics and missing flame quantities. FOFEM skips
@@ -799,9 +804,10 @@ against committed weather automatically. See the
 
 ### Configuration
 
-Default dictionaries are defined in:
+Default dictionaries are defined in `src/fuel_analyst/components/_default_configs.py` and imported from:
 
 - `fuel_analyst.fuel_analyst.default_stand_summary_dict`
+- `fuel_analyst.fuel_analyst.default_tree_sampling_dict`
 - `fuel_analyst.fuel_analyst.default_woody_debris_dict`
 - `fuel_analyst.fuel_analyst.default_conpyro_dict`
 - `fuel_analyst.fuel_analyst.default_fofem_consume_dict` (includes `fofem_processing_units`, default `'SI'`)
