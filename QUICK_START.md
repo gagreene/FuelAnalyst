@@ -181,7 +181,7 @@ Tree mortality automation always uses pyfofem's CRNSCH model. To use the officia
 for mortality separately, generate the hand-off CSV with
 `fuel_analyst(gen_fofem_gui_app_tree_df=True)` and submit it to the FOFEM 6.9.4 application.
 
-Before running ConPyro, merge weather fields into `conpyro_df.csv`. At minimum, the default workflow expects `ws`, `wd`, `ffmc`, `dmc`, `bui`, `temp`, `rh`, and `wx_date`, and FOFEM emissions also need `dc`; selected model settings may require additional fields. Build the merge from a `conpyro_df.csv` written by FuelAnalyst 0.5.0 or later, so it carries the `sros_model` and `surface_fuel_type` columns the default settings need.
+Before running ConPyro, merge weather fields into `conpyro_df.csv`. At minimum, the default workflow expects `ws`, `wd`, `ffmc`, `dmc`, `bui`, `temp`, `rh`, and `wx_date`, and FOFEM emissions also need `dc`; selected model settings may require additional fields. Build the merge from a `conpyro_df.csv` written by FuelAnalyst 0.5.0 or later, and keep its `sros_model` and `surface_fuel_type` columns: the default settings require `sros_model`, and `surface_fuel_type` drives the forest-floor (BY) and shrub-proxy calculations.
 
 See the [Public API](README.md#public-api) section of the main README for the FBP, weather merge, and model-running calls.
 

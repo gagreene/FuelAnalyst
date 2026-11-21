@@ -752,7 +752,7 @@ run_conpyro(
 )
 ```
 
-The default modelling configuration runs ConPyro, FOFEM mortality, and pyFOFEM emissions. Install the `fofem` extra before using this default. ConPyro input must already include the weather fields `ws`, `wd`, `ffmc`, `dmc`, `bui`, `temp`, `rh`, and `wx_date` (and `dc` for FOFEM emissions), plus the `sros_model` column written by `fuel_analyst()` (the runner default is `sros_model='use_csv'`); `time` or other model-selection columns are needed only for the settings that use them.
+The default modelling configuration runs ConPyro, FOFEM mortality, and pyFOFEM emissions. Install the `fofem` extra before using this default. ConPyro input must already include the weather fields `ws`, `wd`, `ffmc`, `dmc`, `bui`, `temp`, `rh`, and `wx_date` (and `dc` for FOFEM emissions), plus the `sros_model` and `surface_fuel_type` columns written by `fuel_analyst()`. `sros_model` is required under the runner default `sros_model='use_csv'`; `surface_fuel_type` is not checked, but without it the forest-floor (BY) consumption and the shrub contribution to the grass fuel load are silently skipped, so keep both when merging; `time` or other model-selection columns are needed only for the settings that use them.
 
 `in_fofem_consume_csv_path` must be one of `fuel_analyst()`'s two unit-bearing filenames, and
 must match `default_fire_modelling_dict['fofem_emissions']['emissions_units']` (default `'SI'`);
