@@ -12,8 +12,9 @@ backend (`model_select='pyfofem'`, the `fuel-analyst[fofem]` extra), which works
 
 `runfofem.exe` requires the Microsoft Visual C++ Redistributable (x64) to be installed
 separately on the host machine. This package does not bundle it and cannot install it for
-you. If it is missing, `runfofem.exe` will fail to start; see FuelAnalyst's `docs/CODEBASE.md`
-for the exact failure mode and where to obtain the redistributable.
+you. If it is missing, `runfofem.exe` will fail to start; see the Optional fire-model dependencies
+section of FuelAnalyst's `README.md` for the exact failure mode and where to obtain the
+redistributable.
 
 ## What is bundled
 

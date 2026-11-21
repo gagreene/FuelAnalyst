@@ -6,7 +6,7 @@ This guide gets the included Survey123 example running with the fewest steps. Co
 
 Install:
 
-- Python 3.11 or newer
+- Python 3.11 to 3.14
 - Git
 
 Confirm Python is available:
@@ -181,7 +181,7 @@ Tree mortality automation always uses pyfofem's CRNSCH model. To use the officia
 for mortality separately, generate the hand-off CSV with
 `fuel_analyst(gen_fofem_gui_app_tree_df=True)` and submit it to the FOFEM 6.9.4 application.
 
-Before running ConPyro, merge weather fields into `conpyro_df.csv`. At minimum, the default workflow expects `ws`, `wd`, `ffmc`, `dmc`, `bui`, and `wx_date`; selected model settings may require additional fields.
+Before running ConPyro, merge weather fields into `conpyro_df.csv`. At minimum, the default workflow expects `ws`, `wd`, `ffmc`, `dmc`, `bui`, `temp`, `rh`, and `wx_date`, and FOFEM emissions also need `dc`; selected model settings may require additional fields. Build the merge from a `conpyro_df.csv` written by FuelAnalyst 0.5.0 or later, so it carries the `sros_model` and `surface_fuel_type` columns the default settings need.
 
 See the [Public API](README.md#public-api) section of the main README for the FBP, weather merge, and model-running calls.
 
@@ -219,7 +219,7 @@ You can call the environment's Python directly without activating it:
 
 ### A Survey123 folder or table is missing
 
-Compare your export with `examples/data/Survey123_Data`. Folder and repeat-table names must match the expected layout (a table can be a CSV file or a sheet, layer, or table in the formats listed under [Supported file formats](README.md#supported-file-formats)). When `gen_conpyro_df=True`, all four component-form folders are required.
+Compare your export with `examples/data/Survey123_Data`. Folder and repeat-table names must match the expected layout (a table can be a CSV file or a sheet, layer, or table in the formats listed under [Supported file formats](README.md#supported-file-formats)). When `gen_conpyro_df=True`, the Plants and Regeneration, Canopy Cover, and Woody Debris folders are required; a missing Trees folder is handled plot by plot (see [Form selection](README.md#form-selection)).
 
 ### A date cannot be parsed
 
@@ -243,5 +243,5 @@ require it, so you can omit the extra until FOFEM model execution is needed.
 
 - Read the full [README](README.md).
 - Review the checked-in [Survey123 example](examples/data/Survey123_Data).
-- Review the [result-field reference](docs/reference).
+- Review the output variables in the [Technical Reference](docs/TECHNICAL_REFERENCE.md).
 - Read the [test-suite guide](tests/README.md).

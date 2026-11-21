@@ -49,12 +49,14 @@ FuelAnalyst/
 |   |   |-- conpyro_attributes.py
 |   |   |-- fofem_attributes.py
 |   |   |-- fofem_emissions.py
+|   |   |-- fofem_moisture.py      FOFEM fuel moisture derivation and validation
 |   |   |-- fofem_mortality.py
 |   |   |-- fofem_gui_emissions.py
 |   |   |-- fofem_units.py
 |   |   |-- fwis_moisture_content.py
 |   |   |-- helper.py
-|   |   `-- table_reader.py        Survey123 table reader (eight input formats)
+|   |   |-- table_reader.py        Survey123 table reader (eight input formats)
+|   |   `-- tree_sampling.py       Tree sampling protocols and DBH cutoffs
 |   `-- supporting_data/           Packaged CSV and ecodivision data
 |-- models/photoload/              Reproducible PhotoLoad model-development workflow
 |-- examples/
@@ -77,7 +79,7 @@ vendored: generated copies of their upstream repositories, refreshed with `scrip
 (it shallow-clones each upstream default branch; `CONPYRO_SRC`/`BC_SRC` select a local clone instead), and the bounded
 `flame-components>=0.1.1,<0.2` distribution from PyPI is a core dependency, as are `openpyxl` and `pyogrio`, which read Survey123
 Excel, GeoPackage, and file geodatabase tables (`pyogrio` is called directly because geopandas before 1.0 defaults to fiona). The
-`parquet` extra (`pyarrow>=14.0`) reads Parquet and Feather tables and is part of `all` and `test`. The `fofem` extra installs the pinned `pyfofem-fire-effects==0.1.2`
+`parquet` extra (`pyarrow>=16.0`) reads Parquet and Feather tables and is part of `all` and `test`. The `fofem` extra installs the pinned `pyfofem-fire-effects==0.1.2`
 distribution from PyPI (imports as `pyfofem`, matching the prior GitHub checkout's
 import name) and needs no Git checkout for the Python-backed `model_select='pyfofem'`
 emissions path (mortality automation is pyfofem-only; the official FOFEM app is never
@@ -119,7 +121,7 @@ immediate `FileNotFoundError` naming the gap before any row is processed if none
    `README.txt` and `doc/` (`LICENSE`, `Runfofem_User_Guide.pdf`, preserved byte-for-byte at
    their original relative paths per upstream's own request), and a generated `PROVENANCE.md`
    - but no Microsoft Visual C++ runtime DLLs; those are a documented, separately-installed
-   Windows prerequisite (see the Gotchas table), not bundled in either wheel.
+   Windows prerequisite (see README > Optional fire-model dependencies), not bundled in either wheel.
 3. The bundled `src/fuel_analyst/supporting_data/fofem_694` directory - a Git source checkout
    only; it carries the same 7 files, tracked in Git, and needs no override.
 
@@ -475,10 +477,10 @@ flowchart TD
 
 #### What the diagrams imply
 
-- **Configuration and flags decide what is built.** The four configuration
-  dictionaries (`stand_summary_params`, `woody_debris_params`, `conpyro_params`,
-  and `fofem_consume_params`) control the tree, woody-debris, ConPyro, and FOFEM
-  calculations, and the three `gen_*` flags decide which of the optional tables
+- **Configuration and flags decide what is built.** The five configuration
+  dictionaries (`stand_summary_params`, `tree_sampling_params`, `woody_debris_params`,
+  `conpyro_params`, and `fofem_consume_params`) control the tree, tree-sampling,
+  woody-debris, ConPyro, and FOFEM calculations, and the three `gen_*` flags decide which of the optional tables
   are written. `form_select` in Plot Attributes decides, plot by plot, which of
   the four optional forms are processed.
 - **Stages communicate through files, not objects.** `process_fbp_fuel_type()`,
@@ -513,7 +515,7 @@ flowchart TD
   plot-location table. The table needs the plot ID column
   (for a keyed merge), a `wx_date` column (used to assign seasons and to sort the
   final results), and the weather variables ConPyro needs (`ws`, `wd`, `ffmc`,
-  `dmc`, and `bui`, plus `temp` and `rh` for CFIS).
+  `dmc`, `bui`, `temp`, and `rh`; FOFEM emissions also read `dc`).
 - **`run_conpyro()` takes the weather-merged table plus optional side inputs.**
   FOFEM mortality reads `master_tree_df.csv` (`in_tree_csv_path`) and FOFEM
   emissions read the consumption table (`in_fofem_consume_csv_path`). Enabling a
@@ -523,7 +525,9 @@ flowchart TD
   except numeric stand zero, which permits missing SROS and fills missing density as `L`. Results can have
   fewer plots than the input. `_log_skipped_empty_stand_plots()` logs each dropped
   plot once (`conpyro_plot_skipped_empty_stand`, in the ConPyro Fire Behavior column
-  of `run_conpyro_errors.csv`), and the run continues.
+  of `run_conpyro_errors.csv`), and the run continues. Under `sros_model='use_csv'`,
+  rows with no assigned surface model (other than stand type 0) are also skipped and
+  logged as `conpyro_missing_surface_model`.
 - **`fofem_gui_app_tree_mortality_df.csv` is a hand-off, not an input.** It is
   formatted for import into the external FOFEM GUI application and is not read by
   `run_conpyro()`.
@@ -824,9 +828,9 @@ section for the full suffix reference.
 ### Weather and downstream models
 
 `run_conpyro()` expects weather to have been supplied or merged already. It
-validates the always-required `ws`, `wd`, `ffmc`, `dmc`, and `bui` columns,
-requires `temp` and `rh` for CFIS (`cfo_model == 10`), and validates fields whose
-configuration value is `"use_csv"`. Missing requirements raise a descriptive
+validates the always-required `ws`, `wd`, `ffmc`, `dmc`, `bui`, `temp`, and `rh`
+columns (`temp` and `rh` feed CFIS and the Cheney grass models), plus every field whose
+configuration value is `"use_csv"` (by default `wx_date` and `sros_model`). Missing requirements raise a descriptive
 `ValueError` before model execution.
 
 Under CFIS the FBP fuel type feeds surface fuel consumption, but ConPyro receives the `fbp_fuel_type` values of a
@@ -883,7 +887,7 @@ The active vendor pin is ConPyro `v0.3.0` at `b388db795b654c7ade80cf3ed342eb6e97
 
 The 2026-11-06 refresh pinned ConPyro 0.2.0 at `b5d98e873402b86037ef8a2229b76888fc1cfbb3`. The generated package matches upstream `src/conpyro` with tests/caches excluded. Real `run_conpyro()` regressions cover zero-CBD surface-only outputs for crown models 1 and 2; existing default-model, CFIS and other documented surface-model tests remain in use. All 19 default comparison CSVs, including 51,968 fire rows, were byte-identical to the previous pin. Optional FOFEM execution was disabled in that comparison.
 
-The engine's O1 grass models require `gcf`, now supplied by `grass_curing` (default 60 percent). Unknown nonempty stand labels can now follow the upstream inferred-non-fuel policy; missing classes still hit FuelAnalyst's existing skip gate. The subsequent grass integration adds automatic surface-model assignment from live-tree presence and dominant substrate, described below; the original forest `gfl` mapping is preserved. See Technical Reference section 4.2 and the Unreleased notes.
+The engine's O1 grass models require `gcf`, now supplied by `grass_curing` (default 60 percent). Unknown nonempty stand labels can now follow the upstream inferred-non-fuel policy; missing classes still hit FuelAnalyst's existing skip gate. The subsequent grass integration adds automatic surface-model assignment from live-tree presence and dominant substrate, described below; the original forest `gfl` mapping is preserved. See Technical Reference section 4.2 and the 0.5.0 release notes.
 
 `_model_flame_components()` temporarily masks the consumed fire metrics on `fire_type=0` rows while deriving flame quantities, then restores the original ConPyro metrics and dtypes. This prevents the FLAME package's 1/2/3-only fire-type validator from aborting pure or mixed non-fuel runs. Inapplicable flame outputs remain missing; callers may request `nonfuel_mask` and `inferred_nonfuel_mask` through the existing output list.
 
@@ -923,7 +927,7 @@ The runner defaults to `sros_model='use_csv'` and passes `grass_curing=60` as `g
 available for positive fuels. Numeric stand code 0 remains nonfuel with zero physical outputs under scalar overrides,
 even if selected-model metadata changes. Regenerate model inputs and weather merges rather than guessing a model for stale merges.
 
-`fofem_moisture.derive_grass_duff_moisture()` fills missing grass/herb, shrub-proxy, and stand-domain-10 BY `mc_dmc`
+`fofem_moisture.derive_grass_duff_moisture()` fills missing grass/herb, shrub-proxy, wheat, and stand-domain-10 BY `mc_dmc`
 from weather DMC using the existing FWIS conversion and 10-200 bounds. New and reloaded results use it; both
 emissions readers retain optional DMC and surface metadata. Finite moisture values remain unchanged. Unresolved
 rows are skipped and logged with original plot IDs before backend execution; an empty subset skips the backend.
