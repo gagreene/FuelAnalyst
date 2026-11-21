@@ -69,9 +69,10 @@ def _refresh_weather_inputs(weather_path: str, fuel_path: str, output_path: str)
     """
     Attach current plot attributes, model assignments, and FBP fuel types to committed example weather.
 
-    The committed weather file predates automatic surface-model assignment, so its plot columns (including
-    the sros_model and surface_fuel_type columns that run_conpyro() needs by default) are replaced with
-    those of the freshly typed ConPyro table.
+    The committed weather file predates automatic surface-model assignment, so its plot columns are replaced
+    with those of the freshly typed ConPyro table. The refresh carries sros_model, which run_conpyro() requires
+    under its default sros_model='use_csv', and surface_fuel_type, which it reads when present to apply the
+    category-specific calculations (forest-floor BY consumption and the shrub contribution to the grass fuel load).
 
     :param weather_path: Existing weather-merged example CSV.
     :param fuel_path: Fresh FBP-typed ConPyro table (conpyro_df_fbp.csv) generated from the example data.
