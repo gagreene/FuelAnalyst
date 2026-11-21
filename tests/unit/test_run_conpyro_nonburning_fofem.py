@@ -155,12 +155,12 @@ def test_effects_preserve_burning_fire_rows_with_invalid_moisture(run_conpyro_mo
     })
     assert sorted(dispatches) == pytest.approx([20., 120., 165.292276])
     warnings = [(r.unique_id, r.issue_code, r.getMessage()) for r in caplog.records if r.levelname == 'WARNING']
-    duff = ('FOFEM emissions skipped for affected scenarios. DuffMoisture must be finite and within 10–197.2%, '
-            'and its converted Burnup fraction must be within 0.1–1.972. Check mc_dmc or the weather DMC used to derive it.')
+    duff = ('FOFEM emissions skipped for affected scenarios. DuffMoisture must be finite and within 10-197.2%, '
+            'and its converted Burnup fraction must be within 0.1-1.972. Check mc_dmc or the weather DMC used to derive it.')
     fine = ('FOFEM emissions skipped for affected scenarios. Final 10-hour moisture (mc_sa) must be finite and '
-            'within 3–298%. Check the modelled moisture or the supplied fire results.')
+            'within 3-298%. Check the modelled moisture or the supplied fire results.')
     coarse = ('FOFEM emissions skipped for affected scenarios. Weather DC must be finite and nonnegative and must '
-              'yield 1000-hour moisture within 1–300%.')
+              'yield 1000-hour moisture within 1-300%.')
     assert sorted(warnings) == sorted([
         ('forest', 'fofem_duff_moisture_invalid', duff), ('wheat', 'fofem_duff_moisture_invalid', duff),
         ('cheney grass', 'fofem_10h_moisture_invalid', fine), ('wheat', 'fofem_10h_moisture_invalid', fine),
