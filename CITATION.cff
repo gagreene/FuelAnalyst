@@ -1,0 +1,46 @@
+cff-version: 1.2.0
+message: "If you use FuelAnalyst, please cite it using the metadata below."
+type: software
+title: "FuelAnalyst"
+abstract: >-
+  FuelAnalyst is an open-source Python package that calculates fuel loads and
+  fire model inputs from forest fuel inventory data. From plot, tree,
+  understory vegetation, canopy cover, and woody debris measurements, it
+  estimates stand structure, tree biomass, canopy fuel attributes, and woody
+  debris, shrub, herb, duff, and litter loads, and formats them as inputs to the
+  Conifer Pyrometrics (ConPyro), Crown Fire Initiation and Spread (CFIS), and
+  First Order Fire Effects (FOFEM) models.
+authors:
+  - family-names: "Greene"
+    given-names: "Gregory A."
+    affiliation: "Forsite: Geospatial Intelligence Services"
+    orcid: "https://orcid.org/0009-0005-2431-4615"
+  - family-names: "Liu"
+    given-names: "Mingrui"
+    affiliation: "University of British Columbia"
+  - family-names: "Stefanuk"
+    given-names: "Michael"
+    affiliation: "University of British Columbia"
+  - family-names: "Smith-Tripp"
+    given-names: "Sarah"
+    affiliation: "University of British Columbia; The Nature Conservancy"
+  - family-names: "Pekelney"
+    given-names: "Rachel S."
+    affiliation: "University of British Columbia"
+  - family-names: "Tiribelli"
+    given-names: "Florencia"
+    affiliation: "Forsite: Geospatial Intelligence Services"
+  - family-names: "Daniels"
+    given-names: "Lori D."
+    affiliation: "University of British Columbia"
+version: "0.5.0"
+date-released: "2026-11-20"
+license: MIT
+repository-code: "https://github.com/gagreene/FuelAnalyst"
+keywords:
+  - forest inventory
+  - fire behaviour
+  - fire effects
+  - CFIS
+  - ConPyro
+  - FOFEM
